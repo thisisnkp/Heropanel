@@ -104,27 +104,39 @@ Authz(RBAC scope check) → BodyLimit → Validate → Handler → Audit(mutatio
 - Connection pooling tuned (`SetMaxOpenConns`, `SetMaxIdleConns`, `SetConnMaxLifetime`).
 - All queries context-aware and cancellable.
 
-### 3.4 Job Dispatcher & Worker Pool
+### 3.4 Caching Layer (two-tier: in-process L1 + Redis L2)
+Caching is deliberately **two-tier** so hot reads never touch the network and the RAM budget stays intact.
+
+- **L1 — in-process "normal" cache.** A local in-memory cache living inside each `hpd` (and reusable by modules via the SDK). Fast — no network hop, nanosecond reads — TTL + size-bounded **sharded LRU** (sharded to avoid lock contention). Holds hot, small, read-heavy data: resolved RBAC permission sets, session/JWT validation results, the module capability set, `settings`, per-site config, DNS/SSL lookups, and the fast path of rate-limit counters.
+- **L2 — Redis.** Shared/distributed cache across processes and (future) nodes; larger, survives an `hpd` restart, and is the coordination point for invalidation.
+- **Read path.** L1 → miss → L2 → miss → load from source (DB / broker / module) → populate L2, then L1. Short-TTL **negative caching** ("not found") blunts lookup storms.
+- **Coherence & invalidation.** Writes publish an invalidation message on a Redis Pub/Sub `cache:invalidate` channel; every process drops the affected L1 keys, so the in-process cache never serves stale data across the fleet. Each entry also carries a TTL as a backstop.
+- **Stampede protection.** `singleflight` around cold loads so a hot key is computed once per process; jittered TTLs avoid synchronized expiry.
+- **Safety.** Strict, configurable memory ceiling on L1 (counted in the RAM budget); per-namespace hit/miss metrics; the cache is always an optimization, never a source of truth — a cold cache degrades to correct-but-slower.
+
+**Abstraction.** All access goes through one interface — `cache.Cache` (`Get / Set / Delete / GetOrLoad`) — so call sites don't know which tier served them. The two-tier behavior is composed behind it as `TieredCache{ L1 LocalCache, L2 RedisCache }`; an install can also run **L1-only** (SQLite/minimal mode without Redis) or **L2-only** by swapping the composition at the bootstrap. L1 is a dependency-light sharded LRU-with-TTL (e.g. `hashicorp/golang-lru/v2` or an internal impl) — we avoid heavyweight cache libraries to protect the RAM budget.
+
+### 3.5 Job Dispatcher & Worker Pool
 - **Redis Streams** as the durable queue (consumer groups → at-least-once, survives restart, ack/retry/dead-letter). Chosen over Redis Lists for consumer-group semantics and replay.
 - Every long/mutating operation (create site, issue cert, run backup, deploy git, build docker image) is a **Job** with a persisted row + stream entry.
 - Worker pool: bounded goroutines (`GOMAXPROCS`-aware, configurable), each pulling from the stream, executing an idempotent handler, emitting progress to the realtime hub.
 - Job states: `queued → running → (succeeded | failed | cancelled)`, with `progress 0–100`, structured `steps[]`, and streamed log lines.
 - Retries with exponential backoff + jitter; poisoned jobs → dead-letter stream + operator alert.
 
-### 3.5 Realtime Hub
+### 3.6 Realtime Hub
 - Central WebSocket hub in `hpd`; subscribes to **Redis Pub/Sub** channels so events fan out even across future multi-node control planes.
 - Channels are scoped and RBAC-filtered: a client only receives events for resources it may read (e.g. `site:42:*`, `job:*`, `metrics:node`).
 - Message envelope: `{ channel, type, resource, data, ts, seq }`. Client reconciles via React Query cache invalidation.
 - Backpressure: per-connection bounded send buffer; slow clients dropped and told to refetch (no unbounded memory growth).
 
-### 3.6 Module Registry
+### 3.7 Module Registry
 - Discovers modules from `/opt/heropanel/modules/*/module.yaml`.
 - Maintains each module's state (`installed`, `enabled`, `running`, `version`, `health`).
 - Holds a **gRPC client** per running module (dial its Unix socket). Lazy-connects; reconnects with backoff.
 - Requests systemd start/stop of module units **via the broker** (start/stop is a privileged op).
 - Exposes a stable **capability query**: services ask "is `docker` capability available?" before offering Docker features.
 
-### 3.7 Scheduler
+### 3.8 Scheduler
 - Internal cron engine (`robfig/cron`-style) for panel-owned periodic tasks: SSL renewal checks, backup schedules, metric rollups, health probes, update checks, log rotation triggers, malware scan windows.
 - User-defined cron jobs are **not** run in-process — they are materialized as real system crontab/systemd-timer entries for the site's Linux user via the broker (so they survive panel downtime and run with correct privileges). The panel tracks + shows logs.
 
@@ -164,7 +176,8 @@ Authz(RBAC scope check) → BodyLimit → Validate → Handler → Audit(mutatio
 | Internal RPC | **gRPC** (Unix sockets) | Typed contracts to broker + modules; codegen; streaming for logs/progress |
 | DB | **MariaDB** (+ SQLite fallback) | Ubiquitous on target OSes; SQLite for micro installs ([ADR-0004](adr/0004-datastore.md)) |
 | DB access | **sqlx** + explicit SQL | Predictable performance, no ORM magic on hot paths |
-| Cache/Queue/Bus | **Redis** (Streams + Pub/Sub) | One dependency serves cache, durable queue, realtime fanout ([ADR-0005](adr/0005-redis.md)) |
+| Cache | **Two-tier**: in-process L1 (sharded LRU+TTL) → Redis L2 | Hot reads avoid the network; Redis Pub/Sub invalidation keeps L1 coherent |
+| Queue/Bus | **Redis** (Streams + Pub/Sub) | One dependency serves durable queue + realtime fanout ([ADR-0005](adr/0005-redis.md)) |
 | Migrations | **golang-migrate** | Versioned, reversible, CI-checked |
 | Frontend | **React + TS + Vite + Tailwind + shadcn/ui** | See [09 — UX](09-ux-flow.md) |
 | Realtime | WebSocket (coder/websocket) | net/http-native, context-aware |

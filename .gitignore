@@ -1,0 +1,32 @@
+# ── Go ──────────────────────────────────────────────────────────────
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+vendor/
+go.work.sum
+
+# ── Frontend (web/) ─────────────────────────────────────────────────
+web/node_modules/
+web/dist/
+web/.vite/
+*.local
+
+# ── Secrets / runtime (never commit) ────────────────────────────────
+*.pem
+*.key
+secrets.env
+/etc-local/
+*.sqlite
+*.db
+
+# ── Editor / OS ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Claude Code local files
+.claude/settings.local.json

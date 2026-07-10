@@ -41,7 +41,7 @@ heropanel/
 │   ├── broker/                   # BrokerGateway client (hpd → hp-broker)
 │   ├── modclient/                # ModuleRegistry + per-module gRPC clients
 │   ├── job/                      # dispatcher, worker pool, handlers, retry
-│   ├── cache/                    # Redis wrappers
+│   ├── cache/                    # RedisCache(L2) adapter + Pub/Sub invalidation; composes pkg/cache
 │   ├── events/                   # domain events + audit emitter
 │   └── platform/                 # OS/arch/distro detection, path helpers
 │
@@ -65,6 +65,7 @@ heropanel/
 │   ├── proto/                    # ← shared gRPC contracts (broker + module protocol)
 │   ├── plugin/                   # module SDK: handshake, health, lifecycle helpers
 │   ├── arch/                     # CPU/arch/distro detection + binary resolver
+│   ├── cache/                    # cache.Cache iface + LocalCache(L1) + TieredCache (stdlib-only) ✅
 │   ├── crypto/                   # argon2, AEAD, signing helpers
 │   ├── logx/  errx/  validate/  idgen/            # cross-cutting utilities
 │
