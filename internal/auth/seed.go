@@ -1,0 +1,61 @@
+package auth
+
+import (
+	"context"
+
+	"github.com/thisisnkp/heropanel/internal/repository"
+)
+
+// PermWildcard is the superuser permission slug.
+const PermWildcard = "*"
+
+// seedPermission is a permission to ensure exists.
+type seedPermission struct {
+	slug, resource, action, desc string
+}
+
+// basePermissions is the Phase-0 permission catalog. It grows as modules add
+// their own permissions.
+var basePermissions = []seedPermission{
+	{PermWildcard, "*", "*", "Full administrative access"},
+	{"user.read", "user", "read", "View users"},
+	{"user.write", "user", "write", "Create and modify users"},
+	{"site.read", "site", "read", "View sites"},
+	{"site.write", "site", "write", "Create and modify sites"},
+	{"dns.read", "dns", "read", "View DNS zones and records"},
+	{"dns.write", "dns", "write", "Modify DNS zones and records"},
+	{"ssl.read", "ssl", "read", "View certificates"},
+	{"ssl.write", "ssl", "write", "Issue and manage certificates"},
+	{"system.read", "system", "read", "View system status"},
+	{"system.write", "system", "write", "Change system configuration"},
+	{"audit.read", "audit", "read", "View the audit log"},
+}
+
+// seedRole is a role to ensure exists.
+type seedRole struct {
+	slug, name, desc string
+}
+
+var baseRoles = []seedRole{
+	{"admin", "Administrator", "Full access to everything"},
+	{"reseller", "Reseller", "Manages an isolated tenant of clients"},
+	{"developer", "Developer", "Manages assigned sites and deployments"},
+	{"client", "Client", "Manages their own sites"},
+}
+
+// SeedRBAC ensures the baseline permissions and system roles exist and that the
+// admin role holds the superuser permission. It is idempotent.
+func SeedRBAC(ctx context.Context, rbac *repository.RBACRepository) error {
+	for _, p := range basePermissions {
+		if err := rbac.EnsurePermission(ctx, p.slug, p.resource, p.action, p.desc); err != nil {
+			return err
+		}
+	}
+	for _, r := range baseRoles {
+		if _, err := rbac.EnsureRole(ctx, r.slug, r.name, true, r.desc); err != nil {
+			return err
+		}
+	}
+	// The admin role is the superuser.
+	return rbac.GrantPermission(ctx, "admin", PermWildcard)
+}

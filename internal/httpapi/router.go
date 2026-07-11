@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
 )
 
@@ -29,6 +30,9 @@ type Deps struct {
 	Version   string
 	StartedAt time.Time
 	DB        HealthChecker // nil when no datastore is configured
+	Redis     HealthChecker // nil when Redis is disabled
+	Auth      *auth.Service // nil when no datastore is configured
+	Users     UserDirectory // nil when no datastore is configured
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -66,7 +70,24 @@ func NewRouter(d Deps) http.Handler {
 	// Versioned API surface.
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/system/info", systemInfoHandler(d))
-		// Future: /auth, /sites, /dns, /ssl, ... mounted here.
+
+		// Auth-dependent routes are mounted only when a datastore (and thus the
+		// auth service) is available.
+		if d.Auth != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(authenticate(d.Auth)) // attach principal if present
+
+				r.Post("/auth/bootstrap", bootstrapHandler(d))
+				r.Post("/auth/login", loginHandler(d))
+				r.With(requireAuth).Post("/auth/logout", logoutHandler(d))
+				r.With(requireAuth).Get("/auth/me", meHandler)
+
+				if d.Users != nil {
+					r.With(requirePermission("user.read")).Get("/users", listUsersHandler(d))
+				}
+			})
+		}
+		// Future: /sites, /dns, /ssl, ... mounted here.
 	})
 
 	// SPA placeholder (replaced by the embedded React build).

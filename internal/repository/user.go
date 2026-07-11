@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/thisisnkp/heropanel/pkg/errx"
 	"github.com/thisisnkp/heropanel/pkg/idgen"
@@ -88,4 +89,93 @@ func (r *UserRepository) Count(ctx context.Context) (int, error) {
 		return 0, errx.Internal(err)
 	}
 	return n, nil
+}
+
+// GetByID returns the user with the given internal id.
+func (r *UserRepository) GetByID(ctx context.Context, id int64) (*User, error) {
+	var u User
+	err := r.db.GetContext(ctx, &u,
+		`SELECT `+userColumns+` FROM users WHERE id = ? AND deleted_at IS NULL`, id)
+	if isNoRows(err) {
+		return nil, errx.NotFound("user_not_found", "No such user.")
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &u, nil
+}
+
+// List returns up to limit non-deleted users ordered by id, skipping offset.
+func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]User, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var users []User
+	err := r.db.SelectContext(ctx, &users,
+		`SELECT `+userColumns+` FROM users WHERE deleted_at IS NULL ORDER BY id LIMIT ? OFFSET ?`,
+		limit, offset)
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return users, nil
+}
+
+// AuthUser carries the fields the login flow needs, including a computed Locked
+// flag (1 when the account is currently locked out).
+type AuthUser struct {
+	ID           int64          `db:"id"`
+	UID          string         `db:"uid"`
+	Email        string         `db:"email"`
+	Username     string         `db:"username"`
+	DisplayName  string         `db:"display_name"`
+	PasswordHash sql.NullString `db:"password_hash"`
+	Status       string         `db:"status"`
+	FailedLogins int            `db:"failed_logins"`
+	Locked       int            `db:"locked"`
+}
+
+// GetAuthByEmail loads the login-relevant fields for email, computing whether
+// the account is locked as of now (avoids parsing timestamps in Go).
+func (r *UserRepository) GetAuthByEmail(ctx context.Context, email string, now time.Time) (*AuthUser, error) {
+	var u AuthUser
+	err := r.db.GetContext(ctx, &u,
+		`SELECT id, uid, email, username, display_name, password_hash, status, failed_logins,
+		        CASE WHEN locked_until IS NOT NULL AND locked_until > ? THEN 1 ELSE 0 END AS locked
+		 FROM users WHERE email = ? AND deleted_at IS NULL`,
+		fmtTS(now), email)
+	if isNoRows(err) {
+		return nil, errx.NotFound("user_not_found", "No such user.")
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &u, nil
+}
+
+// RegisterFailedLogin increments the failed-login counter and locks the account
+// until lockUntil once the count reaches threshold.
+func (r *UserRepository) RegisterFailedLogin(ctx context.Context, id int64, threshold int, lockUntil time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users
+		    SET failed_logins = failed_logins + 1,
+		        locked_until = CASE WHEN failed_logins + 1 >= ? THEN ? ELSE locked_until END
+		  WHERE id = ?`,
+		threshold, fmtTS(lockUntil), id)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// RegisterSuccessfulLogin clears the failed-login state and records the login.
+func (r *UserRepository) RegisterSuccessfulLogin(ctx context.Context, id int64, ip string, now time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users
+		    SET failed_logins = 0, locked_until = NULL, last_login_at = ?, last_login_ip = ?
+		  WHERE id = ?`,
+		fmtTS(now), ip, id)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	return nil
 }

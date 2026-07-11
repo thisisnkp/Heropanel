@@ -21,21 +21,31 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func readyHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		components := map[string]string{
-			"redis":  "skipped",
 			"broker": "skipped",
 		}
 		ready := true
 
-		if d.DB == nil {
-			components["database"] = "not_configured"
-		} else {
-			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-			defer cancel()
-			if err := d.DB.Health(ctx); err != nil {
-				components["database"] = "error"
-				ready = false
-			} else {
-				components["database"] = "ok"
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		checks := []struct {
+			name string
+			hc   HealthChecker
+		}{
+			{"database", d.DB},
+			{"redis", d.Redis},
+		}
+		for _, c := range checks {
+			switch {
+			case c.hc == nil:
+				components[c.name] = "not_configured"
+			default:
+				if err := c.hc.Health(ctx); err != nil {
+					components[c.name] = "error"
+					ready = false
+				} else {
+					components[c.name] = "ok"
+				}
 			}
 		}
 

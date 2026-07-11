@@ -13,17 +13,24 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/thisisnkp/heropanel/internal/auth"
+	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/repository"
+	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	"github.com/thisisnkp/heropanel/pkg/idgen"
 )
 
 // App holds the wired application, its HTTP server, and owned resources.
 type App struct {
-	cfg config.Config
-	log *slog.Logger
-	srv *http.Server
-	db  *repository.DB // may be nil when no datastore is configured
+	cfg        config.Config
+	log        *slog.Logger
+	srv        *http.Server
+	db         *repository.DB // may be nil when no datastore is configured
+	l1         *pcache.LocalCache
+	cache      pcache.Cache // composed two-tier cache (consumed by services)
+	cacheClose func() error
 }
 
 // New builds the App: it makes the given logger the process default, opens and
@@ -50,11 +57,45 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Warn("no datastore configured (empty DSN); running without persistence")
 	}
 
-	// Avoid the typed-nil interface gotcha: only set the HealthChecker when a
-	// real DB exists, so /readyz reports "not_configured" rather than panicking.
-	var dbHealth httpapi.HealthChecker
+	// Two-tier cache: an always-present in-process L1, composed with Redis L2 +
+	// invalidation bus when Redis is configured (else L1-only).
+	l1 := pcache.NewLocal(pcache.LocalConfig{MaxEntries: 10000, JanitorInterval: time.Minute})
+	cacheWiring, err := icache.Build(ctx, cfg.Redis, l1, idgen.NewULID(), log)
+	if err != nil {
+		_ = l1.Close()
+		if db != nil {
+			_ = db.Close()
+		}
+		return nil, fmt.Errorf("bootstrap: %w", err)
+	}
+
+	// Avoid the typed-nil interface gotcha: only set a HealthChecker when the
+	// concrete dependency exists, so /readyz reports "not_configured" cleanly.
+	var dbHealth, redisHealth httpapi.HealthChecker
 	if db != nil {
 		dbHealth = db
+	}
+	if cacheWiring.RedisHealth != nil {
+		redisHealth = cacheWiring.RedisHealth
+	}
+
+	// Auth/RBAC is available only with a datastore. Seed baseline roles and
+	// permissions (idempotent), then construct the auth service.
+	var authSvc *auth.Service
+	var userDir httpapi.UserDirectory
+	if db != nil {
+		users := repository.NewUserRepository(db)
+		sessions := repository.NewSessionRepository(db)
+		rbac := repository.NewRBACRepository(db)
+		if err := auth.SeedRBAC(ctx, rbac); err != nil {
+			_ = cacheWiring.Close()
+			_ = l1.Close()
+			_ = db.Close()
+			return nil, fmt.Errorf("bootstrap: seed rbac: %w", err)
+		}
+		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig())
+		userDir = &userDirectoryAdapter{repo: users}
+		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
 
 	handler := httpapi.NewRouter(httpapi.Deps{
@@ -64,6 +105,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Version:   version,
 		StartedAt: time.Now(),
 		DB:        dbHealth,
+		Redis:     redisHealth,
+		Auth:      authSvc,
+		Users:     userDir,
 	})
 
 	srv := &http.Server{
@@ -75,11 +119,26 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		ErrorLog:     slog.NewLogLogger(log.Handler(), slog.LevelError),
 	}
 
-	return &App{cfg: cfg, log: log, srv: srv, db: db}, nil
+	return &App{
+		cfg:        cfg,
+		log:        log,
+		srv:        srv,
+		db:         db,
+		l1:         l1,
+		cache:      cacheWiring.Cache,
+		cacheClose: cacheWiring.Close,
+	}, nil
 }
 
-// Close releases owned resources (the datastore). Call after Run returns.
+// Close releases owned resources (Redis client, L1 cache, datastore). Call after
+// Run returns.
 func (a *App) Close() error {
+	if a.cacheClose != nil {
+		_ = a.cacheClose()
+	}
+	if a.l1 != nil {
+		_ = a.l1.Close()
+	}
 	if a.db != nil {
 		return a.db.Close()
 	}
