@@ -10,7 +10,10 @@ go.work.sum
 
 # ── Frontend (web/) ─────────────────────────────────────────────────
 web/node_modules/
-web/dist/
+# Ignore built assets but keep the dir (with its placeholder) so the Go embed
+# in web/embed.go always compiles, even before a frontend build.
+web/dist/*
+!web/dist/.gitkeep
 web/.vite/
 *.local
 

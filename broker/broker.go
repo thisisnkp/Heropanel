@@ -16,6 +16,7 @@ import (
 	"github.com/thisisnkp/heropanel/broker/capabilities"
 	"github.com/thisisnkp/heropanel/broker/capability"
 	"github.com/thisisnkp/heropanel/broker/exec"
+	"github.com/thisisnkp/heropanel/broker/fsys"
 	"github.com/thisisnkp/heropanel/broker/policy"
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
@@ -41,16 +42,21 @@ type Broker struct {
 	pol    policy.Policy
 	audit  *audit.Chain
 	runner exec.Runner
+	fs     fsys.FS
 	log    *slog.Logger
 }
 
-// New constructs a Broker.
+// New constructs a Broker. The filesystem defaults to the real OS; tests may
+// override it via SetFS.
 func New(reg *capability.Registry, pol policy.Policy, chain *audit.Chain, runner exec.Runner, log *slog.Logger) *Broker {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Broker{reg: reg, pol: pol, audit: chain, runner: runner, log: log}
+	return &Broker{reg: reg, pol: pol, audit: chain, runner: runner, fs: fsys.OS{}, log: log}
 }
+
+// SetFS overrides the filesystem (used in tests to inject a fake).
+func (b *Broker) SetFS(fs fsys.FS) { b.fs = fs }
 
 // DefaultRegistry returns a registry populated with all built-in capabilities.
 func DefaultRegistry() *capability.Registry {
@@ -87,6 +93,7 @@ func (b *Broker) Invoke(ctx context.Context, req Request) (Response, error) {
 	res, err := impl.Execute(capability.Context{
 		Ctx:    ctx,
 		Runner: b.runner,
+		FS:     b.fs,
 		Policy: b.pol,
 		Actor:  req.Actor,
 		Log:    b.log,

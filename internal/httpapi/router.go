@@ -14,6 +14,8 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/web"
 )
 
 // HealthChecker is anything whose health can be probed (e.g. the database).
@@ -31,8 +33,10 @@ type Deps struct {
 	StartedAt time.Time
 	DB        HealthChecker // nil when no datastore is configured
 	Redis     HealthChecker // nil when Redis is disabled
+	Broker    HealthChecker // nil when the broker is not configured
 	Auth      *auth.Service // nil when no datastore is configured
 	Users     UserDirectory // nil when no datastore is configured
+	Sites     *site.Service // nil when no datastore is configured
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -77,6 +81,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(authenticate(d.Auth)) // attach principal if present
 
+				r.Get("/auth/status", statusHandler(d))
 				r.Post("/auth/bootstrap", bootstrapHandler(d))
 				r.Post("/auth/login", loginHandler(d))
 				r.With(requireAuth).Post("/auth/logout", logoutHandler(d))
@@ -85,13 +90,26 @@ func NewRouter(d Deps) http.Handler {
 				if d.Users != nil {
 					r.With(requirePermission("user.read")).Get("/users", listUsersHandler(d))
 				}
+				if d.Sites != nil {
+					r.With(requirePermission("site.read")).Get("/sites", listSitesHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites", createSiteHandler(d))
+					r.With(requirePermission("site.read")).Get("/sites/{uid}", getSiteHandler(d))
+					r.With(requirePermission("site.write")).Delete("/sites/{uid}", deleteSiteHandler(d))
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/php", getSitePHPHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/php", setSitePHPHandler(d))
+				}
 			})
 		}
-		// Future: /sites, /dns, /ssl, ... mounted here.
+		// Future: /dns, /ssl, ... mounted here.
 	})
 
-	// SPA placeholder (replaced by the embedded React build).
-	r.Get("/", rootHandler(d))
+	// Embedded SPA (served for GET/HEAD on all non-API routes; falls back to a
+	// placeholder when no frontend build is embedded). Registering only GET/HEAD
+	// preserves 405 semantics for wrong-method requests to real routes.
+	distFS, hasSPA := web.FS()
+	spa := spaHandler(distFS, hasSPA)
+	r.Get("/*", spa)
+	r.Head("/*", spa)
 
 	return r
 }

@@ -8,5 +8,10 @@ func All() []capability.Capability {
 	return []capability.Capability{
 		ServiceRestart{},
 		SystemUserCreate{},
+		SystemUserDelete{},
+		SiteCreateDirs{},
+		SiteRemoveDirs{},
+		WebServerApply{},
+		PHPWritePool{},
 	}
 }

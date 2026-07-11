@@ -53,4 +53,4 @@ This directory contains the **complete architecture and planning package** produ
 | `Broker capability` | A single named, allowlisted privileged operation the broker will perform (see [05](05-security-architecture.md)). |
 
 ---
-_Status: **Planning — awaiting approval.** No implementation code exists yet._
+_Status: **Phase 0 in progress.** Implemented & tested: `pkg/*` primitives (cache, errx, idgen, logx, pwhash), the `hp-broker` security spine, the `hpd` core (config, Chi edge, lifecycle), two-tier cache (L1 + Redis L2 + invalidation bus), data layer (migrations, repositories), session auth + RBAC, and an embedded React/Vite/Tailwind UI. See [10 — Roadmap](10-roadmap.md) for what's next._

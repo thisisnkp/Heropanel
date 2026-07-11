@@ -37,6 +37,23 @@ func bootstrapHandler(d Deps) http.HandlerFunc {
 	}
 }
 
+// statusHandler reports first-run state so the UI can choose between the login
+// screen and the administrator bootstrap screen. It is public (no auth).
+func statusHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		needs, err := d.Auth.NeedsBootstrap(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		_, authed := auth.FromContext(r.Context())
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"needs_bootstrap": needs,
+			"authenticated":   authed,
+		})
+	}
+}
+
 // loginHandler authenticates credentials and sets the session cookie.
 func loginHandler(d Deps) http.HandlerFunc {
 	secure := d.Config.Server.TLS.Enabled

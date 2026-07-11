@@ -9,8 +9,8 @@ Go core · React UI · modular to the core · low-RAM · multi-arch.
 
 ---
 
-> **Status: Planning — awaiting approval.**
-> No implementation code exists yet. The complete architecture & design package lives in [`docs/`](docs/README.md). Implementation begins **one module at a time** only after the plan is approved.
+> **Status: Phase 0 in progress — plan approved, foundations building.**
+> The architecture & design package is in [`docs/`](docs/README.md). Implemented so far (all tested): shared primitives, the privilege-broker security spine, the `hpd` core (Chi HTTP edge + graceful lifecycle), a two-tier cache (in-process L1 + Redis L2 with an invalidation bus), the data layer (sqlx + hand-rolled migrations, MariaDB/SQLite), **session-based auth + RBAC** (Argon2id, lockout, first-run bootstrap), and a **React + TypeScript + Vite + Tailwind UI** embedded into the single `hpd` binary. Build with `make dist`; run with `./bin/hpd`.
 
 ## What this is
 A self-hosted control panel designed to compete with hPanel, CyberPanel, aaPanel, Plesk, cPanel, RunCloud, CloudPanel, Coolify, Railway, Vercel, and Dokploy — built primarily in **Go** for a fraction of the RAM of PHP-based panels, with an original, task-oriented React UI.

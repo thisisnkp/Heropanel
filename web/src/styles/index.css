@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens. RGB triples feed Tailwind's `rgb(var(--x) / <alpha>)` colors. */
+:root {
+  --surface: 248 250 252; /* slate-50  */
+  --panel: 255 255 255;
+  --border: 226 232 240; /* slate-200 */
+  --fg: 15 23 42; /* slate-900 */
+  --muted: 100 116 139; /* slate-500 */
+  --brand: 79 70 229; /* indigo-600 */
+  --brand-fg: 255 255 255;
+  --danger: 220 38 38;
+  --success: 22 163 74;
+}
+
+.dark {
+  --surface: 8 11 17;
+  --panel: 17 22 31;
+  --border: 33 41 54;
+  --fg: 226 232 240;
+  --muted: 148 163 184;
+  --brand: 129 140 248; /* indigo-400 */
+  --brand-fg: 12 16 23;
+  --danger: 248 113 113;
+  --success: 74 222 128;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface text-fg antialiased;
+}

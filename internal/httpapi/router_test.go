@@ -95,8 +95,9 @@ func TestSystemInfo(t *testing.T) {
 	}
 }
 
-func TestNotFoundEnvelope(t *testing.T) {
-	rec := do(t, testRouter(t, nil), http.MethodGet, "/does-not-exist")
+func TestApiNotFoundEnvelope(t *testing.T) {
+	// Unknown API paths return the JSON error envelope (not the SPA).
+	rec := do(t, testRouter(t, nil), http.MethodGet, "/api/v1/does-not-exist")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -113,6 +114,18 @@ func TestNotFoundEnvelope(t *testing.T) {
 	}
 	if env.Error.Code != "not_found" {
 		t.Fatalf("error code = %q, want not_found", env.Error.Code)
+	}
+}
+
+func TestSPAFallbackServesIndex(t *testing.T) {
+	// Unknown non-API GET routes serve the SPA (or placeholder) as HTML so
+	// client-side routing can take over.
+	rec := do(t, testRouter(t, nil), http.MethodGet, "/some/client/route")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+		t.Fatalf("content-type = %q, want text/html", ct)
 	}
 }
 

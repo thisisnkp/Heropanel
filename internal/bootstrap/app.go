@@ -14,10 +14,14 @@ import (
 	"time"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
+	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
+	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/internal/webserver"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
 	"github.com/thisisnkp/heropanel/pkg/idgen"
 )
@@ -71,7 +75,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 
 	// Avoid the typed-nil interface gotcha: only set a HealthChecker when the
 	// concrete dependency exists, so /readyz reports "not_configured" cleanly.
-	var dbHealth, redisHealth httpapi.HealthChecker
+	var dbHealth, redisHealth, brokerHealth httpapi.HealthChecker
 	if db != nil {
 		dbHealth = db
 	}
@@ -79,10 +83,22 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		redisHealth = cacheWiring.RedisHealth
 	}
 
-	// Auth/RBAC is available only with a datastore. Seed baseline roles and
-	// permissions (idempotent), then construct the auth service.
+	// Broker client (opt-in): only when a socket is configured. It is the gateway
+	// through which services request privileged operations. Left nil when the
+	// broker is absent (services that need it fail with an "unavailable" error).
+	var gw brokerclient.Gateway
+	if cfg.Broker.Socket != "" {
+		client := brokerclient.NewClient(cfg.Broker.Socket, cfg.Broker.Token, log)
+		gw = client
+		brokerHealth = client
+		log.Info("broker gateway configured", "socket", cfg.Broker.Socket)
+	}
+
+	// Services are available only with a datastore. Seed baseline RBAC
+	// (idempotent), then construct the auth and site services.
 	var authSvc *auth.Service
 	var userDir httpapi.UserDirectory
+	var siteSvc *site.Service
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -95,6 +111,12 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig())
 		userDir = &userDirectoryAdapter{repo: users}
+		siteSvc = site.NewService(site.Deps{
+			Repo:   repository.NewSiteStore(db),
+			Broker: gw,
+			Web:    webserver.NewService(gw),
+			PHP:    php.NewService(repository.NewPHPPoolStore(db), gw),
+		})
 		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
 
@@ -106,8 +128,10 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		StartedAt: time.Now(),
 		DB:        dbHealth,
 		Redis:     redisHealth,
+		Broker:    brokerHealth,
 		Auth:      authSvc,
 		Users:     userDir,
+		Sites:     siteSvc,
 	})
 
 	srv := &http.Server{

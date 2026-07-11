@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS domains;
+DROP TABLE IF EXISTS site_system_users;
+DROP TABLE IF EXISTS sites;

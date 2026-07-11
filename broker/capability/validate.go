@@ -14,7 +14,31 @@ var (
 	reUsername = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 	// reLabel: a single DNS label (used to validate FQDNs).
 	reLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	// reVhost: an internal virtual-host identifier (used to build config paths).
+	reVhost = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
+	// rePHPVersion: a major.minor PHP version like "8.2".
+	rePHPVersion = regexp.MustCompile(`^\d+\.\d+$`)
 )
+
+// ValidatePHPVersion returns a validation error if v is not a major.minor PHP
+// version (it is used to construct filesystem paths and service names).
+func ValidatePHPVersion(v string) error {
+	if !rePHPVersion.MatchString(v) {
+		return errx.Validation("invalid_php_version", "Invalid PHP version.",
+			errx.Field{Field: "version", Code: "invalid_php_version", Message: "expected e.g. 8.2"})
+	}
+	return nil
+}
+
+// ValidateVhostName returns a validation error if name is not a safe virtual
+// host identifier (it is used to construct filesystem paths).
+func ValidateVhostName(name string) error {
+	if !reVhost.MatchString(name) || name == "." || name == ".." {
+		return errx.Validation("invalid_vhost", "Invalid virtual host name.",
+			errx.Field{Field: "name", Code: "invalid_vhost", Message: "invalid format"})
+	}
+	return nil
+}
 
 // ValidateUsername returns a validation error if u is not a valid, safe Linux
 // username.

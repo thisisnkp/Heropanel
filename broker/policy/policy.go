@@ -34,6 +34,11 @@ func Default() Policy {
 		Enabled: map[string]bool{
 			"service.restart":    true,
 			"system_user.create": true,
+			"system_user.delete": true,
+			"site.create_dirs":   true,
+			"site.remove_dirs":   true,
+			"webserver.apply":    true,
+			"php.write_pool":     true,
 		},
 		Services: []string{
 			"lshttpd", "openlitespeed", "mariadb", "redis",

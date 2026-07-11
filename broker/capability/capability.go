@@ -15,6 +15,7 @@ import (
 	"sort"
 
 	"github.com/thisisnkp/heropanel/broker/exec"
+	"github.com/thisisnkp/heropanel/broker/fsys"
 	"github.com/thisisnkp/heropanel/broker/policy"
 )
 
@@ -31,6 +32,7 @@ type Actor struct {
 type Context struct {
 	Ctx    context.Context
 	Runner exec.Runner
+	FS     fsys.FS
 	Policy policy.Policy
 	Actor  Actor
 	Log    *slog.Logger

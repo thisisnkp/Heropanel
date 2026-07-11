@@ -19,8 +19,16 @@ type Config struct {
 	Server   Server   `yaml:"server"`
 	Database Database `yaml:"database"`
 	Redis    Redis    `yaml:"redis"`
+	Broker   Broker   `yaml:"broker"`
 	Log      Log      `yaml:"log"`
 	Security Security `yaml:"security"`
+}
+
+// Broker configures the connection to the privileged hp-broker daemon. An empty
+// Socket disables the connection (hpd runs without privileged operations).
+type Broker struct {
+	Socket string `yaml:"socket"`
+	Token  string `yaml:"token"`
 }
 
 // Server holds HTTP server settings.
@@ -157,6 +165,12 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_REDIS_PASSWORD"); v != "" {
 		c.Redis.Password = v
+	}
+	if v := os.Getenv("HP_BROKER_SOCKET"); v != "" {
+		c.Broker.Socket = v
+	}
+	if v := os.Getenv("HP_BROKER_TOKEN"); v != "" {
+		c.Broker.Token = v
 	}
 }
 
