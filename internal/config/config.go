@@ -100,7 +100,7 @@ func Default() Config {
 			MaxIdleConns:    5,
 			ConnMaxLifetime: dur(30 * time.Minute),
 		},
-		Redis: Redis{Addr: "127.0.0.1:6379", DB: 0},
+		Redis: Redis{Addr: "", DB: 0}, // empty = disabled (opt-in, like the DB DSN)
 		Log:   Log{Level: "info", Format: "json"},
 		Security: Security{
 			BodyLimitBytes: 10 << 20, // 10 MiB
