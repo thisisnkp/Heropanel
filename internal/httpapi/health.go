@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"runtime"
 	"time"
@@ -14,17 +15,38 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-// readyHandler is a readiness probe. Dependency checks (database, redis, broker)
-// are added as those components are wired; for now they report "skipped".
+// readyHandler is a readiness probe. It checks wired dependencies and returns
+// 503 when a required one is unhealthy. Components not yet wired report
+// "skipped"; an unconfigured datastore reports "not_configured".
 func readyHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		components := map[string]string{
-			"database": "skipped",
-			"redis":    "skipped",
-			"broker":   "skipped",
+			"redis":  "skipped",
+			"broker": "skipped",
 		}
-		writeJSON(w, r, http.StatusOK, map[string]any{
-			"status":     "ready",
+		ready := true
+
+		if d.DB == nil {
+			components["database"] = "not_configured"
+		} else {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if err := d.DB.Health(ctx); err != nil {
+				components["database"] = "error"
+				ready = false
+			} else {
+				components["database"] = "ok"
+			}
+		}
+
+		status := http.StatusOK
+		state := "ready"
+		if !ready {
+			status = http.StatusServiceUnavailable
+			state = "degraded"
+		}
+		writeJSON(w, r, status, map[string]any{
+			"status":     state,
 			"components": components,
 		})
 	}

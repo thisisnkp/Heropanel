@@ -146,6 +146,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("HP_LOG_FORMAT"); v != "" {
 		c.Log.Format = v
 	}
+	if v := os.Getenv("HP_DATABASE_DRIVER"); v != "" {
+		c.Database.Driver = v
+	}
 	if v := os.Getenv("HP_DATABASE_DSN"); v != "" {
 		c.Database.DSN = v
 	}

@@ -1,4 +1,4 @@
-go 1.23
+go 1.25.0
 
 // HeroPanel is a monorepo. The core (hpd), broker, and shared pkg/ live in the
 // root module. Satellite modules (modules/*) are added here as independent

@@ -5,14 +5,14 @@ import (
 	"sync"
 )
 
-// flightGroup deduplicates concurrent calls for the same key so an expensive
+// FlightGroup deduplicates concurrent calls for the same key so an expensive
 // loader runs once while other goroutines wait for and share its result.
 //
 // It is a small, self-contained equivalent of golang.org/x/sync/singleflight,
 // reimplemented here to keep pkg/cache free of external dependencies. A panic
 // inside the loader is recovered and surfaced as an error so waiters never
-// deadlock.
-type flightGroup struct {
+// deadlock. The zero value is ready to use.
+type FlightGroup struct {
 	mu sync.Mutex
 	m  map[string]*flightCall
 }
@@ -26,7 +26,7 @@ type flightCall struct {
 // Do executes fn for key, ensuring only one execution is in flight for a given
 // key at a time. Duplicate callers wait for the original to complete and
 // receive the same results.
-func (g *flightGroup) Do(key string, fn func() ([]byte, error)) ([]byte, error) {
+func (g *FlightGroup) Do(key string, fn func() ([]byte, error)) ([]byte, error) {
 	g.mu.Lock()
 	if g.m == nil {
 		g.m = make(map[string]*flightCall)

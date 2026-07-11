@@ -6,6 +6,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -14,20 +15,47 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
+	"github.com/thisisnkp/heropanel/internal/repository"
 )
 
-// App holds the wired application and its HTTP server.
+// App holds the wired application, its HTTP server, and owned resources.
 type App struct {
 	cfg config.Config
 	log *slog.Logger
 	srv *http.Server
+	db  *repository.DB // may be nil when no datastore is configured
 }
 
-// New builds the App: it makes the given logger the process default and
-// constructs the HTTP server from the router. ctx is the lifecycle context used
-// by background helpers (e.g. the rate-limiter janitor).
-func New(ctx context.Context, cfg config.Config, log *slog.Logger, version string) *App {
+// New builds the App: it makes the given logger the process default, opens and
+// migrates the datastore (if configured), and constructs the HTTP server from
+// the router. ctx is the lifecycle context used by background helpers (e.g. the
+// rate-limiter janitor).
+func New(ctx context.Context, cfg config.Config, log *slog.Logger, version string) (*App, error) {
 	slog.SetDefault(log)
+
+	var db *repository.DB
+	if repository.Configured(cfg.Database) {
+		opened, err := repository.Open(cfg.Database)
+		if err != nil {
+			return nil, fmt.Errorf("bootstrap: %w", err)
+		}
+		applied, err := repository.Migrate(ctx, opened)
+		if err != nil {
+			_ = opened.Close()
+			return nil, fmt.Errorf("bootstrap: migrate: %w", err)
+		}
+		log.Info("database ready", "dialect", opened.Dialect, "migrations_applied", applied)
+		db = opened
+	} else {
+		log.Warn("no datastore configured (empty DSN); running without persistence")
+	}
+
+	// Avoid the typed-nil interface gotcha: only set the HealthChecker when a
+	// real DB exists, so /readyz reports "not_configured" rather than panicking.
+	var dbHealth httpapi.HealthChecker
+	if db != nil {
+		dbHealth = db
+	}
 
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Ctx:       ctx,
@@ -35,6 +63,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Logger:    log,
 		Version:   version,
 		StartedAt: time.Now(),
+		DB:        dbHealth,
 	})
 
 	srv := &http.Server{
@@ -46,7 +75,15 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		ErrorLog:     slog.NewLogLogger(log.Handler(), slog.LevelError),
 	}
 
-	return &App{cfg: cfg, log: log, srv: srv}
+	return &App{cfg: cfg, log: log, srv: srv, db: db}, nil
+}
+
+// Close releases owned resources (the datastore). Call after Run returns.
+func (a *App) Close() error {
+	if a.db != nil {
+		return a.db.Close()
+	}
+	return nil
 }
 
 // Run serves until ctx is cancelled (e.g. SIGINT/SIGTERM) or the server fails,

@@ -55,7 +55,7 @@ type LocalCache struct {
 	seed   maphash.Seed
 	mask   uint64
 	shards []*localShard
-	sf     flightGroup
+	sf     FlightGroup
 
 	stats struct {
 		hits, misses, sets, deletes, evictions atomic.Uint64

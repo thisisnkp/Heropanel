@@ -15,6 +15,12 @@ import (
 	"github.com/thisisnkp/heropanel/internal/config"
 )
 
+// HealthChecker is anything whose health can be probed (e.g. the database).
+// The router depends on this narrow interface, not on the repository package.
+type HealthChecker interface {
+	Health(ctx context.Context) error
+}
+
 // Deps are everything the router needs. Services are added here as they land.
 type Deps struct {
 	Ctx       context.Context // lifecycle context (cancels background helpers)
@@ -22,6 +28,7 @@ type Deps struct {
 	Logger    *slog.Logger
 	Version   string
 	StartedAt time.Time
+	DB        HealthChecker // nil when no datastore is configured
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.

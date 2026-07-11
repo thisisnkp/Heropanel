@@ -54,7 +54,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	app := bootstrap.New(ctx, cfg, log, version)
+	app, err := bootstrap.New(ctx, cfg, log, version)
+	if err != nil {
+		log.Error("startup failed", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = app.Close() }()
+
 	if err := app.Run(ctx); err != nil {
 		log.Error("server error", "err", err)
 		os.Exit(1)

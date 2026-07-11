@@ -27,7 +27,7 @@ type TieredCache struct {
 	L1  Cache
 	L2  Cache // may be nil
 	cfg TieredConfig
-	sf  flightGroup
+	sf  FlightGroup
 
 	stats struct {
 		l1Hits, l2Hits, misses atomic.Uint64
