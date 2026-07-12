@@ -26,7 +26,9 @@ func listSitesHandler(d Deps) http.HandlerFunc {
 	}
 }
 
-// createSiteHandler provisions a new site. Gated by "site.write".
+// createSiteHandler provisions a new site. Gated by "site.write". When the async
+// job queue is available it validates synchronously, enqueues a "site.create"
+// job, and returns 202 + the job; otherwise it provisions synchronously (201).
 func createSiteHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FromContext(r.Context())
@@ -39,13 +41,30 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		out, err := d.Sites.Create(r.Context(), site.CreateInput{
+		in := site.CreateInput{
 			Name:          req.Name,
 			PrimaryDomain: req.PrimaryDomain,
 			Type:          site.Type(req.Type),
 			DeployMode:    site.DeployMode(req.DeployMode),
 			OwnerID:       p.UserID,
-		})
+		}
+
+		if d.Jobs != nil {
+			// Reject bad input up front, then enqueue.
+			if err := site.ValidateInput(&in); err != nil {
+				writeError(w, r, err)
+				return
+			}
+			j, err := d.Jobs.Enqueue(r.Context(), "site.create", p.UserID, in)
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			writeJSON(w, r, http.StatusAccepted, map[string]any{"job": toJobView(j)})
+			return
+		}
+
+		out, err := d.Sites.Create(r.Context(), in)
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -66,10 +85,24 @@ func getSiteHandler(d Deps) http.HandlerFunc {
 	}
 }
 
-// deleteSiteHandler soft-deletes a site. Gated by "site.write".
+// deleteSiteHandler de-provisions a site. Gated by "site.write". Uses the async
+// job queue when available (202 + job), otherwise deletes synchronously (200).
 func deleteSiteHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := d.Sites.Delete(r.Context(), chi.URLParam(r, "uid")); err != nil {
+		p, _ := auth.FromContext(r.Context())
+		uid := chi.URLParam(r, "uid")
+
+		if d.Jobs != nil {
+			j, err := d.Jobs.Enqueue(r.Context(), "site.delete", p.UserID, map[string]string{"uid": uid})
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			writeJSON(w, r, http.StatusAccepted, map[string]any{"job": toJobView(j)})
+			return
+		}
+
+		if err := d.Sites.Delete(r.Context(), uid); err != nil {
 			writeError(w, r, err)
 			return
 		}

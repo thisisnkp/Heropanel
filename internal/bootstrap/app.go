@@ -5,6 +5,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,10 +19,12 @@ import (
 	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
+	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/webserver"
+	"github.com/thisisnkp/heropanel/internal/ws"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
 	"github.com/thisisnkp/heropanel/pkg/idgen"
 )
@@ -120,6 +123,47 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
 
+	// Async job queue (requires a datastore and Redis). When absent, site
+	// operations run synchronously in the request.
+	var jobs *job.Dispatcher
+	if db != nil && cacheWiring.RedisClient != nil {
+		d := job.NewDispatcher(repository.NewJobStore(db), cacheWiring.RedisClient, log)
+		d.Register("site.create", func(ctx context.Context, j *job.Job, p job.Progress) (any, error) {
+			var in site.CreateInput
+			if err := json.Unmarshal(j.Payload, &in); err != nil {
+				return nil, err
+			}
+			s, err := siteSvc.RunCreate(ctx, in, p)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"site_uid": s.UID}, nil
+		})
+		d.Register("site.delete", func(ctx context.Context, j *job.Job, p job.Progress) (any, error) {
+			var pl struct {
+				UID string `json:"uid"`
+			}
+			if err := json.Unmarshal(j.Payload, &pl); err != nil {
+				return nil, err
+			}
+			return nil, siteSvc.RunDelete(ctx, pl.UID, p)
+		})
+		if err := d.StartWorkers(ctx, 2); err != nil {
+			log.Warn("job workers failed to start; falling back to synchronous operations", "err", err)
+		} else {
+			jobs = d
+			log.Info("job queue enabled")
+		}
+	}
+
+	// Realtime WebSocket hub: bridges Redis Pub/Sub job events to browsers.
+	var wsHub *ws.Hub
+	if jobs != nil {
+		wsHub = ws.NewHub(cacheWiring.RedisClient, jobChannelAuthorizer(jobs), log)
+		go wsHub.Run(ctx)
+		log.Info("realtime hub enabled")
+	}
+
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Ctx:       ctx,
 		Config:    cfg,
@@ -132,6 +176,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Auth:      authSvc,
 		Users:     userDir,
 		Sites:     siteSvc,
+		Jobs:      jobs,
+		WS:        wsHub,
 	})
 
 	srv := &http.Server{

@@ -14,7 +14,9 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/internal/ws"
 	"github.com/thisisnkp/heropanel/web"
 )
 
@@ -31,12 +33,14 @@ type Deps struct {
 	Logger    *slog.Logger
 	Version   string
 	StartedAt time.Time
-	DB        HealthChecker // nil when no datastore is configured
-	Redis     HealthChecker // nil when Redis is disabled
-	Broker    HealthChecker // nil when the broker is not configured
-	Auth      *auth.Service // nil when no datastore is configured
-	Users     UserDirectory // nil when no datastore is configured
-	Sites     *site.Service // nil when no datastore is configured
+	DB        HealthChecker   // nil when no datastore is configured
+	Redis     HealthChecker   // nil when Redis is disabled
+	Broker    HealthChecker   // nil when the broker is not configured
+	Auth      *auth.Service   // nil when no datastore is configured
+	Users     UserDirectory   // nil when no datastore is configured
+	Sites     *site.Service   // nil when no datastore is configured
+	Jobs      *job.Dispatcher // nil when the async job queue is disabled (no Redis)
+	WS        *ws.Hub         // nil when the realtime hub is disabled (no Redis)
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -97,6 +101,13 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.write")).Delete("/sites/{uid}", deleteSiteHandler(d))
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/php", getSitePHPHandler(d))
 					r.With(requirePermission("site.write")).Put("/sites/{uid}/php", setSitePHPHandler(d))
+				}
+				if d.Jobs != nil {
+					r.With(requireAuth).Get("/jobs", listJobsHandler(d))
+					r.With(requireAuth).Get("/jobs/{id}", getJobHandler(d))
+				}
+				if d.WS != nil {
+					r.With(requireAuth).Get("/ws", d.WS.Handler())
 				}
 			})
 		}

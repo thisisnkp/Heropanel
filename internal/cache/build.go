@@ -19,6 +19,9 @@ type Wiring struct {
 	Cache pcache.Cache
 	// RedisHealth is the L2 health checker, or nil when Redis is disabled.
 	RedisHealth *RedisCache
+	// RedisClient is the shared Redis client, or nil when Redis is disabled. It
+	// is reused by other subsystems (e.g. the job queue).
+	RedisClient *redis.Client
 	// Close releases owned resources (the Redis client).
 	Close func() error
 }
@@ -72,6 +75,7 @@ func Build(ctx context.Context, cfg config.Redis, l1 *pcache.LocalCache, originI
 	return Wiring{
 		Cache:       &invalidatingCache{inner: tiered, iv: iv, log: log},
 		RedisHealth: l2,
+		RedisClient: client,
 		Close:       client.Close,
 	}, nil
 }

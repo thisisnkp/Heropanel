@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/broker"
+	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/webserver"
 	"github.com/thisisnkp/heropanel/pkg/errx"
@@ -47,22 +48,32 @@ func NewService(d Deps) *Service {
 	return &Service{repo: d.Repo, broker: d.Broker, web: d.Web, php: d.PHP}
 }
 
-// Create provisions a new isolated site: it records the site, derives a
-// dedicated Linux identity and paths, then asks the broker to create the system
-// user and directory tree. On any provisioning failure the site is marked
-// "error" and the failure is returned.
-//
-// NOTE: this is synchronous for now. Moving provisioning onto the async job
-// queue (202 + progress) is a planned follow-up.
+// ValidateInput validates a create request without side effects. It is used by
+// the HTTP layer to reject bad input synchronously before enqueueing a job.
+func ValidateInput(in *CreateInput) error { return validateCreate(in) }
+
+// Create provisions a site synchronously (used directly and by tests).
 func (s *Service) Create(ctx context.Context, in CreateInput) (*Site, error) {
+	return s.RunCreate(ctx, in, job.Noop)
+}
+
+// RunCreate provisions a new isolated site, reporting progress. It records the
+// site, derives a dedicated Linux identity and paths, asks the broker to create
+// the system user and directory tree, configures PHP (for PHP sites), and
+// applies the web-server config. On any provisioning failure the site is marked
+// "error" and the failure is returned. This is the body executed by the async
+// "site.create" job handler.
+func (s *Service) RunCreate(ctx context.Context, in CreateInput, p job.Progress) (*Site, error) {
 	if s.broker == nil {
 		return nil, errx.New(errx.KindUnavailable, "broker_unavailable",
 			"The broker is not available; sites cannot be provisioned.")
 	}
+	p.Report(5, "validating")
 	if err := validateCreate(&in); err != nil {
 		return nil, err
 	}
 
+	p.Report(15, "allocating site")
 	rec := &Record{
 		OwnerID:       in.OwnerID,
 		Name:          in.Name,
@@ -83,6 +94,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Site, error) {
 	home := sitesRoot + "/" + strconv.FormatInt(id, 10)
 	docRoot := home + "/public"
 
+	p.Report(30, "provisioning identity")
 	if err := s.repo.Provision(ctx, ProvisionData{
 		SiteID:        id,
 		DocumentRoot:  docRoot,
@@ -96,6 +108,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Site, error) {
 		return nil, err
 	}
 
+	p.Report(50, "creating system user and directories")
 	if err := s.provisionSystem(ctx, linuxUser, home); err != nil {
 		_ = s.repo.UpdateStatus(ctx, id, string(StatusError))
 		return nil, err
@@ -103,6 +116,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Site, error) {
 
 	// PHP sites get a dedicated FPM pool (default version) before serving.
 	if in.Type == TypePHP && s.php != nil {
+		p.Report(70, "configuring PHP")
 		if _, err := s.php.EnsurePool(ctx, php.PoolRequest{
 			SiteID: id, User: linuxUser, Home: home, DocumentRoot: docRoot,
 		}); err != nil {
@@ -112,6 +126,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Site, error) {
 	}
 
 	// Configure the web server so the site actually serves.
+	p.Report(90, "configuring web server")
 	if err := s.applyWebserver(ctx, id); err != nil {
 		_ = s.repo.UpdateStatus(ctx, id, string(StatusError))
 		return nil, err
@@ -120,6 +135,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Site, error) {
 	if err := s.repo.UpdateStatus(ctx, id, string(StatusActive)); err != nil {
 		return nil, err
 	}
+	p.Report(100, "active")
 
 	out, err := s.repo.GetByUID(ctx, rec.UID)
 	if err != nil {
@@ -269,10 +285,17 @@ func (s *Service) List(ctx context.Context, ownerID int64, limit, offset int) ([
 	return out, nil
 }
 
-// Delete soft-deletes a site and de-provisions its OS resources: it removes the
-// site from the web-server config (reload), deletes the dedicated Linux user,
-// and removes the directory tree.
+// Delete soft-deletes and de-provisions a site synchronously.
 func (s *Service) Delete(ctx context.Context, uid string) error {
+	return s.RunDelete(ctx, uid, job.Noop)
+}
+
+// RunDelete soft-deletes a site and de-provisions its OS resources, reporting
+// progress: it removes the site from the web-server config (reload), deletes the
+// dedicated Linux user, and removes the directory tree. This is the body
+// executed by the async "site.delete" job handler.
+func (s *Service) RunDelete(ctx context.Context, uid string, p job.Progress) error {
+	p.Report(10, "loading site")
 	rec, err := s.repo.GetByUID(ctx, uid)
 	if err != nil {
 		return err
@@ -280,19 +303,25 @@ func (s *Service) Delete(ctx context.Context, uid string) error {
 	if err := s.repo.SoftDelete(ctx, uid); err != nil {
 		return err
 	}
-	return s.deprovision(ctx, rec)
+	err = s.deprovision(ctx, rec, p)
+	if err == nil {
+		p.Report(100, "removed")
+	}
+	return err
 }
 
 // deprovision removes the site's runtime footprint. The DB row is already
 // soft-deleted, so re-applying the web-server config drops this site's vhost.
-func (s *Service) deprovision(ctx context.Context, rec *Record) error {
+func (s *Service) deprovision(ctx context.Context, rec *Record, p job.Progress) error {
 	// Drop this site's vhost by re-rendering the remaining serving sites.
+	p.Report(40, "reconfiguring web server")
 	if err := s.applyWebserver(ctx, 0); err != nil {
 		return err
 	}
 	if s.broker == nil {
 		return nil
 	}
+	p.Report(70, "removing system user")
 	if rec.LinuxUser.Valid {
 		if _, err := s.broker.Invoke(ctx, "system_user.delete", map[string]any{
 			"username": rec.LinuxUser.String,
@@ -300,6 +329,7 @@ func (s *Service) deprovision(ctx context.Context, rec *Record) error {
 			return fmt.Errorf("delete system user: %w", err)
 		}
 	}
+	p.Report(90, "removing files")
 	if rec.HomeDir.Valid {
 		if _, err := s.broker.Invoke(ctx, "site.remove_dirs", map[string]any{
 			"root": rec.HomeDir.String,

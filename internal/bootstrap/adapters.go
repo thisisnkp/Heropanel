@@ -2,9 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"strings"
 
+	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
+	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/heropanel/internal/ws"
 )
 
 // userDirectoryAdapter adapts the user repository to httpapi.UserDirectory,
@@ -30,4 +34,25 @@ func (a *userDirectoryAdapter) List(ctx context.Context, limit, offset int) ([]h
 		}
 	}
 	return out, nil
+}
+
+// jobChannelAuthorizer authorizes WebSocket channel subscriptions. A principal
+// may subscribe to "job:<uid>" only if they own that job (or are an admin).
+func jobChannelAuthorizer(jobs *job.Dispatcher) ws.Authorizer {
+	return ws.AuthorizerFunc(func(ctx context.Context, p *auth.Principal, channel string) bool {
+		if p == nil {
+			return false
+		}
+		if p.Can("*") {
+			return true
+		}
+		if uid, ok := strings.CutPrefix(channel, "job:"); ok {
+			j, err := jobs.Get(ctx, uid)
+			if err != nil {
+				return false
+			}
+			return j.OwnerUserID.Valid && j.OwnerUserID.Int64 == p.UserID
+		}
+		return false // unknown channel family -> deny
+	})
 }
