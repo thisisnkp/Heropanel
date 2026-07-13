@@ -131,6 +131,7 @@ type AuthUser struct {
 	PasswordHash sql.NullString `db:"password_hash"`
 	Status       string         `db:"status"`
 	FailedLogins int            `db:"failed_logins"`
+	TOTPEnabled  int            `db:"totp_enabled"`
 	Locked       int            `db:"locked"`
 }
 
@@ -139,7 +140,7 @@ type AuthUser struct {
 func (r *UserRepository) GetAuthByEmail(ctx context.Context, email string, now time.Time) (*AuthUser, error) {
 	var u AuthUser
 	err := r.db.GetContext(ctx, &u,
-		`SELECT id, uid, email, username, display_name, password_hash, status, failed_logins,
+		`SELECT id, uid, email, username, display_name, password_hash, status, failed_logins, totp_enabled,
 		        CASE WHEN locked_until IS NOT NULL AND locked_until > ? THEN 1 ELSE 0 END AS locked
 		 FROM users WHERE email = ? AND deleted_at IS NULL`,
 		fmtTS(now), email)
@@ -150,6 +151,56 @@ func (r *UserRepository) GetAuthByEmail(ctx context.Context, email string, now t
 		return nil, errx.Internal(err)
 	}
 	return &u, nil
+}
+
+// SetTOTP stores (or clears) a user's TOTP secret and enabled flag. NOTE: the
+// secret is stored as-is for now; envelope encryption of *_enc columns is a
+// planned follow-up (docs/05 §6).
+func (r *UserRepository) SetTOTP(ctx context.Context, id int64, secret string, enabled bool) error {
+	e := 0
+	if enabled {
+		e = 1
+	}
+	var secretVal any
+	if secret == "" {
+		secretVal = nil
+	} else {
+		secretVal = []byte(secret)
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET totp_secret_enc = ?, totp_enabled = ? WHERE id = ?`, secretVal, e, id)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// SetTOTPEnabled toggles a user's TOTP enabled flag.
+func (r *UserRepository) SetTOTPEnabled(ctx context.Context, id int64, enabled bool) error {
+	e := 0
+	if enabled {
+		e = 1
+	}
+	if _, err := r.db.ExecContext(ctx, `UPDATE users SET totp_enabled = ? WHERE id = ?`, e, id); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// GetTOTP returns a user's TOTP secret and enabled flag.
+func (r *UserRepository) GetTOTP(ctx context.Context, id int64) (secret string, enabled bool, err error) {
+	var row struct {
+		Secret  []byte `db:"totp_secret_enc"`
+		Enabled int    `db:"totp_enabled"`
+	}
+	e := r.db.GetContext(ctx, &row, `SELECT totp_secret_enc, totp_enabled FROM users WHERE id = ?`, id)
+	if isNoRows(e) {
+		return "", false, errx.NotFound("user_not_found", "No such user.")
+	}
+	if e != nil {
+		return "", false, errx.Internal(e)
+	}
+	return string(row.Secret), row.Enabled == 1, nil
 }
 
 // RegisterFailedLogin increments the failed-login counter and locks the account

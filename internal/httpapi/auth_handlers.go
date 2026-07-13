@@ -65,13 +65,89 @@ func loginHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		token, p, err := d.Auth.Login(r.Context(), req.Email, req.Password, clientIP(r), r.UserAgent())
+		res, err := d.Auth.Login(r.Context(), req.Email, req.Password, clientIP(r), r.UserAgent())
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		setSessionCookie(w, token, d.Auth.SessionCookieMaxAge(), secure)
-		writeJSON(w, r, http.StatusOK, p)
+		if res.MFARequired {
+			writeJSON(w, r, http.StatusOK, map[string]any{"mfa_required": true, "mfa_token": res.MFAToken})
+			return
+		}
+		setSessionCookie(w, res.SessionToken, d.Auth.SessionCookieMaxAge(), secure)
+		setCSRFCookie(w, d.Auth.SessionCookieMaxAge(), secure)
+		writeJSON(w, r, http.StatusOK, res.Principal)
+	}
+}
+
+// mfaCompleteHandler finishes an MFA login by verifying the TOTP code.
+func mfaCompleteHandler(d Deps) http.HandlerFunc {
+	secure := d.Config.Server.TLS.Enabled
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MFAToken string `json:"mfa_token"`
+			Code     string `json:"code"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		res, err := d.Auth.CompleteMFA(r.Context(), req.MFAToken, req.Code, clientIP(r), r.UserAgent())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		setSessionCookie(w, res.SessionToken, d.Auth.SessionCookieMaxAge(), secure)
+		setCSRFCookie(w, d.Auth.SessionCookieMaxAge(), secure)
+		writeJSON(w, r, http.StatusOK, res.Principal)
+	}
+}
+
+// mfaSetupHandler starts MFA enrollment, returning the secret + otpauth URI.
+func mfaSetupHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		secret, uri, err := d.Auth.SetupMFA(r.Context(), p.UserID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"secret": secret, "otpauth_uri": uri})
+	}
+}
+
+// mfaEnableHandler enables MFA after verifying a code.
+func mfaEnableHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		var req struct {
+			Code string `json:"code"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if err := d.Auth.EnableMFA(r.Context(), p.UserID, req.Code); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"enabled": true})
+	}
+}
+
+// mfaDisableHandler disables MFA after verifying a code.
+func mfaDisableHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		var req struct {
+			Code string `json:"code"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if err := d.Auth.DisableMFA(r.Context(), p.UserID, req.Code); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"enabled": false})
 	}
 }
 

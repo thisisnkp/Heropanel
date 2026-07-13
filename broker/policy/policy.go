@@ -32,13 +32,20 @@ type Policy struct {
 func Default() Policy {
 	return Policy{
 		Enabled: map[string]bool{
-			"service.restart":    true,
-			"system_user.create": true,
-			"system_user.delete": true,
-			"site.create_dirs":   true,
-			"site.remove_dirs":   true,
-			"webserver.apply":    true,
-			"php.write_pool":     true,
+			"service.restart":      true,
+			"system_user.create":   true,
+			"system_user.delete":   true,
+			"site.create_dirs":     true,
+			"site.remove_dirs":     true,
+			"webserver.apply":      true,
+			"php.write_pool":       true,
+			"db.create":            true,
+			"db.drop":              true,
+			"db.user.create":       true,
+			"db.user.drop":         true,
+			"db.grant":             true,
+			"cert.install":         true,
+			"cert.write_challenge": true,
 		},
 		Services: []string{
 			"lshttpd", "openlitespeed", "mariadb", "redis",

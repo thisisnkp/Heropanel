@@ -20,6 +20,7 @@ type Config struct {
 	Database Database `yaml:"database"`
 	Redis    Redis    `yaml:"redis"`
 	Broker   Broker   `yaml:"broker"`
+	SSL      SSL      `yaml:"ssl"`
 	Log      Log      `yaml:"log"`
 	Security Security `yaml:"security"`
 }
@@ -29,6 +30,14 @@ type Config struct {
 type Broker struct {
 	Socket string `yaml:"socket"`
 	Token  string `yaml:"token"`
+}
+
+// SSL configures ACME (Let's Encrypt). Self-signed and custom uploads work
+// without it; ACME issuance requires an account Email. Directory defaults to
+// production Let's Encrypt when empty.
+type SSL struct {
+	Email     string `yaml:"email"`
+	Directory string `yaml:"directory"`
 }
 
 // Server holds HTTP server settings.
@@ -76,6 +85,14 @@ type Security struct {
 	BodyLimitBytes int64     `yaml:"body_limit_bytes"`
 	RateLimit      RateLimit `yaml:"rate_limit"`
 	CORS           CORS      `yaml:"cors"`
+	CSRF           CSRF      `yaml:"csrf"`
+}
+
+// CSRF configures double-submit CSRF protection for cookie-authenticated
+// mutations. Disabled by default; SameSite=Strict cookies already mitigate CSRF,
+// and enabling this requires clients to echo the hp_csrf cookie in X-CSRF-Token.
+type CSRF struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // RateLimit configures the in-process per-IP limiter (Redis-backed distributed

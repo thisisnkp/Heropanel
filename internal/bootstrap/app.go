@@ -18,11 +18,13 @@ import (
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/webserver"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
@@ -102,6 +104,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var authSvc *auth.Service
 	var userDir httpapi.UserDirectory
 	var siteSvc *site.Service
+	var dbSvc *database.Service
+	var sslSvc *ssl.Service
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -112,7 +116,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			_ = db.Close()
 			return nil, fmt.Errorf("bootstrap: seed rbac: %w", err)
 		}
-		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig())
+		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig()).
+			WithAPIKeys(repository.NewAPIKeyRepository(db))
 		userDir = &userDirectoryAdapter{repo: users}
 		siteSvc = site.NewService(site.Deps{
 			Repo:   repository.NewSiteStore(db),
@@ -120,6 +125,21 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			Web:    webserver.NewService(gw),
 			PHP:    php.NewService(repository.NewPHPPoolStore(db), gw),
 		})
+		dbSvc = database.NewService(repository.NewDatabaseStore(db), gw)
+
+		// SSL: self-signed and custom uploads always available; Let's Encrypt
+		// (ACME) enabled only when an account email is configured.
+		var acmeProvider ssl.ACME
+		if cfg.SSL.Email != "" {
+			if le, err := ssl.NewLetsEncrypt(cfg.SSL.Directory, cfg.SSL.Email); err != nil {
+				log.Warn("could not initialize Let's Encrypt", "err", err)
+			} else {
+				acmeProvider = le
+				log.Info("Let's Encrypt enabled", "email", cfg.SSL.Email)
+			}
+		}
+		sslSvc = ssl.NewService(repository.NewCertStore(db), gw, acmeProvider)
+
 		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
 
@@ -176,6 +196,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Auth:      authSvc,
 		Users:     userDir,
 		Sites:     siteSvc,
+		Databases: dbSvc,
+		SSL:       sslSvc,
 		Jobs:      jobs,
 		WS:        wsHub,
 	})

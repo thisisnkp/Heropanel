@@ -26,6 +26,8 @@ var basePermissions = []seedPermission{
 	{"dns.write", "dns", "write", "Modify DNS zones and records"},
 	{"ssl.read", "ssl", "read", "View certificates"},
 	{"ssl.write", "ssl", "write", "Issue and manage certificates"},
+	{"database.read", "database", "read", "View databases"},
+	{"database.write", "database", "write", "Create and manage databases"},
 	{"system.read", "system", "read", "View system status"},
 	{"system.write", "system", "write", "Change system configuration"},
 	{"audit.read", "audit", "read", "View the audit log"},

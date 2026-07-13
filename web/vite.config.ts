@@ -15,7 +15,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: "http://127.0.0.1:8443", changeOrigin: false },
+      // ws:true so the realtime WebSocket upgrade (/api/v1/ws) is proxied too.
+      "/api": { target: "http://127.0.0.1:8443", changeOrigin: false, ws: true },
       "/healthz": { target: "http://127.0.0.1:8443", changeOrigin: false },
       "/readyz": { target: "http://127.0.0.1:8443", changeOrigin: false },
     },

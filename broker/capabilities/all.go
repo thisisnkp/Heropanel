@@ -13,5 +13,12 @@ func All() []capability.Capability {
 		SiteRemoveDirs{},
 		WebServerApply{},
 		PHPWritePool{},
+		DBCreate{},
+		DBDrop{},
+		DBUserCreate{},
+		DBUserDrop{},
+		DBGrant{},
+		CertInstall{},
+		CertWriteChallenge{},
 	}
 }

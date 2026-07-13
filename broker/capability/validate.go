@@ -30,6 +30,31 @@ func ValidatePHPVersion(v string) error {
 	return nil
 }
 
+// reDBIdent: a safe SQL identifier (database or username). Restricted so it can
+// be embedded in SQL with backtick/quote delimiters with no injection risk.
+var reDBIdent = regexp.MustCompile(`^[a-zA-Z0-9_]{1,64}$`)
+
+// reDBHost: a MySQL account host (localhost, %, or hostname/ip-ish).
+var reDBHost = regexp.MustCompile(`^[a-zA-Z0-9_.%-]{1,255}$`)
+
+// ValidateDBIdentifier validates a database or user name.
+func ValidateDBIdentifier(s string) error {
+	if !reDBIdent.MatchString(s) {
+		return errx.Validation("invalid_identifier",
+			"Only letters, digits and underscore are allowed (max 64 chars).",
+			errx.Field{Field: "name", Code: "invalid_identifier", Message: "invalid"})
+	}
+	return nil
+}
+
+// ValidateDBHost validates a MySQL account host.
+func ValidateDBHost(s string) error {
+	if !reDBHost.MatchString(s) {
+		return errx.Validation("invalid_host", "Invalid database host.")
+	}
+	return nil
+}
+
 // ValidateVhostName returns a validation error if name is not a safe virtual
 // host identifier (it is used to construct filesystem paths).
 func ValidateVhostName(name string) error {

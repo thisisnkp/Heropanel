@@ -1,13 +1,19 @@
 package httpapi
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"net/http"
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
 )
 
-const sessionCookieName = "hp_session"
+const (
+	sessionCookieName = "hp_session"
+	csrfCookieName    = "hp_csrf"
+)
 
 // sessionToken extracts the session token from the session cookie or, failing
 // that, a Bearer Authorization header.
@@ -45,14 +51,71 @@ func clearSessionCookie(w http.ResponseWriter, secure bool) {
 	})
 }
 
+// setCSRFCookie issues a random double-submit CSRF token. It is readable by JS
+// (not HttpOnly) so the SPA can echo it in the X-CSRF-Token header.
+func setCSRFCookie(w http.ResponseWriter, maxAge int, secure bool) {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    base64.RawURLEncoding.EncodeToString(b),
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: false,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// isUnsafeMethod reports whether a method mutates state.
+func isUnsafeMethod(m string) bool {
+	switch m {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// csrf enforces double-submit CSRF for cookie-authenticated mutations. It only
+// applies when enabled and only when a session cookie is present (API-key /
+// bearer requests carry no cookie and are exempt).
+func csrf(enabled bool) mw {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if enabled && isUnsafeMethod(r.Method) {
+				if _, err := r.Cookie(sessionCookieName); err == nil {
+					token, terr := r.Cookie(csrfCookieName)
+					header := r.Header.Get("X-CSRF-Token")
+					if terr != nil || token.Value == "" || header == "" ||
+						subtle.ConstantTimeCompare([]byte(header), []byte(token.Value)) != 1 {
+						writeAPIError(w, r, http.StatusForbidden, "csrf_failed", "CSRF token missing or invalid.")
+						return
+					}
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // authenticate attaches a principal to the request context when a valid session
-// is presented. It never rejects: anonymous requests proceed (and are stopped
-// later by requireAuth/requirePermission where required).
+// or API key is presented. It never rejects: anonymous requests proceed (and are
+// stopped later by requireAuth/requirePermission where required). A Bearer token
+// beginning with "hp_" is treated as an API key; otherwise as a session token.
 func authenticate(svc *auth.Service) mw {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if tok := sessionToken(r); tok != "" {
-				if p, err := svc.Authenticate(r.Context(), tok); err == nil {
+				var (
+					p   *auth.Principal
+					err error
+				)
+				if strings.HasPrefix(tok, "hp_") {
+					p, err = svc.AuthenticateAPIKey(r.Context(), tok)
+				} else {
+					p, err = svc.Authenticate(r.Context(), tok)
+				}
+				if err == nil {
 					r = r.WithContext(auth.WithPrincipal(r.Context(), p))
 				}
 			}

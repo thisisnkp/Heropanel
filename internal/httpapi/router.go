@@ -14,8 +14,10 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	"github.com/thisisnkp/heropanel/web"
 )
@@ -33,14 +35,16 @@ type Deps struct {
 	Logger    *slog.Logger
 	Version   string
 	StartedAt time.Time
-	DB        HealthChecker   // nil when no datastore is configured
-	Redis     HealthChecker   // nil when Redis is disabled
-	Broker    HealthChecker   // nil when the broker is not configured
-	Auth      *auth.Service   // nil when no datastore is configured
-	Users     UserDirectory   // nil when no datastore is configured
-	Sites     *site.Service   // nil when no datastore is configured
-	Jobs      *job.Dispatcher // nil when the async job queue is disabled (no Redis)
-	WS        *ws.Hub         // nil when the realtime hub is disabled (no Redis)
+	DB        HealthChecker     // nil when no datastore is configured
+	Redis     HealthChecker     // nil when Redis is disabled
+	Broker    HealthChecker     // nil when the broker is not configured
+	Auth      *auth.Service     // nil when no datastore is configured
+	Users     UserDirectory     // nil when no datastore is configured
+	Sites     *site.Service     // nil when no datastore is configured
+	Databases *database.Service // nil when no datastore is configured
+	SSL       *ssl.Service      // nil when no datastore is configured
+	Jobs      *job.Dispatcher   // nil when the async job queue is disabled (no Redis)
+	WS        *ws.Hub           // nil when the realtime hub is disabled (no Redis)
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -83,16 +87,40 @@ func NewRouter(d Deps) http.Handler {
 		// auth service) is available.
 		if d.Auth != nil {
 			r.Group(func(r chi.Router) {
-				r.Use(authenticate(d.Auth)) // attach principal if present
+				r.Use(authenticate(d.Auth))                 // attach principal if present
+				r.Use(csrf(d.Config.Security.CSRF.Enabled)) // double-submit CSRF (opt-in)
 
 				r.Get("/auth/status", statusHandler(d))
 				r.Post("/auth/bootstrap", bootstrapHandler(d))
 				r.Post("/auth/login", loginHandler(d))
+				r.Post("/auth/mfa", mfaCompleteHandler(d)) // completes an MFA login (pre-session)
 				r.With(requireAuth).Post("/auth/logout", logoutHandler(d))
 				r.With(requireAuth).Get("/auth/me", meHandler)
+				r.With(requireAuth).Post("/auth/mfa/setup", mfaSetupHandler(d))
+				r.With(requireAuth).Post("/auth/mfa/enable", mfaEnableHandler(d))
+				r.With(requireAuth).Post("/auth/mfa/disable", mfaDisableHandler(d))
+
+				// API keys (scoped programmatic access).
+				r.With(requireAuth).Get("/account/api-keys", listAPIKeysHandler(d))
+				r.With(requireAuth).Post("/account/api-keys", createAPIKeyHandler(d))
+				r.With(requireAuth).Delete("/account/api-keys/{uid}", revokeAPIKeyHandler(d))
 
 				if d.Users != nil {
 					r.With(requirePermission("user.read")).Get("/users", listUsersHandler(d))
+				}
+				if d.Databases != nil {
+					r.With(requirePermission("database.read")).Get("/databases", listDatabasesHandler(d))
+					r.With(requirePermission("database.write")).Post("/databases", createDatabaseHandler(d))
+					r.With(requirePermission("database.write")).Delete("/databases/{uid}", deleteDatabaseHandler(d))
+					r.With(requirePermission("database.write")).Post("/databases/{uid}/grant", grantDatabaseHandler(d))
+					r.With(requirePermission("database.read")).Get("/database-users", listDBUsersHandler(d))
+					r.With(requirePermission("database.write")).Post("/database-users", createDBUserHandler(d))
+				}
+				if d.SSL != nil {
+					r.With(requirePermission("ssl.read")).Get("/ssl/certificates", listCertsHandler(d))
+					r.With(requirePermission("ssl.write")).Post("/ssl/self-signed", issueSelfSignedHandler(d))
+					r.With(requirePermission("ssl.write")).Post("/ssl/upload", uploadCertHandler(d))
+					r.With(requirePermission("ssl.write")).Post("/ssl/issue", issueCertHandler(d))
 				}
 				if d.Sites != nil {
 					r.With(requirePermission("site.read")).Get("/sites", listSitesHandler(d))

@@ -1,2 +1,0 @@
-Placeholder so web/dist exists for the Go embed even before a frontend build.
-Run `npm --prefix web run build` to produce the real SPA here.

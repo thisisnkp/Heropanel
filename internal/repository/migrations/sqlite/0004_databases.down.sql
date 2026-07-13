@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS db_grants;
+DROP TABLE IF EXISTS db_users;
+DROP TABLE IF EXISTS db_instances;

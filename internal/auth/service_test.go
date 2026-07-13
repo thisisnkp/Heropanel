@@ -99,10 +99,11 @@ func TestLoginAuthenticateLogout(t *testing.T) {
 	ctx := context.Background()
 	seedUser(t, db, "user@example.com", "user", "password123", "admin")
 
-	token, p, err := svc.Login(ctx, "user@example.com", "password123", "1.2.3.4", "test-agent")
+	res, err := svc.Login(ctx, "user@example.com", "password123", "1.2.3.4", "test-agent")
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
+	token, p := res.SessionToken, res.Principal
 	if token == "" || p.Email != "user@example.com" {
 		t.Fatalf("bad login result: token=%q p=%+v", token, p)
 	}
@@ -128,7 +129,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	svc := newService(t, db, auth.DefaultConfig())
 	seedUser(t, db, "user@example.com", "user", "password123", "client")
 
-	_, _, err := svc.Login(context.Background(), "user@example.com", "WRONG", "1.2.3.4", "ua")
+	_, err := svc.Login(context.Background(), "user@example.com", "WRONG", "1.2.3.4", "ua")
 	if !errx.IsKind(err, errx.KindUnauthorized) {
 		t.Fatalf("want unauthorized, got %v", err)
 	}
@@ -138,7 +139,7 @@ func TestLoginUnknownUser(t *testing.T) {
 	db := newDB(t)
 	svc := newService(t, db, auth.DefaultConfig())
 
-	_, _, err := svc.Login(context.Background(), "ghost@example.com", "whatever1", "1.2.3.4", "ua")
+	_, err := svc.Login(context.Background(), "ghost@example.com", "whatever1", "1.2.3.4", "ua")
 	if !errx.IsKind(err, errx.KindUnauthorized) {
 		t.Fatalf("want unauthorized (no enumeration), got %v", err)
 	}
@@ -152,12 +153,12 @@ func TestLockoutAfterThreshold(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
-		if _, _, err := svc.Login(ctx, "user@example.com", "WRONG", "1.2.3.4", "ua"); !errx.IsKind(err, errx.KindUnauthorized) {
+		if _, err := svc.Login(ctx, "user@example.com", "WRONG", "1.2.3.4", "ua"); !errx.IsKind(err, errx.KindUnauthorized) {
 			t.Fatalf("attempt %d: want unauthorized, got %v", i, err)
 		}
 	}
 	// Now locked: even the correct password is refused with a lock error.
-	if _, _, err := svc.Login(ctx, "user@example.com", "password123", "1.2.3.4", "ua"); !errx.IsKind(err, errx.KindForbidden) {
+	if _, err := svc.Login(ctx, "user@example.com", "password123", "1.2.3.4", "ua"); !errx.IsKind(err, errx.KindForbidden) {
 		t.Fatalf("after threshold, want forbidden (locked), got %v", err)
 	}
 }
@@ -167,10 +168,11 @@ func TestNonAdminHasScopedPermissions(t *testing.T) {
 	svc := newService(t, db, auth.DefaultConfig())
 	seedUser(t, db, "client@example.com", "client", "password123", "client")
 
-	_, p, err := svc.Login(context.Background(), "client@example.com", "password123", "1.2.3.4", "ua")
+	res, err := svc.Login(context.Background(), "client@example.com", "password123", "1.2.3.4", "ua")
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
+	p := res.Principal
 	if p.Can("user.read") {
 		t.Fatal("a plain client must not hold user.read")
 	}

@@ -6,6 +6,7 @@ import { BootstrapPage } from "@/features/auth/BootstrapPage";
 import { AppLayout } from "./layout/AppLayout";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { UsersPage } from "@/features/users/UsersPage";
+import { SitesPage } from "@/features/sites/SitesPage";
 
 function FullscreenSpinner() {
   return (
@@ -37,6 +38,7 @@ export function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/sites" element={<SitesPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

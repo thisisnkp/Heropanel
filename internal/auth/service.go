@@ -35,6 +35,7 @@ type Service struct {
 	users     *repository.UserRepository
 	sessions  *repository.SessionRepository
 	rbac      *repository.RBACRepository
+	apiKeys   *repository.APIKeyRepository // optional (set via WithAPIKeys)
 	cache     pcache.Cache
 	cfg       Config
 	now       func() time.Time
@@ -61,9 +62,25 @@ func invalidCredentials() error {
 
 func principalCacheKey(tokenHash string) string { return "auth:principal:" + tokenHash }
 
-// Login verifies credentials and, on success, creates a session and returns the
-// raw session token plus the resolved principal.
-func (s *Service) Login(ctx context.Context, email, password, ip, userAgent string) (string, *Principal, error) {
+// LoginResult is the outcome of a login attempt: either a session (with
+// principal) or an MFA challenge that must be completed with a TOTP code.
+type LoginResult struct {
+	SessionToken string
+	Principal    *Principal
+	MFARequired  bool
+	MFAToken     string
+}
+
+// identity is the subset of user fields needed to mint a session.
+type identity struct {
+	id                                int64
+	uid, email, username, displayName string
+}
+
+// Login verifies credentials. On success it returns a session, unless the
+// account has MFA enabled, in which case it returns an MFA challenge to be
+// completed via CompleteMFA.
+func (s *Service) Login(ctx context.Context, email, password, ip, userAgent string) (LoginResult, error) {
 	now := s.now()
 
 	au, err := s.users.GetAuthByEmail(ctx, email, now)
@@ -71,55 +88,70 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 		if errx.IsKind(err, errx.KindNotFound) {
 			// Verify against a decoy to blunt user-enumeration timing signals.
 			_, _ = pwhash.Verify(password, s.dummyHash)
-			return "", nil, invalidCredentials()
+			return LoginResult{}, invalidCredentials()
 		}
-		return "", nil, err
+		return LoginResult{}, err
 	}
 	if au.Locked == 1 {
-		return "", nil, errx.Forbidden("account_locked", "Account is temporarily locked. Try again later.")
+		return LoginResult{}, errx.Forbidden("account_locked", "Account is temporarily locked. Try again later.")
 	}
 	if au.Status != "active" {
-		return "", nil, errx.Forbidden("account_inactive", "This account is not active.")
+		return LoginResult{}, errx.Forbidden("account_inactive", "This account is not active.")
 	}
 	if !au.PasswordHash.Valid {
-		return "", nil, invalidCredentials()
+		return LoginResult{}, invalidCredentials()
 	}
 
 	ok, err := pwhash.Verify(password, au.PasswordHash.String)
 	if err != nil || !ok {
 		_ = s.users.RegisterFailedLogin(ctx, au.ID, s.cfg.LockThreshold, now.Add(s.cfg.LockDuration))
-		return "", nil, invalidCredentials()
+		return LoginResult{}, invalidCredentials()
 	}
 	if err := s.users.RegisterSuccessfulLogin(ctx, au.ID, ip, now); err != nil {
-		return "", nil, err
+		return LoginResult{}, err
 	}
 
+	// MFA gate: issue a short-lived challenge instead of a session.
+	if au.TOTPEnabled == 1 {
+		mfaToken, err := s.issueMFAChallenge(ctx, au.ID)
+		if err != nil {
+			return LoginResult{}, err
+		}
+		return LoginResult{MFARequired: true, MFAToken: mfaToken}, nil
+	}
+
+	return s.issueSession(ctx, identity{au.ID, au.UID, au.Email, au.Username, au.DisplayName}, ip, userAgent)
+}
+
+// issueSession creates a session for an identity and returns the login result.
+func (s *Service) issueSession(ctx context.Context, id identity, ip, userAgent string) (LoginResult, error) {
 	token, err := newSessionToken()
 	if err != nil {
-		return "", nil, errx.Internal(err)
+		return LoginResult{}, errx.Internal(err)
 	}
-	sess := &repository.Session{
-		UserID:    au.ID,
+	if err := s.sessions.Create(ctx, &repository.Session{
+		UserID:    id.id,
 		TokenHash: hashToken(token),
 		IP:        ip,
 		UserAgent: userAgent,
-		ExpiresAt: now.Add(s.cfg.SessionTTL),
+		ExpiresAt: s.now().Add(s.cfg.SessionTTL),
+	}); err != nil {
+		return LoginResult{}, err
 	}
-	if err := s.sessions.Create(ctx, sess); err != nil {
-		return "", nil, err
-	}
-
-	perms, err := s.rbac.PermissionsForUser(ctx, au.ID)
+	perms, err := s.rbac.PermissionsForUser(ctx, id.id)
 	if err != nil {
-		return "", nil, err
+		return LoginResult{}, err
 	}
-	return token, &Principal{
-		UserID:      au.ID,
-		UserUID:     au.UID,
-		Email:       au.Email,
-		Username:    au.Username,
-		DisplayName: au.DisplayName,
-		Permissions: perms,
+	return LoginResult{
+		SessionToken: token,
+		Principal: &Principal{
+			UserID:      id.id,
+			UserUID:     id.uid,
+			Email:       id.email,
+			Username:    id.username,
+			DisplayName: id.displayName,
+			Permissions: perms,
+		},
 	}, nil
 }
 

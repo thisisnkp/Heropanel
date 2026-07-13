@@ -26,11 +26,25 @@ export class ApiRequestError extends Error {
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
+// Reads the double-submit CSRF token the server set as a readable cookie.
+function csrfToken(): string | undefined {
+  const m = document.cookie.match(/(?:^|;\s*)hp_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : undefined;
+}
+
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body) headers["Content-Type"] = "application/json";
+  // Echo the CSRF token on mutations (no-op unless the server enforces it).
+  if (method !== "GET") {
+    const t = csrfToken();
+    if (t) headers["X-CSRF-Token"] = t;
+  }
+
   const res = await fetch(`/api/v1${path}`, {
     method,
     credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -86,6 +100,40 @@ export interface UserSummary {
   username: string;
   display_name: string;
   status: string;
+}
+
+export interface Site {
+  uid: string;
+  name: string;
+  primary_domain: string;
+  type: string;
+  deploy_mode: string;
+  status: string;
+  webserver: string;
+  document_root: string;
+  system_user: string;
+  created_at: string;
+}
+
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface Job {
+  id: string;
+  type: string;
+  status: JobStatus;
+  progress: number;
+  result?: unknown;
+  error?: string;
+  ws_channel?: string;
+  created_at: string;
+}
+
+export interface PHPInfo {
+  version: string;
+  socket_path: string;
+  pm: string;
+  pm_max_children: number;
+  memory_limit_mb: number;
 }
 
 export function can(principal: Principal | null | undefined, permission: string): boolean {

@@ -10,6 +10,7 @@ interface NavItem {
 
 const items: NavItem[] = [
   { to: "/", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
+  { to: "/sites", label: "Websites", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M2 12a10 10 0 0120 0" },
   { to: "/users", label: "Users", icon: "M16 14a4 4 0 10-8 0M12 7a3 3 0 100 6 3 3 0 000-6M4 20a8 8 0 0116 0" },
 ];
 
