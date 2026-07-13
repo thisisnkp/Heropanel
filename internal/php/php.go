@@ -14,7 +14,7 @@ import (
 )
 
 // DefaultVersion is used when a PHP site does not specify a version.
-const DefaultVersion = "8.2"
+const DefaultVersion = "8.3"
 
 // SupportedVersions is the set of selectable PHP versions. (Runtime detection of
 // installed versions is a follow-up; this is the allowlist for now.)
@@ -34,6 +34,11 @@ func IsSupported(v string) bool {
 // web-server vhost and the FPM pool both derive from it, so no lookup is needed
 // to wire them together.
 func SocketPath(user string) string { return "/run/heropanel/fpm/" + user + ".sock" }
+
+// FpmBinary returns the php-fpm binary path for a version (Debian/Ubuntu layout).
+// OpenLiteSpeed requires a path on the fcgi extProcessor even for an externally-
+// managed pool (autoStart 0), so this is passed through to the vhost render.
+func FpmBinary(version string) string { return "/usr/sbin/php-fpm" + version }
 
 // PoolRecord is the persisted per-site pool configuration.
 type PoolRecord struct {

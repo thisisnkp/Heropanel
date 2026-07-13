@@ -1,8 +1,15 @@
 // Package webserver renders OpenLiteSpeed configuration for hosted sites and
 // applies it through the privileged broker. hpd owns rendering (from DB state);
 // the broker writes the validated config, tests it, and reloads (ADR-0007,
-// docs/05 §2). The full desired state is applied each time, so there is no
-// per-site config drift.
+// docs/05 §2). The full desired state is rendered into a single included config
+// file, so there is no per-site config drift.
+//
+// OLS specifics learned against real OpenLiteSpeed:
+//   - The PHP handler must be declared as a server-level (top-level)
+//     extProcessor; a per-site FastCGI pool gets its own top-level extProcessor
+//     (unique name + socket), and the vhost references it via scriptHandler.
+//   - vhost blocks must be inline (a `configFile` include silently drops the
+//     per-vhost scriptHandler), so the whole config is rendered into one file.
 package webserver
 
 import (
@@ -24,8 +31,9 @@ type Site struct {
 	Home          string   // e.g. /srv/heropanel/sites/1
 	LogDir        string   // e.g. /srv/heropanel/sites/1/logs
 	IsPHP         bool
-	FpmSocket     string // uds path (php only)
-	PhpBin        string // lsphp binary path (php only)
+	FpmSocket     string // php-fpm pool socket (php only)
+	PhpBin        string // php-fpm binary path (php only); OLS requires a path on
+	// the fcgi extProcessor even with autoStart 0 (external pool).
 }
 
 // Applier applies the desired web-server state.
@@ -43,35 +51,21 @@ func NewService(gw broker.Gateway) *Service { return &Service{broker: gw} }
 
 var _ Applier = (*Service)(nil)
 
-type vhostPayload struct {
-	Name   string `json:"name"`
-	Config string `json:"config"`
-}
-
-// Apply renders every site's vhost plus the aggregate listener and asks the
-// broker to apply, test, and reload.
+// Apply renders the entire OLS config for all sites and asks the broker to
+// apply, test, and reload. The config is a single included file, so vhosts is
+// empty and the whole document is passed as the listener config.
 func (s *Service) Apply(ctx context.Context, sites []Site) error {
 	if s.broker == nil {
 		return errx.New(errx.KindUnavailable, "broker_unavailable",
 			"The broker is not available; the web server cannot be configured.")
 	}
-
-	vhosts := make([]vhostPayload, 0, len(sites))
-	for i := range sites {
-		cfg, err := RenderVhost(sites[i])
-		if err != nil {
-			return err
-		}
-		vhosts = append(vhosts, vhostPayload{Name: sites[i].VhostName, Config: cfg})
-	}
-	listener, err := RenderListener(sites)
+	cfg, err := RenderConfig(sites)
 	if err != nil {
 		return err
 	}
-
 	_, err = s.broker.Invoke(ctx, "webserver.apply", map[string]any{
-		"vhosts":   vhosts,
-		"listener": listener,
+		"vhosts":   []any{},
+		"listener": cfg,
 	})
 	return err
 }
@@ -80,51 +74,40 @@ var tmplFuncs = template.FuncMap{
 	"join": func(domains []string) string { return strings.Join(domains, ", ") },
 }
 
-var vhostTmpl = template.Must(template.New("vhost").Parse(`docRoot                   {{.DocumentRoot}}
-vhDomain                  {{.PrimaryDomain}}
-enableGzip                1
-index  {
-  useServer               0
-  indexFiles              index.html, index.htm{{if .IsPHP}}, index.php{{end}}
-  autoIndex               0
-}
-errorlog {{.LogDir}}/error.log {
-  useServer               0
-  logLevel                WARN
-}
-accesslog {{.LogDir}}/access.log {
-  useServer               0
-}
-{{- if .IsPHP}}
-scripthandler  {
-  add                     lsapi:{{.VhostName}}_lsphp php
-}
-extprocessor {{.VhostName}}_lsphp {
-  type                    lsapi
+// configTmpl renders the complete OpenLiteSpeed config: per-site FastCGI
+// handlers (server-level), inline virtual hosts, and the listener with its
+// domain map.
+var configTmpl = template.Must(template.New("olsconfig").Funcs(tmplFuncs).Parse(
+	`{{range .}}{{if .IsPHP}}extProcessor hps_{{.VhostName}} {
+  type                    fcgi
   address                 uds://{{.FpmSocket}}
   maxConns                10
   path                    {{.PhpBin}}
   autoStart               0
 }
-{{- end}}
-`))
-
-// RenderVhost renders a single site's OpenLiteSpeed vhost config.
-func RenderVhost(s Site) (string, error) {
-	var b bytes.Buffer
-	if err := vhostTmpl.Execute(&b, s); err != nil {
-		return "", errx.Wrap(err, errx.KindInternal, "vhost_render_failed", "Could not render the vhost config.")
-	}
-	return b.String(), nil
-}
-
-var listenerTmpl = template.Must(template.New("listener").Funcs(tmplFuncs).Parse(`{{range .}}virtualhost {{.VhostName}} {
+{{end}}{{end}}{{range .}}virtualhost {{.VhostName}} {
   vhRoot                  {{.Home}}
-  configFile              /usr/local/lsws/conf/vhosts/{{.VhostName}}/vhconf.conf
+  docRoot                 {{.DocumentRoot}}
   allowSymbolLink         1
   enableScript            1
   restrained              1
-}
+  enableGzip              1
+  index  {
+    useServer             0
+    indexFiles            index.html, index.htm{{if .IsPHP}}, index.php{{end}}
+    autoIndex             0
+  }
+  errorlog {{.LogDir}}/error.log {
+    useServer             0
+    logLevel              WARN
+  }
+  accesslog {{.LogDir}}/access.log {
+    useServer             0
+  }
+{{if .IsPHP}}  scriptHandler  {
+    add                   fcgi:hps_{{.VhostName}} php
+  }
+{{end}}}
 {{end}}listener HeroPanelHTTP {
   address                 *:80
   secure                  0
@@ -132,11 +115,11 @@ var listenerTmpl = template.Must(template.New("listener").Funcs(tmplFuncs).Parse
 {{end}}}
 `))
 
-// RenderListener renders the aggregate listener + virtualhost declarations.
-func RenderListener(sites []Site) (string, error) {
+// RenderConfig renders the entire OpenLiteSpeed config for the given sites.
+func RenderConfig(sites []Site) (string, error) {
 	var b bytes.Buffer
-	if err := listenerTmpl.Execute(&b, sites); err != nil {
-		return "", errx.Wrap(err, errx.KindInternal, "listener_render_failed", "Could not render the listener config.")
+	if err := configTmpl.Execute(&b, sites); err != nil {
+		return "", errx.Wrap(err, errx.KindInternal, "config_render_failed", "Could not render the web server config.")
 	}
 	return b.String(), nil
 }

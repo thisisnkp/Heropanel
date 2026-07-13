@@ -185,9 +185,10 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 			continue
 		}
 		isPHP := r.Type == string(TypePHP)
-		fpmSocket := ""
+		fpmSocket, phpBin := "", ""
 		if isPHP {
 			fpmSocket = php.SocketPath(r.LinuxUser.String)
+			phpBin = php.FpmBinary(s.phpVersion(ctx, r.ID))
 		}
 		sites = append(sites, webserver.Site{
 			VhostName:     r.LinuxUser.String,
@@ -198,9 +199,20 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 			LogDir:        r.HomeDir.String + "/logs",
 			IsPHP:         isPHP,
 			FpmSocket:     fpmSocket,
+			PhpBin:        phpBin,
 		})
 	}
 	return s.web.Apply(ctx, sites)
+}
+
+// phpVersion returns the site's configured PHP version, or the default.
+func (s *Service) phpVersion(ctx context.Context, siteID int64) string {
+	if s.php != nil {
+		if pool, err := s.php.GetBySiteID(ctx, siteID); err == nil {
+			return pool.PHPVersion
+		}
+	}
+	return php.DefaultVersion
 }
 
 // PHPView is the API view of a site's PHP configuration.

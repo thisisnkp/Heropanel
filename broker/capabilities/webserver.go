@@ -98,24 +98,32 @@ func (WebServerApply) Execute(c capability.Context, raw json.RawMessage) (capabi
 		return capability.Result{}, errx.Upstream(err, "listener_write_failed", "Could not write the listener config.")
 	}
 
-	// 3. Test the configuration; roll back if invalid.
-	test, err := c.Runner.Run(c.Ctx, exec.Command{Path: olsBin, Args: []string{"-t"}, Timeout: 20 * time.Second})
-	if err != nil || test.ExitCode != 0 {
+	// 3. Apply. OpenLiteSpeed's graceful reload is fail-safe: a bad config leaves
+	// the previous workers serving (no downtime), so a running server is reloaded
+	// directly. Note (verified against real OLS): `lshttpd -t` is NOT a reliable
+	// gate while the server is running — it returns non-zero for benign vhost
+	// warnings — so we only fall back to it when the server is stopped, where it
+	// is reliable.
+	reload, rerr := c.Runner.Run(c.Ctx, exec.Command{Path: lswsctrl, Args: []string{"reload"}, Timeout: 20 * time.Second})
+	if rerr == nil && reload.ExitCode == 0 {
+		return capability.Result{Data: map[string]any{
+			"vhosts_applied": len(in.Vhosts),
+			"reloaded":       true,
+		}}, nil
+	}
+
+	// 4. Server not running (or reload failed): validate the written config with
+	// the stopped-server config test, which is reliable in that state, and roll
+	// back if it is genuinely invalid.
+	test, terr := c.Runner.Run(c.Ctx, exec.Command{Path: olsBin, Args: []string{"-t"}, Timeout: 20 * time.Second})
+	if terr != nil || test.ExitCode != 0 {
 		rollback()
 		return capability.Result{}, errx.New(errx.KindUpstream, "config_test_failed",
-			"The web server configuration test failed; changes were rolled back.")
+			"The web server configuration is invalid; changes were rolled back.")
 	}
-
-	// 4. Reload (graceful). The config is valid, so we do not roll back on a
-	// transient reload failure — we surface it for retry.
-	reload, err := c.Runner.Run(c.Ctx, exec.Command{Path: lswsctrl, Args: []string{"reload"}, Timeout: 20 * time.Second})
-	if err != nil || reload.ExitCode != 0 {
-		return capability.Result{}, errx.New(errx.KindUpstream, "reload_failed",
-			"The web server reload failed after applying a valid configuration.")
-	}
-
 	return capability.Result{Data: map[string]any{
 		"vhosts_applied": len(in.Vhosts),
-		"reloaded":       true,
+		"reloaded":       false,
+		"note":           "configuration is valid; the web server was not running to reload",
 	}}, nil
 }

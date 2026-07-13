@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: test + race
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      # The SPA is embedded via //go:embed all:dist. In CI we don't build the
+      # frontend, so drop in a placeholder so the embed compiles.
+      - name: Ensure embed dir
+        run: |
+          mkdir -p web/dist
+          [ -f web/dist/index.html ] || echo '<!doctype html><title>HeroPanel</title>' > web/dist/index.html
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then echo "::error::unformatted files:"; echo "$unformatted"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: build (amd64 + arm64)
+        run: |
+          go build ./...
+          GOOS=linux GOARCH=arm64 go build ./...
+          GOOS=linux GOARCH=386 go build ./...
+
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+  e2e:
+    name: real OpenLiteSpeed + php-fpm + MariaDB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Ensure embed dir
+        run: |
+          mkdir -p web/dist
+          [ -f web/dist/index.html ] || echo '<!doctype html><title>HeroPanel</title>' > web/dist/index.html
+
+      - name: Build linux binaries
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hpd ./cmd/hpd
+          GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hp-broker ./cmd/hp-broker
+
+      - name: Build e2e image (OLS + php-fpm + MariaDB)
+        run: docker build -t heropanel-e2e -f deploy/docker/e2e/Dockerfile deploy/docker/e2e
+
+      - name: Static site served by OpenLiteSpeed + real MariaDB
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run.sh)
+          echo "$out"
+          grep -q 'server: LiteSpeed'   <<<"$out" || { echo '::error::OpenLiteSpeed did not respond'; exit 1; }
+          grep -q 'Hello from HeroPanel' <<<"$out" || { echo '::error::static page was not served'; exit 1; }
+          grep -q 'acme_db'             <<<"$out" || { echo '::error::MariaDB db.create failed'; exit 1; }
+
+      - name: PHP site served by OpenLiteSpeed + php-fpm
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php.sh)
+          echo "$out"
+          grep -q 'live via HeroPanel'  <<<"$out" || { echo '::error::PHP page was not served'; exit 1; }

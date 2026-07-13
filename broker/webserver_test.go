@@ -48,19 +48,22 @@ func TestWebserverApplyWritesTestsReloads(t *testing.T) {
 		t.Fatal("listener config not written")
 	}
 
-	// Config tested, then reloaded, in order.
-	if len(ran) != 2 ||
-		!strings.Contains(ran[0], "lshttpd -t") ||
-		!strings.Contains(ran[1], "lswsctrl reload") {
-		t.Fatalf("unexpected commands: %v", ran)
+	// Running server: a graceful reload applies the config; the unreliable-while-
+	// running `-t` gate is skipped.
+	if len(ran) != 1 || !strings.Contains(ran[0], "lswsctrl reload") {
+		t.Fatalf("expected a single graceful reload, got: %v", ran)
 	}
 }
 
-func TestWebserverApplyRollsBackOnFailedTest(t *testing.T) {
-	// The config test returns non-zero → the capability must roll back.
+func TestWebserverApplyRollsBackWhenStoppedAndInvalid(t *testing.T) {
+	// Server not running (reload fails) AND the config is invalid (-t fails) →
+	// the capability must roll back.
 	runner := &exec.FakeRunner{Fn: func(c exec.Command) (exec.Result, error) {
+		if strings.Contains(strings.Join(c.Args, " "), "reload") {
+			return exec.Result{ExitCode: 2}, nil // litespeed not running
+		}
 		if strings.Contains(strings.Join(c.Args, " "), "-t") {
-			return exec.Result{ExitCode: 1}, nil // test fails
+			return exec.Result{ExitCode: 1}, nil // config invalid
 		}
 		return exec.Result{ExitCode: 0}, nil
 	}}
@@ -86,6 +89,30 @@ func TestWebserverApplyRollsBackOnFailedTest(t *testing.T) {
 	// Newly-created vhost file (had no prior) removed.
 	if _, ok := fs.Written("/usr/local/lsws/conf/vhosts/hps1/vhconf.conf"); ok {
 		t.Fatal("new vhost file should have been removed on rollback")
+	}
+}
+
+func TestWebserverApplyStoppedButValid(t *testing.T) {
+	// Server not running (reload fails) but the config is valid (-t = 0) →
+	// success without rollback; the config stays written for the next start.
+	runner := &exec.FakeRunner{Fn: func(c exec.Command) (exec.Result, error) {
+		if strings.Contains(strings.Join(c.Args, " "), "reload") {
+			return exec.Result{ExitCode: 2}, nil // litespeed not running
+		}
+		return exec.Result{ExitCode: 0}, nil // -t ok
+	}}
+	b, fs := newBrokerWithFS(t, runner)
+	if _, err := b.Invoke(context.Background(), brokerd.Request{
+		Capability: "webserver.apply",
+		Input: mustJSON(t, map[string]any{
+			"vhosts":   []map[string]string{{"name": "hps1", "config": "OK"}},
+			"listener": "OK",
+		}),
+	}); err != nil {
+		t.Fatalf("valid config should not error even if the server is down: %v", err)
+	}
+	if got, ok := fs.Written("/usr/local/lsws/conf/vhosts/hps1/vhconf.conf"); !ok || got != "OK" {
+		t.Fatalf("config should remain written, got %q ok=%v", got, ok)
 	}
 }
 
