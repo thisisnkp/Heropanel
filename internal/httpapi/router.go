@@ -15,6 +15,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
+	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
@@ -43,6 +44,7 @@ type Deps struct {
 	Sites     *site.Service     // nil when no datastore is configured
 	Databases *database.Service // nil when no datastore is configured
 	SSL       *ssl.Service      // nil when no datastore is configured
+	Git       *git.Service      // nil when no datastore is configured
 	Jobs      *job.Dispatcher   // nil when the async job queue is disabled (no Redis)
 	WS        *ws.Hub           // nil when the realtime hub is disabled (no Redis)
 }
@@ -130,6 +132,13 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/php", getSitePHPHandler(d))
 					r.With(requirePermission("site.write")).Put("/sites/{uid}/php", setSitePHPHandler(d))
 				}
+				if d.Git != nil {
+					r.With(requirePermission("git.read")).Get("/sites/{uid}/git", getSiteGitHandler(d))
+					r.With(requirePermission("git.write")).Put("/sites/{uid}/git", setSiteGitHandler(d))
+					r.With(requirePermission("git.read")).Get("/sites/{uid}/git/deployments", listSiteDeploymentsHandler(d))
+					r.With(requirePermission("git.write")).Post("/sites/{uid}/git/deploy", deploySiteHandler(d))
+					r.With(requirePermission("git.write")).Post("/sites/{uid}/git/rollback/{dep}", rollbackSiteHandler(d))
+				}
 				if d.Jobs != nil {
 					r.With(requireAuth).Get("/jobs", listJobsHandler(d))
 					r.With(requireAuth).Get("/jobs/{id}", getJobHandler(d))
@@ -141,6 +150,13 @@ func NewRouter(d Deps) http.Handler {
 		}
 		// Future: /dns, /ssl, ... mounted here.
 	})
+
+	// Git push webhook: unauthenticated by session, authorized by the per-source
+	// secret (constant-time compare in the handler). Mounted outside the auth
+	// group and before the SPA catch-all so a push can trigger a deploy.
+	if d.Git != nil {
+		r.Post("/hooks/git/{uid}", gitWebhookHandler(d))
+	}
 
 	// Embedded SPA (served for GET/HEAD on all non-API routes; falls back to a
 	// placeholder when no frontend build is embedded). Registering only GET/HEAD

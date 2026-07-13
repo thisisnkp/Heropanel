@@ -20,5 +20,7 @@ func All() []capability.Capability {
 		DBGrant{},
 		CertInstall{},
 		CertWriteChallenge{},
+		GitDeploy{},
+		GitRollback{},
 	}
 }

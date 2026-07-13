@@ -386,12 +386,12 @@ func validateCreate(in *CreateInput) error {
 			errx.Field{Field: "type", Code: "unsupported", Message: "must be static or php"})
 	}
 	switch in.DeployMode {
-	case DeployBaremetal:
+	case DeployBaremetal, DeployGit:
 	case "":
 		in.DeployMode = DeployBaremetal
-	case DeployGit, DeployDocker:
+	case DeployDocker:
 		return errx.Validation("unsupported_deploy_mode",
-			"Only bare-metal deployment is supported at this stage.")
+			"Docker deployment is not supported at this stage.")
 	default:
 		return errx.Validation("invalid_deploy_mode", "Unknown deploy mode.")
 	}

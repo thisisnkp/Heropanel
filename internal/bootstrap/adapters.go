@@ -5,9 +5,11 @@ import (
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ws"
 )
 
@@ -34,6 +36,27 @@ func (a *userDirectoryAdapter) List(ctx context.Context, limit, offset int) ([]h
 		}
 	}
 	return out, nil
+}
+
+// gitSiteAdapter adapts the site repository to git.Sites, resolving the identity
+// and paths a deploy needs (Linux user, home) by site UID. Keeps the git service
+// off the concrete site store.
+type gitSiteAdapter struct {
+	repo site.Repo
+}
+
+func (a gitSiteAdapter) Resolve(ctx context.Context, siteUID string) (*git.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &git.SiteRef{
+		ID:         rec.ID,
+		UID:        rec.UID,
+		LinuxUser:  rec.LinuxUser.String,
+		HomeDir:    rec.HomeDir.String,
+		DeployMode: rec.DeployMode,
+	}, nil
 }
 
 // jobChannelAuthorizer authorizes WebSocket channel subscriptions. A principal

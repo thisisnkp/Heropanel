@@ -19,6 +19,7 @@ import (
 	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
+	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
@@ -106,6 +107,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var siteSvc *site.Service
 	var dbSvc *database.Service
 	var sslSvc *ssl.Service
+	var gitSvc *git.Service
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -119,13 +121,15 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig()).
 			WithAPIKeys(repository.NewAPIKeyRepository(db))
 		userDir = &userDirectoryAdapter{repo: users}
+		siteStore := repository.NewSiteStore(db)
 		siteSvc = site.NewService(site.Deps{
-			Repo:   repository.NewSiteStore(db),
+			Repo:   siteStore,
 			Broker: gw,
 			Web:    webserver.NewService(gw),
 			PHP:    php.NewService(repository.NewPHPPoolStore(db), gw),
 		})
 		dbSvc = database.NewService(repository.NewDatabaseStore(db), gw)
+		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw)
 
 		// SSL: self-signed and custom uploads always available; Let's Encrypt
 		// (ACME) enabled only when an account email is configured.
@@ -168,6 +172,34 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			}
 			return nil, siteSvc.RunDelete(ctx, pl.UID, p)
 		})
+		d.Register("git.deploy", func(ctx context.Context, j *job.Job, p job.Progress) (any, error) {
+			var pl struct {
+				SiteUID string `json:"site_uid"`
+				Trigger string `json:"trigger"`
+			}
+			if err := json.Unmarshal(j.Payload, &pl); err != nil {
+				return nil, err
+			}
+			dep, err := gitSvc.RunDeploy(ctx, pl.SiteUID, pl.Trigger, p)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"deployment_uid": dep.UID, "commit": dep.CommitSHA}, nil
+		})
+		d.Register("git.rollback", func(ctx context.Context, j *job.Job, p job.Progress) (any, error) {
+			var pl struct {
+				SiteUID       string `json:"site_uid"`
+				DeploymentUID string `json:"deployment_uid"`
+			}
+			if err := json.Unmarshal(j.Payload, &pl); err != nil {
+				return nil, err
+			}
+			dep, err := gitSvc.RunRollback(ctx, pl.SiteUID, pl.DeploymentUID, p)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"deployment_uid": dep.UID}, nil
+		})
 		if err := d.StartWorkers(ctx, 2); err != nil {
 			log.Warn("job workers failed to start; falling back to synchronous operations", "err", err)
 		} else {
@@ -198,6 +230,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Sites:     siteSvc,
 		Databases: dbSvc,
 		SSL:       sslSvc,
+		Git:       gitSvc,
 		Jobs:      jobs,
 		WS:        wsHub,
 	})

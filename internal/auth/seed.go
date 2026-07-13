@@ -28,6 +28,8 @@ var basePermissions = []seedPermission{
 	{"ssl.write", "ssl", "write", "Issue and manage certificates"},
 	{"database.read", "database", "read", "View databases"},
 	{"database.write", "database", "write", "Create and manage databases"},
+	{"git.read", "git", "read", "View Git sources and deployments"},
+	{"git.write", "git", "write", "Configure Git sources and trigger deployments"},
 	{"system.read", "system", "read", "View system status"},
 	{"system.write", "system", "write", "Change system configuration"},
 	{"audit.read", "audit", "read", "View the audit log"},

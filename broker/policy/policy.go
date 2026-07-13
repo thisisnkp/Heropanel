@@ -46,6 +46,8 @@ func Default() Policy {
 			"db.grant":             true,
 			"cert.install":         true,
 			"cert.write_challenge": true,
+			"git.deploy":           true,
+			"git.rollback":         true,
 		},
 		Services: []string{
 			"lshttpd", "openlitespeed", "mariadb", "redis",
