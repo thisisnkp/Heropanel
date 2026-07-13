@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  heropanel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: heropanel:latest
+    container_name: heropanel
+    restart: unless-stopped
+    ports:
+      - "18443:18443"  # HeroPanel Control Plane & React UI
+      - "80:80"        # OpenLiteSpeed HTTP Edge
+      - "443:443"      # OpenLiteSpeed HTTPS Edge
+    environment:
+      - HP_SERVER_HOST=0.0.0.0
+      - HP_SERVER_PORT=18443
+      - HP_BROKER_TOKEN=heropanel-docker-secret-token
+      - HP_DATABASE_DRIVER=sqlite
+      - HP_DATABASE_DSN=/srv/heropanel/data/hp.db
+    volumes:
+      - heropanel_data:/srv/heropanel/data
+      - heropanel_sites:/srv/heropanel/sites
+      - heropanel_mysql:/var/lib/mysql
+
+volumes:
+  heropanel_data:
+  heropanel_sites:
+  heropanel_mysql:
