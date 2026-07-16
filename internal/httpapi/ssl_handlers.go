@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/ssl"
@@ -60,18 +61,30 @@ func uploadCertHandler(d Deps) http.HandlerFunc {
 	}
 }
 
-// issueCertHandler obtains a Let's Encrypt certificate via ACME HTTP-01.
+// issueCertHandler obtains a Let's Encrypt certificate. method "http" (default)
+// uses HTTP-01 and needs a webroot; method "dns" uses DNS-01 via a zone
+// HeroPanel is authoritative for, and is required for a wildcard ("*.example.com").
 func issueCertHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FromContext(r.Context())
 		var req struct {
 			Domain  string `json:"domain"`
 			Webroot string `json:"webroot"`
+			Method  string `json:"method"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		out, err := d.SSL.Issue(r.Context(), p.UserID, req.Domain, req.Webroot)
+		var (
+			out *ssl.Cert
+			err error
+		)
+		// A wildcard can only be issued over DNS-01, so route it there regardless.
+		if req.Method == "dns" || strings.HasPrefix(strings.TrimSpace(req.Domain), "*.") {
+			out, err = d.SSL.IssueDNS(r.Context(), p.UserID, req.Domain)
+		} else {
+			out, err = d.SSL.Issue(r.Context(), p.UserID, req.Domain, req.Webroot)
+		}
 		if err != nil {
 			writeError(w, r, err)
 			return

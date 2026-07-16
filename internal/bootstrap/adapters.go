@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
@@ -94,6 +95,21 @@ func (a siteDomainsAdapter) ForSite(ctx context.Context, siteID int64) ([]site.D
 		}
 	}
 	return out, nil
+}
+
+// sslDNSAdapter adapts the DNS service to ssl.DNSProvider, letting ACME publish
+// DNS-01 challenges into a zone HeroPanel is authoritative for (which is what
+// makes wildcard certificates possible).
+type sslDNSAdapter struct {
+	svc *dns.Service
+}
+
+func (a sslDNSAdapter) SetTXT(ctx context.Context, fqdn, value string) error {
+	return a.svc.SetChallengeTXT(ctx, fqdn, value)
+}
+
+func (a sslDNSAdapter) DeleteTXT(ctx context.Context, fqdn string) error {
+	return a.svc.DeleteChallengeTXT(ctx, fqdn)
 }
 
 // runtimeSiteAdapter adapts the site repository to runtime.Sites.

@@ -158,7 +158,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				log.Info("Let's Encrypt enabled", "email", cfg.SSL.Email)
 			}
 		}
-		sslSvc = ssl.NewService(repository.NewCertStore(db), gw, acmeProvider)
+		sslSvc = ssl.NewService(repository.NewCertStore(db), gw, acmeProvider).
+			WithDNS(sslDNSAdapter{svc: dnsSvc}) // enables DNS-01 + wildcard issuance
 
 		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
@@ -222,6 +223,15 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			jobs = d
 			log.Info("job queue enabled")
 		}
+	}
+
+	// Certificate auto-renewal: sweeps for certs nearing expiry and re-issues
+	// them with the flow that created them (HTTP-01, DNS-01/wildcard, or a fresh
+	// self-signed). Uploaded certs are left alone.
+	if sslSvc != nil {
+		go ssl.NewRenewer(sslSvc, log).Run(ctx)
+		log.Info("certificate renewer enabled",
+			"interval", ssl.DefaultRenewInterval.String(), "window", ssl.DefaultRenewWindow.String())
 	}
 
 	// Realtime WebSocket hub: bridges Redis Pub/Sub job events to browsers.

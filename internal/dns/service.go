@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/thisisnkp/heropanel/internal/broker"
@@ -170,6 +171,90 @@ func (s *Service) DeleteRecord(ctx context.Context, recordUID string) error {
 		return err
 	}
 	return s.reapply(ctx, z)
+}
+
+// challengeTTL keeps ACME DNS-01 records short-lived so a retry is not served a
+// stale answer from a resolver cache.
+const challengeTTL = 60
+
+// SetChallengeTXT publishes an ACME DNS-01 TXT record (e.g. at
+// _acme-challenge.example.com) into whichever managed zone contains fqdn,
+// replacing any previous value. It implements the SSL module's DNS provider.
+func (s *Service) SetChallengeTXT(ctx context.Context, fqdn, value string) error {
+	z, label, err := s.zoneFor(ctx, fqdn)
+	if err != nil {
+		return err
+	}
+	if err := s.requireBroker(); err != nil {
+		return err
+	}
+	if err := s.deleteRecordsAt(ctx, z.ID, label, "TXT"); err != nil {
+		return err
+	}
+	if err := s.repo.InsertRecord(ctx, &RecordRow{
+		ZoneID: z.ID, Name: label, Type: "TXT", Content: value, TTL: challengeTTL,
+	}); err != nil {
+		return err
+	}
+	return s.reapply(ctx, z)
+}
+
+// DeleteChallengeTXT removes the DNS-01 record published for fqdn.
+func (s *Service) DeleteChallengeTXT(ctx context.Context, fqdn string) error {
+	z, label, err := s.zoneFor(ctx, fqdn)
+	if err != nil {
+		return err
+	}
+	if err := s.requireBroker(); err != nil {
+		return err
+	}
+	if err := s.deleteRecordsAt(ctx, z.ID, label, "TXT"); err != nil {
+		return err
+	}
+	return s.reapply(ctx, z)
+}
+
+// deleteRecordsAt removes every record of a type at a label within a zone.
+func (s *Service) deleteRecordsAt(ctx context.Context, zoneID int64, label, typ string) error {
+	rows, err := s.repo.ListRecords(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		if rows[i].Name == label && rows[i].Type == typ {
+			if err := s.repo.DeleteRecord(ctx, rows[i].UID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// zoneFor finds the managed zone that fqdn belongs to (the longest matching
+// suffix) and the record label relative to it.
+func (s *Service) zoneFor(ctx context.Context, fqdn string) (*ZoneRow, string, error) {
+	fqdn = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
+	zones, err := s.repo.ListActiveZones(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	var best *ZoneRow
+	for i := range zones {
+		z := &zones[i]
+		if fqdn == z.Name || strings.HasSuffix(fqdn, "."+z.Name) {
+			if best == nil || len(z.Name) > len(best.Name) {
+				best = z
+			}
+		}
+	}
+	if best == nil {
+		return nil, "", errx.NotFound("zone_not_found",
+			"No managed DNS zone is authoritative for "+fqdn+".")
+	}
+	if fqdn == best.Name {
+		return best, "@", nil
+	}
+	return best, strings.TrimSuffix(fqdn, "."+best.Name), nil
 }
 
 // reapply bumps the zone serial and re-renders + applies the zone.

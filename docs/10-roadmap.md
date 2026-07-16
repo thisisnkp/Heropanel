@@ -33,13 +33,36 @@ Build order optimized so that **each phase produces something runnable and demoa
 - Frontend: Create-Site wizard, per-site workspace (Overview, Domains, PHP/Runtime, Logs, Advanced).
 - **Exit criteria:** create a WordPress-ready PHP site and a static site, each fully isolated (separate user, pool, tmp, logs), reachable over HTTP, PHP version switchable per site.
 
-## Phase 2 — Domains, SSL, DNS
+## Phase 2 — Domains, SSL, DNS ✅ **DONE**
 - **SSL (in-core)**: Let's Encrypt (HTTP-01 + DNS-01/wildcard), ZeroSSL, custom upload, auto-renewal scheduler, per-domain status.
 - **Domains**: aliases, subdomains, redirects, force-HTTPS.
 - **DNS module (satellite)**: authoritative zones (PowerDNS/BIND backend), record CRUD, import/export, DNSSEC.
 - **Exit criteria:** point a domain, auto-issue + auto-renew a cert (incl. wildcard via DNS-01), manage its zone in-panel.
 
-## Phase 3 — Databases & Git deployments
+**Status:** Domains ([internal/domain](../internal/domain)) — aliases/subdomains map onto
+the vhost, redirect domains 301 to an absolute target, force-HTTPS is opt-in
+(enabling it before a cert exists would take the site offline). DNS
+([13-dns.md](13-dns.md)) — authoritative zones + record CRUD on a real BIND9
+backend. SSL — HTTP-01, self-signed, custom upload, **DNS-01 incl. wildcard**
+(publishing `_acme-challenge` TXT into a managed zone), and a **renewal sweeper**
+([internal/ssl/renew.go](../internal/ssl/renew.go)) that repeats whichever flow
+issued each cert.
+
+**Verified live** (Docker, in CI): `run-dns.sh` — `dig` returns authoritative
+answers for API-created records; `run-domains.sh` — alias serves, redirect 301s,
+force-HTTPS toggles.
+
+**Deferred:** DNS as a true *satellite* module (needs the [06](06-plugin-architecture.md)
+registry/gRPC — DNS is in-core for now); DNSSEC; zone import/export; ZeroSSL;
+**live ACME verification against a staging CA (Pebble)** — the ACME code paths are
+unit-tested against a fake issuer but have never been exercised against a real CA.
+
+## Phase 3 — Databases & Git deployments ✅ **DONE**
+_Databases, Git deploys (webhook + rollback + auto-restart), and App runtimes
+(proxy sites, systemd-supervised, OLS reverse-proxy) are implemented and verified
+live in CI — see [11-git-deployments.md](11-git-deployments.md) and
+[12-app-runtimes.md](12-app-runtimes.md). Composer auto-install and php.ini/
+extension management remain open from Phase 1's PHP bullet._
 - **Databases (in-core)**: MariaDB create DB/users/grants, import/export, size; phpMyAdmin/Adminer SSO handoff.
 - **Git (in-core)**: sources (GitHub/GitLab/Bitbucket; PAT/deploy key/OAuth), webhook deploys, auto pull/build, deploy history + rollback, SSH/deploy key management.
 - **App runtimes (in-core)**: Node/Python/Go site types (systemd-supervised in the site slice), build/start/env/health, process controls.

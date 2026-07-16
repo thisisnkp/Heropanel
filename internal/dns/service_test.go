@@ -204,6 +204,47 @@ func TestAddRecordBumpsSerialAndReapplies(t *testing.T) {
 	}
 }
 
+func TestChallengeTXTPublishesIntoTheOwningZone(t *testing.T) {
+	gw := &mockGW{}
+	svc := dns.NewService(newRepo(), gw)
+	ctx := context.Background()
+	if _, err := svc.CreateZone(ctx, dns.CreateZoneInput{OwnerID: 1, Name: "example.test", NSIP: "203.0.113.2"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// The ACME challenge for a wildcard lands at _acme-challenge.<zone>.
+	if err := svc.SetChallengeTXT(ctx, "_acme-challenge.example.test", "tok-value"); err != nil {
+		t.Fatalf("set challenge: %v", err)
+	}
+	zf, _ := lastCall(gw, "dns.write_zone").input["zone_file"].(string)
+	if !strings.Contains(zf, `_acme-challenge`) || !strings.Contains(zf, `"tok-value"`) {
+		t.Fatalf("challenge TXT not in the zone:\n%s", zf)
+	}
+
+	// Re-publishing replaces the value rather than appending a second TXT.
+	if err := svc.SetChallengeTXT(ctx, "_acme-challenge.example.test", "second"); err != nil {
+		t.Fatalf("re-set: %v", err)
+	}
+	zf, _ = lastCall(gw, "dns.write_zone").input["zone_file"].(string)
+	if strings.Contains(zf, "tok-value") || !strings.Contains(zf, `"second"`) {
+		t.Fatalf("challenge TXT not replaced:\n%s", zf)
+	}
+
+	// Cleanup removes it.
+	if err := svc.DeleteChallengeTXT(ctx, "_acme-challenge.example.test"); err != nil {
+		t.Fatalf("delete challenge: %v", err)
+	}
+	zf, _ = lastCall(gw, "dns.write_zone").input["zone_file"].(string)
+	if strings.Contains(zf, "_acme-challenge") {
+		t.Fatalf("challenge TXT not removed:\n%s", zf)
+	}
+
+	// A name outside every managed zone is a clear not-found.
+	if err := svc.SetChallengeTXT(ctx, "_acme-challenge.other.test", "x"); !errx.IsKind(err, errx.KindNotFound) {
+		t.Fatalf("want not_found for an unmanaged name, got %v", err)
+	}
+}
+
 func TestDeleteZoneRemovesFromBind(t *testing.T) {
 	gw := &mockGW{}
 	svc := dns.NewService(newRepo(), gw)

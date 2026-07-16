@@ -58,6 +58,9 @@ type Record struct {
 	AutoRenew  int    `db:"auto_renew"`
 	Status     string `db:"status"`
 	CreatedAt  string `db:"created_at"`
+	// Webroot records how an ACME cert was obtained so the renewer can repeat it:
+	// a path => HTTP-01, empty => DNS-01 (always the case for wildcards).
+	Webroot string `db:"webroot"`
 }
 
 // Repo is the persistence contract (implemented by internal/repository).
@@ -66,6 +69,9 @@ type Repo interface {
 	List(ctx context.Context, ownerID int64, limit, offset int) ([]Record, error)
 	GetByUID(ctx context.Context, uid string) (*Record, error)
 	Delete(ctx context.Context, uid string) error
+	// ListDueForRenewal returns auto-renewing certificates that expire at or
+	// before the given timestamp.
+	ListDueForRenewal(ctx context.Context, before string) ([]Record, error)
 }
 
 // ACME issues a certificate for a domain using an HTTP-01 challenge. The
@@ -74,16 +80,39 @@ type ACME interface {
 	Issue(ctx context.Context, domain string, writeChallenge func(token, keyAuth string) error) (certPEM, keyPEM string, notAfter time.Time, err error)
 }
 
+// ACMEDNS issues a certificate using a DNS-01 challenge, publishing the token as
+// a TXT record. It is the only way to obtain a wildcard certificate. An issuer
+// may implement both ACME and ACMEDNS.
+type ACMEDNS interface {
+	IssueDNS01(ctx context.Context, domain string,
+		setTXT func(fqdn, value string) error, deleteTXT func(fqdn string) error) (certPEM, keyPEM string, notAfter time.Time, err error)
+}
+
+// DNSProvider publishes ACME DNS-01 challenge records into a zone HeroPanel is
+// authoritative for. Implemented by an adapter over internal/dns.
+type DNSProvider interface {
+	SetTXT(ctx context.Context, fqdn, value string) error
+	DeleteTXT(ctx context.Context, fqdn string) error
+}
+
 // Service issues, installs, and records certificates.
 type Service struct {
 	repo   Repo
 	broker broker.Gateway
-	acme   ACME // optional (nil => Let's Encrypt disabled)
+	acme   ACME        // optional (nil => Let's Encrypt disabled)
+	dns    DNSProvider // optional (nil => DNS-01 / wildcard unavailable)
 }
 
 // NewService constructs the SSL Service. acme may be nil.
 func NewService(repo Repo, gw broker.Gateway, acme ACME) *Service {
 	return &Service{repo: repo, broker: gw, acme: acme}
+}
+
+// WithDNS wires the DNS provider used for DNS-01 (and therefore wildcard)
+// issuance. Returns s for chaining.
+func (s *Service) WithDNS(p DNSProvider) *Service {
+	s.dns = p
+	return s
 }
 
 func (s *Service) requireBroker() error {
@@ -104,7 +133,7 @@ func (s *Service) IssueSelfSigned(ctx context.Context, ownerID int64, domain str
 	if err != nil {
 		return nil, errx.Internal(err)
 	}
-	return s.installAndRecord(ctx, ownerID, domain, ProviderSelfSigned, certPEM, keyPEM, notAfter)
+	return s.installAndRecord(ctx, ownerID, domain, ProviderSelfSigned, certPEM, keyPEM, notAfter, "")
 }
 
 // UploadCustom installs a caller-provided certificate and key (validated).
@@ -124,7 +153,7 @@ func (s *Service) UploadCustom(ctx context.Context, ownerID int64, certPEM, keyP
 	if err := s.requireBroker(); err != nil {
 		return nil, err
 	}
-	return s.installAndRecord(ctx, ownerID, normalizeDomain(domain), ProviderCustom, certPEM, keyPEM, leaf.NotAfter)
+	return s.installAndRecord(ctx, ownerID, normalizeDomain(domain), ProviderCustom, certPEM, keyPEM, leaf.NotAfter, "")
 }
 
 // Issue obtains a Let's Encrypt certificate via ACME HTTP-01, writing the
@@ -147,7 +176,50 @@ func (s *Service) Issue(ctx context.Context, ownerID int64, domain, webroot stri
 	if err != nil {
 		return nil, errx.Upstream(err, "acme_failed", "Certificate issuance failed.")
 	}
-	return s.installAndRecord(ctx, ownerID, domain, ProviderLetsEncrypt, certPEM, keyPEM, notAfter)
+	return s.installAndRecord(ctx, ownerID, domain, ProviderLetsEncrypt, certPEM, keyPEM, notAfter, webroot)
+}
+
+// IssueDNS obtains a Let's Encrypt certificate via ACME DNS-01, publishing the
+// challenge into a zone HeroPanel is authoritative for. This is the path for
+// **wildcard** certificates ("*.example.com"), which HTTP-01 cannot issue.
+func (s *Service) IssueDNS(ctx context.Context, ownerID int64, domain string) (*Cert, error) {
+	domain = normalizeDomain(domain)
+	if err := validateIssuableDomain(domain); err != nil {
+		return nil, err
+	}
+	issuer, ok := s.acme.(ACMEDNS)
+	if s.acme == nil || !ok {
+		return nil, errx.New(errx.KindUnavailable, "acme_dns_unavailable",
+			"DNS-01 issuance is not configured.")
+	}
+	if s.dns == nil {
+		return nil, errx.New(errx.KindUnavailable, "dns_unavailable",
+			"DNS-01 needs a zone HeroPanel is authoritative for; the DNS module is not configured.")
+	}
+	if err := s.requireBroker(); err != nil {
+		return nil, err
+	}
+
+	setTXT := func(fqdn, value string) error { return s.dns.SetTXT(ctx, fqdn, value) }
+	deleteTXT := func(fqdn string) error { return s.dns.DeleteTXT(ctx, fqdn) }
+
+	certPEM, keyPEM, notAfter, err := issuer.IssueDNS01(ctx, domain, setTXT, deleteTXT)
+	if err != nil {
+		return nil, errx.Upstream(err, "acme_failed", "Certificate issuance failed.")
+	}
+	// A DNS-01 cert has no webroot: renewal repeats the DNS-01 flow.
+	return s.installAndRecord(ctx, ownerID, domain, ProviderLetsEncrypt, certPEM, keyPEM, notAfter, "")
+}
+
+// validateIssuableDomain accepts a hostname or a single-label wildcard.
+func validateIssuableDomain(d string) error {
+	base := strings.TrimPrefix(d, "*.")
+	if base == "" || !strings.Contains(base, ".") || strings.ContainsAny(base, "*") ||
+		strings.ContainsAny(d, " \t\r\n/") {
+		return errx.Validation("invalid_domain", "A valid domain (or *.domain) is required.",
+			errx.Field{Field: "domain", Code: "invalid", Message: "invalid domain"})
+	}
+	return nil
 }
 
 // List returns certificates (ownerID 0 = all).
@@ -164,9 +236,15 @@ func (s *Service) List(ctx context.Context, ownerID int64, limit, offset int) ([
 }
 
 // installAndRecord installs the cert via the broker and persists the record.
-func (s *Service) installAndRecord(ctx context.Context, ownerID int64, domain, provider, certPEM, keyPEM string, notAfter time.Time) (*Cert, error) {
+// webroot records how the cert was obtained so the renewer can repeat it (empty
+// => DNS-01). Insert upserts by common_name, so a renewal replaces the row.
+func (s *Service) installAndRecord(ctx context.Context, ownerID int64, domain, provider, certPEM, keyPEM string, notAfter time.Time, webroot string) (*Cert, error) {
+	// A wildcard is not a legal hostname, so it is installed under its base
+	// domain's directory (the broker validates the name it is given).
+	isWildcard := strings.HasPrefix(domain, "*.")
+	installName := strings.TrimPrefix(domain, "*.")
 	if _, err := s.broker.Invoke(ctx, "cert.install", map[string]any{
-		"domain": domain, "cert_pem": certPEM, "key_pem": keyPEM,
+		"domain": installName, "cert_pem": certPEM, "key_pem": keyPEM,
 	}); err != nil {
 		return nil, err
 	}
@@ -175,7 +253,10 @@ func (s *Service) installAndRecord(ctx context.Context, ownerID int64, domain, p
 		OwnerID: ownerID, Provider: provider, CommonName: domain, SANs: sans,
 		CertPEM: certPEM, PrivkeyEnc: []byte(keyPEM),
 		IssuedAt: fmtTime(time.Now()), ExpiresAt: fmtTime(notAfter),
-		AutoRenew: 1, Status: "valid",
+		AutoRenew: 1, Status: "valid", Webroot: webroot,
+	}
+	if isWildcard {
+		rec.IsWildcard = 1
 	}
 	if err := s.repo.Insert(ctx, rec); err != nil {
 		return nil, err

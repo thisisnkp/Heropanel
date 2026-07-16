@@ -96,3 +96,13 @@ jobs:
           echo "$out"
           grep -q 'www.example.test A  = 203.0.113.20' <<<"$out" || { echo '::error::DNS record not resolved by dig'; exit 1; }
           grep -q '"capability":"dns.write_zone","outcome":"success"' <<<"$out" || { echo '::error::dns.write_zone did not succeed'; exit 1; }
+
+      - name: Domains (alias serves, redirect 301s, force-HTTPS 301s)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-domains.sh)
+          echo "$out"
+          grep -q 'www.acme.test      -> 200 <h1>Hello from HeroPanel</h1>' <<<"$out" || { echo '::error::alias did not serve the site'; exit 1; }
+          grep -q 'old.acme.test      -> 301 Location: https://acme.test/'  <<<"$out" || { echo '::error::redirect domain did not 301'; exit 1; }
+          grep -q 'acme.test (force)  -> 301 Location: https://acme.test/'  <<<"$out" || { echo '::error::force-HTTPS did not redirect'; exit 1; }
+          grep -q 'acme.test (off)    -> 200'                               <<<"$out" || { echo '::error::force-HTTPS off did not serve'; exit 1; }
+          grep -q 'alias dropped from map: OK'                              <<<"$out" || { echo '::error::deleted alias still mapped'; exit 1; }
