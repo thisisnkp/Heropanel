@@ -230,6 +230,38 @@ func TestRunDeployRecordsAndInvokesBroker(t *testing.T) {
 	}
 }
 
+type fakeRestarter struct {
+	called string
+	err    error
+}
+
+func (f *fakeRestarter) RestartForSite(_ context.Context, siteUID string) error {
+	f.called = siteUID
+	return f.err
+}
+
+func TestRunDeployRestartsAppAfterSuccess(t *testing.T) {
+	repo := newFakeRepo()
+	gw := &mockGW{deployResult: map[string]any{"commit": "c1", "log": "built"}}
+	rs := &fakeRestarter{}
+	svc := git.NewService(repo, fakeSites{ref: gitSite()}, gw).WithRestarter(rs)
+	ctx := context.Background()
+
+	if _, err := svc.SetSource(ctx, "acme-uid", git.SetSourceInput{RepoURL: "https://github.com/acme/app.git"}); err != nil {
+		t.Fatalf("set source: %v", err)
+	}
+	dep, err := svc.RunDeploy(ctx, "acme-uid", git.TriggerManual, job.Noop)
+	if err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	if rs.called != "acme-uid" {
+		t.Fatalf("expected the app to be restarted for the site, got %q", rs.called)
+	}
+	if !strings.Contains(dep.Log, "[app restarted]") {
+		t.Fatalf("deploy log should note the restart: %q", dep.Log)
+	}
+}
+
 func TestRunDeployMarksFailureOnBrokerError(t *testing.T) {
 	repo := newFakeRepo()
 	gw := &mockGW{failOn: "git.deploy"}
@@ -299,7 +331,7 @@ func TestRunRollbackActivatesPriorRelease(t *testing.T) {
 			rbCall = &gw.calls[i]
 		}
 	}
-	if rbCall == nil || rbCall.input["home"] != "/srv/heropanel/sites/1" {
+	if rbCall == nil || rbCall.input["home"] != "/srv/heropanel/sites/1" || rbCall.input["username"] != "hps1" {
 		t.Fatalf("git.rollback input = %+v", rbCall)
 	}
 	if rd, _ := rbCall.input["release_dir"].(string); !strings.HasPrefix(rd, "/srv/heropanel/sites/1/releases/") {

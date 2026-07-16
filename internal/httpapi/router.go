@@ -15,8 +15,11 @@ import (
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
+	"github.com/thisisnkp/heropanel/internal/dns"
+	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/ws"
@@ -44,7 +47,10 @@ type Deps struct {
 	Sites     *site.Service     // nil when no datastore is configured
 	Databases *database.Service // nil when no datastore is configured
 	SSL       *ssl.Service      // nil when no datastore is configured
+	DNS       *dns.Service      // nil when no datastore is configured
+	Domains   *domain.Service   // nil when no datastore is configured
 	Git       *git.Service      // nil when no datastore is configured
+	Runtime   *runtime.Service  // nil when no datastore is configured
 	Jobs      *job.Dispatcher   // nil when the async job queue is disabled (no Redis)
 	WS        *ws.Hub           // nil when the realtime hub is disabled (no Redis)
 }
@@ -132,12 +138,34 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/php", getSitePHPHandler(d))
 					r.With(requirePermission("site.write")).Put("/sites/{uid}/php", setSitePHPHandler(d))
 				}
+				if d.DNS != nil {
+					r.With(requirePermission("dns.read")).Get("/dns/zones", listZonesHandler(d))
+					r.With(requirePermission("dns.write")).Post("/dns/zones", createZoneHandler(d))
+					r.With(requirePermission("dns.read")).Get("/dns/zones/{uid}", getZoneHandler(d))
+					r.With(requirePermission("dns.write")).Delete("/dns/zones/{uid}", deleteZoneHandler(d))
+					r.With(requirePermission("dns.read")).Get("/dns/zones/{uid}/records", listRecordsHandler(d))
+					r.With(requirePermission("dns.write")).Post("/dns/zones/{uid}/records", createRecordHandler(d))
+					r.With(requirePermission("dns.write")).Delete("/dns/records/{uid}", deleteRecordHandler(d))
+				}
 				if d.Git != nil {
 					r.With(requirePermission("git.read")).Get("/sites/{uid}/git", getSiteGitHandler(d))
 					r.With(requirePermission("git.write")).Put("/sites/{uid}/git", setSiteGitHandler(d))
 					r.With(requirePermission("git.read")).Get("/sites/{uid}/git/deployments", listSiteDeploymentsHandler(d))
 					r.With(requirePermission("git.write")).Post("/sites/{uid}/git/deploy", deploySiteHandler(d))
 					r.With(requirePermission("git.write")).Post("/sites/{uid}/git/rollback/{dep}", rollbackSiteHandler(d))
+				}
+				if d.Domains != nil {
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/domains", listDomainsHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/domains", addDomainHandler(d))
+					r.With(requirePermission("site.write")).Delete("/sites/{uid}/domains/{did}", deleteDomainHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/force-https", setForceHTTPSHandler(d))
+				}
+				if d.Runtime != nil {
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/runtime", getSiteRuntimeHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/runtime", setSiteRuntimeHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/start", runtimeControlHandler(d, "start"))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/stop", runtimeControlHandler(d, "stop"))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/restart", runtimeControlHandler(d, "restart"))
 				}
 				if d.Jobs != nil {
 					r.With(requireAuth).Get("/jobs", listJobsHandler(d))

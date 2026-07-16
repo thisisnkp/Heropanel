@@ -4,7 +4,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      wget curl ca-certificates gnupg passwd \
+      wget curl ca-certificates gnupg passwd git \
       mariadb-server mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,6 +17,19 @@ RUN wget -qO - https://repo.litespeed.sh | bash \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       php8.3-fpm php8.3-mysql php8.3-cli \
     && rm -rf /var/lib/apt/lists/*
+
+# Node.js for the app-runtime e2e (a reverse-proxied Node app).
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# BIND9 (authoritative) + tools for the DNS e2e. HeroPanel writes zone files into
+# /etc/bind/zones and its zone declarations into an include file.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bind9 bind9-utils bind9-dnsutils \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /etc/bind/zones \
+    && : > /etc/bind/named.conf.heropanel \
+    && printf '\ninclude "/etc/bind/named.conf.heropanel";\n' >> /etc/bind/named.conf.local
 
 # Container shim for systemctl (no systemd here).
 COPY systemctl-shim.sh /usr/bin/systemctl

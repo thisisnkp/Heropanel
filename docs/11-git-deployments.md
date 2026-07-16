@@ -154,8 +154,10 @@ Async ops return `202 + job` and stream progress over the existing WS hub
 - [x] REST endpoints; async ops return jobs with WS progress
 - [x] RBAC scopes + audit coverage
 - [x] Unit tests: service validation + capability argv/sequence (FakeRunner)
-- [ ] Live e2e (serve a real cloned site) — extend the Docker e2e image next,
-      the same way PHP was proven. Tracked as the immediate follow-up.
+- [x] **Live e2e** (`deploy/docker/e2e/run-git.sh`): real OpenLiteSpeed clones
+      `octocat/Hello-World` over HTTPS, builds as the site's unprivileged user,
+      and serves the built output (HTTP 200); a second deploy + rollback proves
+      the atomic swap is reversible. Wired into CI.
 
 ---
 Back to [index](README.md). Related: [05 — Security](05-security-architecture.md),

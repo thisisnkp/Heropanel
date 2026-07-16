@@ -5,10 +5,12 @@ import (
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ws"
 )
@@ -56,6 +58,59 @@ func (a gitSiteAdapter) Resolve(ctx context.Context, siteUID string) (*git.SiteR
 		LinuxUser:  rec.LinuxUser.String,
 		HomeDir:    rec.HomeDir.String,
 		DeployMode: rec.DeployMode,
+	}, nil
+}
+
+// domainSiteAdapter adapts the site repository to domain.Sites.
+type domainSiteAdapter struct {
+	repo site.Repo
+}
+
+func (a domainSiteAdapter) Resolve(ctx context.Context, siteUID string) (*domain.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.SiteRef{ID: rec.ID, UID: rec.UID}, nil
+}
+
+// siteDomainsAdapter adapts the domain service to site.Domains, so the site
+// renderer can map every alias/redirect onto the vhost without depending on the
+// domain package's types.
+type siteDomainsAdapter struct {
+	svc *domain.Service
+}
+
+func (a siteDomainsAdapter) ForSite(ctx context.Context, siteID int64) ([]site.DomainInfo, error) {
+	ds, err := a.svc.ListForSiteID(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]site.DomainInfo, len(ds))
+	for i, d := range ds {
+		out[i] = site.DomainInfo{
+			FQDN: d.FQDN, Kind: d.Kind, ForceHTTPS: d.ForceHTTPS,
+			RedirectTo: d.RedirectTo, RedirectCode: d.RedirectCode,
+		}
+	}
+	return out, nil
+}
+
+// runtimeSiteAdapter adapts the site repository to runtime.Sites.
+type runtimeSiteAdapter struct {
+	repo site.Repo
+}
+
+func (a runtimeSiteAdapter) Resolve(ctx context.Context, siteUID string) (*runtime.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &runtime.SiteRef{
+		ID:        rec.ID,
+		UID:       rec.UID,
+		LinuxUser: rec.LinuxUser.String,
+		HomeDir:   rec.HomeDir.String,
 	}, nil
 }
 

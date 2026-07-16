@@ -27,25 +27,54 @@ const (
 // "unavailable"; a nil Web means the site is provisioned but not served; a nil
 // PHP means PHP sites are provisioned without an FPM pool).
 type Deps struct {
-	Repo   Repo
-	Broker broker.Gateway
-	Web    webserver.Applier
-	PHP    php.Manager
+	Repo    Repo
+	Broker  broker.Gateway
+	Web     webserver.Applier
+	PHP     php.Manager
+	Runtime Runtime
+	Domains Domains
+}
+
+// DomainInfo is one domain attached to a site, as the renderer needs it.
+type DomainInfo struct {
+	FQDN         string
+	Kind         string // "primary" | "alias" | "redirect"
+	ForceHTTPS   bool
+	RedirectTo   string
+	RedirectCode int
+}
+
+// Domains supplies a site's domains for rendering (aliases, redirects,
+// force-HTTPS). Implemented by an adapter over internal/domain. Optional: when
+// nil, only the site's primary domain is served.
+type Domains interface {
+	ForSite(ctx context.Context, siteID int64) ([]DomainInfo, error)
+}
+
+// Runtime is the app-runtime facet the site service consults: the reverse-proxy
+// port for a proxy site, and unit removal during de-provisioning. Implemented by
+// internal/runtime (the site service stays off that concrete type).
+type Runtime interface {
+	ProxyPort(ctx context.Context, siteID int64) (int, bool)
+	RemoveForSite(ctx context.Context, siteUID string) error
 }
 
 // Service creates and manages sites. Privileged effects (Linux user, directory
 // tree, web-server config, PHP pool) go through the broker; state lives in the
 // Repo.
 type Service struct {
-	repo   Repo
-	broker broker.Gateway
-	web    webserver.Applier
-	php    php.Manager
+	repo    Repo
+	broker  broker.Gateway
+	web     webserver.Applier
+	php     php.Manager
+	runtime Runtime
+	domains Domains
 }
 
 // NewService constructs the site Service from its dependencies.
 func NewService(d Deps) *Service {
-	return &Service{repo: d.Repo, broker: d.Broker, web: d.Web, php: d.PHP}
+	return &Service{repo: d.Repo, broker: d.Broker, web: d.Web, php: d.PHP,
+		runtime: d.Runtime, domains: d.Domains}
 }
 
 // ValidateInput validates a create request without side effects. It is used by
@@ -190,19 +219,72 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 			fpmSocket = php.SocketPath(r.LinuxUser.String)
 			phpBin = php.FpmBinary(s.phpVersion(ctx, r.ID))
 		}
+		// A proxy site forwards to its app runtime's port, once one is configured;
+		// until then it renders as a plain static vhost so the config stays valid.
+		proxyTarget := ""
+		if r.Type == string(TypeProxy) && s.runtime != nil {
+			if port, ok := s.runtime.ProxyPort(ctx, r.ID); ok {
+				proxyTarget = "127.0.0.1:" + strconv.Itoa(port)
+			}
+		}
+		domains, forceHTTPS, redirects := s.domainsFor(ctx, r.ID, r.PrimaryDomain)
 		sites = append(sites, webserver.Site{
 			VhostName:     r.LinuxUser.String,
 			PrimaryDomain: r.PrimaryDomain,
-			Domains:       []string{r.PrimaryDomain},
+			Domains:       domains,
 			DocumentRoot:  r.DocumentRoot,
 			Home:          r.HomeDir.String,
 			LogDir:        r.HomeDir.String + "/logs",
 			IsPHP:         isPHP,
 			FpmSocket:     fpmSocket,
 			PhpBin:        phpBin,
+			ProxyTarget:   proxyTarget,
+			ForceHTTPS:    forceHTTPS,
+			Redirects:     redirects,
 		})
 	}
 	return s.web.Apply(ctx, sites)
+}
+
+// domainsFor returns the hostnames mapped to a site's vhost, whether HTTPS is
+// forced, and any redirects. Every domain (including redirect ones) is mapped to
+// the vhost so the web server routes it here; a redirect domain is then answered
+// by a rewrite rule. Falls back to the primary domain alone when no Domains
+// source is wired.
+func (s *Service) domainsFor(ctx context.Context, siteID int64, primary string) ([]string, bool, []webserver.Redirect) {
+	if s.domains == nil {
+		return []string{primary}, false, nil
+	}
+	infos, err := s.domains.ForSite(ctx, siteID)
+	if err != nil || len(infos) == 0 {
+		return []string{primary}, false, nil
+	}
+	var (
+		hosts     []string
+		forceHTTP bool
+		redirects []webserver.Redirect
+	)
+	for _, d := range infos {
+		hosts = append(hosts, d.FQDN)
+		if d.Kind == DomainKindPrimary && d.ForceHTTPS {
+			forceHTTP = true
+		}
+		if d.Kind == DomainKindRedirect && d.RedirectTo != "" {
+			code := d.RedirectCode
+			if code == 0 {
+				code = 301
+			}
+			redirects = append(redirects, webserver.Redirect{From: d.FQDN, To: d.RedirectTo, Code: code})
+		}
+	}
+	return hosts, forceHTTP, redirects
+}
+
+// ReapplyWebserver re-renders and applies the web-server config for all active
+// sites. It is the hook the runtime service calls after a runtime change so a
+// proxy site's vhost is (re)pointed at its app.
+func (s *Service) ReapplyWebserver(ctx context.Context) error {
+	return s.applyWebserver(ctx, 0)
 }
 
 // phpVersion returns the site's configured PHP version, or the default.
@@ -333,6 +415,12 @@ func (s *Service) deprovision(ctx context.Context, rec *Record, p job.Progress) 
 	if s.broker == nil {
 		return nil
 	}
+	// Stop and remove the app unit (if any) before deleting its user.
+	if s.runtime != nil {
+		if err := s.runtime.RemoveForSite(ctx, rec.UID); err != nil {
+			return fmt.Errorf("remove app runtime: %w", err)
+		}
+	}
 	p.Report(70, "removing system user")
 	if rec.LinuxUser.Valid {
 		if _, err := s.broker.Invoke(ctx, "system_user.delete", map[string]any{
@@ -378,12 +466,12 @@ func validateCreate(in *CreateInput) error {
 		return err
 	}
 	switch in.Type {
-	case TypeStatic, TypePHP:
+	case TypeStatic, TypePHP, TypeProxy:
 	case "":
 		in.Type = TypeStatic
 	default:
 		return errx.Validation("invalid_type", "Unsupported site type.",
-			errx.Field{Field: "type", Code: "unsupported", Message: "must be static or php"})
+			errx.Field{Field: "type", Code: "unsupported", Message: "must be static, php, or proxy"})
 	}
 	switch in.DeployMode {
 	case DeployBaremetal, DeployGit:

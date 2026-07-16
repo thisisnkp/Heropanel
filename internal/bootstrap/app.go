@@ -19,11 +19,14 @@ import (
 	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
+	"github.com/thisisnkp/heropanel/internal/dns"
+	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/webserver"
@@ -108,6 +111,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var dbSvc *database.Service
 	var sslSvc *ssl.Service
 	var gitSvc *git.Service
+	var runtimeSvc *runtime.Service
+	var dnsSvc *dns.Service
+	var domainSvc *domain.Service
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -122,14 +128,24 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			WithAPIKeys(repository.NewAPIKeyRepository(db))
 		userDir = &userDirectoryAdapter{repo: users}
 		siteStore := repository.NewSiteStore(db)
+		runtimeSvc = runtime.NewService(repository.NewRuntimeStore(db), runtimeSiteAdapter{repo: siteStore}, gw)
+		domainSvc = domain.NewService(repository.NewDomainStore(db), domainSiteAdapter{repo: siteStore})
 		siteSvc = site.NewService(site.Deps{
-			Repo:   siteStore,
-			Broker: gw,
-			Web:    webserver.NewService(gw),
-			PHP:    php.NewService(repository.NewPHPPoolStore(db), gw),
+			Repo:    siteStore,
+			Broker:  gw,
+			Web:     webserver.NewService(gw),
+			PHP:     php.NewService(repository.NewPHPPoolStore(db), gw),
+			Runtime: runtimeSvc,
+			Domains: siteDomainsAdapter{svc: domainSvc},
 		})
+		// The runtime re-renders the vhost (as a proxy) after a runtime change;
+		// the domain service re-renders it after an alias/redirect/force-HTTPS change.
+		runtimeSvc.WithReproxy(siteSvc.ReapplyWebserver)
+		domainSvc.WithReapply(siteSvc.ReapplyWebserver)
 		dbSvc = database.NewService(repository.NewDatabaseStore(db), gw)
-		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw)
+		dnsSvc = dns.NewService(repository.NewDNSStore(db), gw)
+		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw).
+			WithRestarter(runtimeSvc) // auto-restart a proxy app after each deploy
 
 		// SSL: self-signed and custom uploads always available; Let's Encrypt
 		// (ACME) enabled only when an account email is configured.
@@ -230,7 +246,10 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Sites:     siteSvc,
 		Databases: dbSvc,
 		SSL:       sslSvc,
+		DNS:       dnsSvc,
+		Domains:   domainSvc,
 		Git:       gitSvc,
+		Runtime:   runtimeSvc,
 		Jobs:      jobs,
 		WS:        wsHub,
 	})

@@ -59,8 +59,10 @@ func (s *SiteStore) Provision(ctx context.Context, p site.ProvisionData) error {
 			p.SiteID, p.LinuxUser, p.LinuxUID, p.HomeDir, p.Shell); err != nil {
 			return err
 		}
+		// force_https starts off: forcing HTTPS before a certificate exists would
+		// take the new site offline. It is enabled explicitly via the domains API.
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO domains (uid, site_id, fqdn, kind, force_https) VALUES (?, ?, ?, 'primary', 1)`,
+			`INSERT INTO domains (uid, site_id, fqdn, kind, force_https) VALUES (?, ?, ?, 'primary', 0)`,
 			idgen.NewULID(), p.SiteID, p.PrimaryDomain)
 		return err
 	})

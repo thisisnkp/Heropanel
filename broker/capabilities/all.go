@@ -22,5 +22,10 @@ func All() []capability.Capability {
 		CertWriteChallenge{},
 		GitDeploy{},
 		GitRollback{},
+		AppUnitApply{},
+		AppUnitControl{},
+		AppUnitRemove{},
+		DNSWriteZone{},
+		DNSRemoveZone{},
 	}
 }

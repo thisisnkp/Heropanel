@@ -21,6 +21,18 @@ type Type string
 const (
 	TypeStatic Type = "static"
 	TypePHP    Type = "php"
+	// TypeProxy is an app site: OpenLiteSpeed reverse-proxies to a supervised
+	// process (managed by internal/runtime) instead of serving files.
+	TypeProxy Type = "proxy"
+)
+
+// Domain kinds, mirrored from internal/domain. They are duplicated here (rather
+// than imported) so the site service depends only on its own Domains interface —
+// internal/domain adapts to it, not the other way round.
+const (
+	DomainKindPrimary  = "primary"
+	DomainKindAlias    = "alias"
+	DomainKindRedirect = "redirect"
 )
 
 // DeployMode determines how content reaches the site (and gates features like

@@ -48,6 +48,11 @@ func Default() Policy {
 			"cert.write_challenge": true,
 			"git.deploy":           true,
 			"git.rollback":         true,
+			"app.unit_apply":       true,
+			"app.unit_control":     true,
+			"app.unit_remove":      true,
+			"dns.write_zone":       true,
+			"dns.remove_zone":      true,
 		},
 		Services: []string{
 			"lshttpd", "openlitespeed", "mariadb", "redis",

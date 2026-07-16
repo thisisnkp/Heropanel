@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/thisisnkp/heropanel/internal/broker"
@@ -22,15 +23,30 @@ const sqlTime = "2006-01-02 15:04:05"
 // build, atomic swap) runs as the site's unprivileged user via the broker; state
 // lives in the Repo.
 type Service struct {
-	repo   Repo
-	sites  Sites
-	broker broker.Gateway
+	repo      Repo
+	sites     Sites
+	broker    broker.Gateway
+	restarter Restarter
+}
+
+// Restarter restarts a site's app runtime after a successful deploy so a new
+// release is actually served (proxy sites). It is a no-op for sites without a
+// runtime. Optional — nil when the runtime module is not wired.
+type Restarter interface {
+	RestartForSite(ctx context.Context, siteUID string) error
 }
 
 // NewService constructs the git Service. broker may be nil (deploys then report
 // "unavailable"; reads still work).
 func NewService(repo Repo, sites Sites, gw broker.Gateway) *Service {
 	return &Service{repo: repo, sites: sites, broker: gw}
+}
+
+// WithRestarter wires the app-runtime restarter used to reload a proxy site's
+// process after a deploy. Returns s for chaining.
+func (s *Service) WithRestarter(r Restarter) *Service {
+	s.restarter = r
+	return s
 }
 
 func (s *Service) requireBroker() error {
@@ -197,6 +213,18 @@ func (s *Service) RunDeploy(ctx context.Context, siteUID, trigger string, p job.
 	if logTail, ok := res["log"].(string); ok {
 		dep.Log = logTail
 	}
+
+	// Reload the app so a proxy site serves the new release. Best-effort: the
+	// release is already live, so a restart failure is recorded but does not fail
+	// the deploy (a no-op for sites without a runtime).
+	if s.restarter != nil {
+		p.Report(95, "restarting app")
+		if rerr := s.restarter.RestartForSite(ctx, siteUID); rerr != nil {
+			dep.Log = strings.TrimSpace(dep.Log + "\n[warn] app restart failed: " + rerr.Error())
+		} else {
+			dep.Log = strings.TrimSpace(dep.Log + "\n[app restarted]")
+		}
+	}
 	s.finalize(ctx, dep)
 
 	p.Report(100, "deployed")
@@ -227,6 +255,7 @@ func (s *Service) RunRollback(ctx context.Context, siteUID, deploymentUID string
 
 	p.Report(50, "activating previous release")
 	if _, err := s.broker.Invoke(ctx, "git.rollback", map[string]any{
+		"username":    ref.LinuxUser,
 		"home":        ref.HomeDir,
 		"release_dir": target.ReleaseDir,
 	}); err != nil {

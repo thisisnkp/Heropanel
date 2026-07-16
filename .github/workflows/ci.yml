@@ -73,3 +73,26 @@ jobs:
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php.sh)
           echo "$out"
           grep -q 'live via HeroPanel'  <<<"$out" || { echo '::error::PHP page was not served'; exit 1; }
+
+      - name: Git deploy (clone + build + atomic swap + rollback) served by OpenLiteSpeed
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git.sh)
+          echo "$out"
+          grep -q 'v1 via HeroPanel Git'              <<<"$out" || { echo '::error::git deploy was not served'; exit 1; }
+          grep -q 'after deploy #2: <h1>v2'           <<<"$out" || { echo '::error::second deploy did not swap'; exit 1; }
+          grep -q 'after rollback:  <h1>v1'           <<<"$out" || { echo '::error::rollback did not revert the release'; exit 1; }
+          grep -q '"capability":"git.rollback","outcome":"success"' <<<"$out" || { echo '::error::git.rollback did not succeed'; exit 1; }
+
+      - name: App runtime (git-deployed Node app reverse-proxied by OpenLiteSpeed)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-app.sh)
+          echo "$out"
+          grep -q 'HeroPanel app live on port 3000'    <<<"$out" || { echo '::error::app was not reverse-proxied'; exit 1; }
+          grep -q '"capability":"app.unit_apply","outcome":"success"' <<<"$out" || { echo '::error::app.unit_apply did not succeed'; exit 1; }
+
+      - name: Authoritative DNS (BIND9 serves zones/records created via the API)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-dns.sh)
+          echo "$out"
+          grep -q 'www.example.test A  = 203.0.113.20' <<<"$out" || { echo '::error::DNS record not resolved by dig'; exit 1; }
+          grep -q '"capability":"dns.write_zone","outcome":"success"' <<<"$out" || { echo '::error::dns.write_zone did not succeed'; exit 1; }

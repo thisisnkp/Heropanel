@@ -34,6 +34,17 @@ type Site struct {
 	FpmSocket     string // php-fpm pool socket (php only)
 	PhpBin        string // php-fpm binary path (php only); OLS requires a path on
 	// the fcgi extProcessor even with autoStart 0 (external pool).
+	ProxyTarget string // "127.0.0.1:<port>" for a reverse-proxy (app) site; empty
+	// otherwise. When set, the vhost proxies "/" to the app instead of serving files.
+	ForceHTTPS bool       // redirect plain HTTP to HTTPS (opt-in; needs a cert)
+	Redirects  []Redirect // per-domain redirects, evaluated before force-HTTPS
+}
+
+// Redirect sends one of the vhost's domains to another absolute URL.
+type Redirect struct {
+	From string // the requesting host, e.g. "old.example.com"
+	To   string // an absolute URL, e.g. "https://new.example.com"
+	Code int    // 301 | 302 | 307 | 308
 }
 
 // Applier applies the desired web-server state.
@@ -72,6 +83,8 @@ func (s *Service) Apply(ctx context.Context, sites []Site) error {
 
 var tmplFuncs = template.FuncMap{
 	"join": func(domains []string) string { return strings.Join(domains, ", ") },
+	// rxescape escapes a hostname for use inside a RewriteCond regex.
+	"rxescape": func(host string) string { return strings.ReplaceAll(host, ".", `\.`) },
 }
 
 // configTmpl renders the complete OpenLiteSpeed config: per-site FastCGI
@@ -84,6 +97,12 @@ var configTmpl = template.Must(template.New("olsconfig").Funcs(tmplFuncs).Parse(
   maxConns                10
   path                    {{.PhpBin}}
   autoStart               0
+}
+{{end}}{{if .ProxyTarget}}extProcessor proxy_{{.VhostName}} {
+  type                    proxy
+  address                 {{.ProxyTarget}}
+  maxConns                100
+  respBuffer              0
 }
 {{end}}{{end}}{{range .}}virtualhost {{.VhostName}} {
   vhRoot                  {{.Home}}
@@ -104,8 +123,23 @@ var configTmpl = template.Must(template.New("olsconfig").Funcs(tmplFuncs).Parse(
   accesslog {{.LogDir}}/access.log {
     useServer             0
   }
-{{if .IsPHP}}  scriptHandler  {
+{{if or .ForceHTTPS .Redirects}}  rewrite  {
+    enable                1
+    autoLoadHtaccess      0
+    rules                 <<<END_rules
+{{range .Redirects}}RewriteCond %{HTTP_HOST} ^{{rxescape .From}}$ [NC]
+RewriteRule ^(.*)$ {{.To}}$1 [R={{.Code}},L]
+{{end}}{{if .ForceHTTPS}}RewriteCond %{HTTPS} !on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+{{end}}END_rules
+  }
+{{end}}{{if .IsPHP}}  scriptHandler  {
     add                   fcgi:hps_{{.VhostName}} php
+  }
+{{end}}{{if .ProxyTarget}}  context / {
+    type                  proxy
+    handler               proxy_{{.VhostName}}
+    addDefaultCharset     off
   }
 {{end}}}
 {{end}}listener HeroPanelHTTP {
