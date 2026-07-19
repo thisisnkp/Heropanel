@@ -2,6 +2,9 @@ package git_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -262,6 +265,66 @@ func TestRunDeployRestartsAppAfterSuccess(t *testing.T) {
 	}
 }
 
+// A rollback that does not restart the app reports success while the bad release
+// keeps serving — the worst possible outcome for the one operation an operator
+// reaches for when things are already broken. (Caught live: the FastAPI e2e
+// rolled back and kept serving v2.)
+func TestRunRollbackRestartsTheApp(t *testing.T) {
+	repo := newFakeRepo()
+	gw := &mockGW{deployResult: map[string]any{"commit": "c1"}}
+	rs := &fakeRestarter{}
+	svc := git.NewService(repo, fakeSites{ref: gitSite()}, gw).WithRestarter(rs)
+	ctx := context.Background()
+
+	if _, err := svc.SetSource(ctx, "acme-uid", git.SetSourceInput{RepoURL: "https://github.com/acme/app.git"}); err != nil {
+		t.Fatalf("set source: %v", err)
+	}
+	first, err := svc.RunDeploy(ctx, "acme-uid", git.TriggerManual, job.Noop)
+	if err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	if _, err := svc.RunDeploy(ctx, "acme-uid", git.TriggerManual, job.Noop); err != nil {
+		t.Fatalf("second deploy: %v", err)
+	}
+
+	rs.called = "" // only look at what the rollback does
+	dep, err := svc.RunRollback(ctx, "acme-uid", first.UID, job.Noop)
+	if err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if rs.called != "acme-uid" {
+		t.Fatal("the rollback did not restart the app — the old release would keep serving")
+	}
+	if !strings.Contains(dep.Log, "[app restarted]") {
+		t.Fatalf("rollback log should note the restart: %q", dep.Log)
+	}
+}
+
+// The release is already active by then, so a restart failure is recorded, not
+// fatal.
+func TestRunRollbackSurvivesARestartFailure(t *testing.T) {
+	repo := newFakeRepo()
+	gw := &mockGW{deployResult: map[string]any{"commit": "c1"}}
+	rs := &fakeRestarter{err: errx.New(errx.KindUpstream, "boom", "unit failed")}
+	svc := git.NewService(repo, fakeSites{ref: gitSite()}, gw).WithRestarter(rs)
+	ctx := context.Background()
+
+	if _, err := svc.SetSource(ctx, "acme-uid", git.SetSourceInput{RepoURL: "https://github.com/acme/app.git"}); err != nil {
+		t.Fatalf("set source: %v", err)
+	}
+	first, err := svc.RunDeploy(ctx, "acme-uid", git.TriggerManual, job.Noop)
+	if err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	dep, err := svc.RunRollback(ctx, "acme-uid", first.UID, job.Noop)
+	if err != nil {
+		t.Fatalf("a restart failure should not fail the rollback: %v", err)
+	}
+	if !strings.Contains(dep.Log, "[warn] app restart failed") {
+		t.Fatalf("the failure should be recorded in the log: %q", dep.Log)
+	}
+}
+
 func TestRunDeployMarksFailureOnBrokerError(t *testing.T) {
 	repo := newFakeRepo()
 	gw := &mockGW{failOn: "git.deploy"}
@@ -299,6 +362,68 @@ func TestVerifyWebhookConstantTime(t *testing.T) {
 	}
 	if _, err := svc.VerifyWebhook(ctx, "acme-uid", ""); !errx.IsKind(err, errx.KindForbidden) {
 		t.Fatalf("empty secret should be forbidden, got %v", err)
+	}
+}
+
+func TestVerifyWebhookGitHubSignature(t *testing.T) {
+	repo := newFakeRepo()
+	svc := git.NewService(repo, fakeSites{ref: gitSite()}, &mockGW{})
+	ctx := context.Background()
+
+	src, err := svc.SetSource(ctx, "acme-uid", git.SetSourceInput{RepoURL: "https://github.com/acme/app.git"})
+	if err != nil {
+		t.Fatalf("set source: %v", err)
+	}
+	secret := strings.TrimPrefix(src.WebhookURL, "/hooks/git/acme-uid?secret=")
+	body := []byte(`{"ref":"refs/heads/main"}`)
+
+	sign := func(s string, b []byte) string {
+		m := hmac.New(sha256.New, []byte(s))
+		m.Write(b)
+		return "sha256=" + hex.EncodeToString(m.Sum(nil))
+	}
+
+	// A correct GitHub signature over the body authorizes the deploy.
+	if _, err := svc.VerifyWebhookSigned(ctx, "acme-uid", git.WebhookProof{Body: body, GitHubSig: sign(secret, body)}); err != nil {
+		t.Fatalf("valid github signature should pass: %v", err)
+	}
+	// The signature is bound to the body: replay it against a tampered payload
+	// and it must fail (this is what a bare shared secret cannot catch).
+	if _, err := svc.VerifyWebhookSigned(ctx, "acme-uid", git.WebhookProof{Body: []byte(`{"ref":"evil"}`), GitHubSig: sign(secret, body)}); !errx.IsKind(err, errx.KindForbidden) {
+		t.Fatalf("signature over a different body must be forbidden, got %v", err)
+	}
+	// Wrong secret → wrong signature.
+	if _, err := svc.VerifyWebhookSigned(ctx, "acme-uid", git.WebhookProof{Body: body, GitHubSig: sign("wrong", body)}); !errx.IsKind(err, errx.KindForbidden) {
+		t.Fatalf("signature with the wrong secret must be forbidden, got %v", err)
+	}
+	// Malformed header (no sha256= prefix) → forbidden, not a panic.
+	if _, err := svc.VerifyWebhookSigned(ctx, "acme-uid", git.WebhookProof{Body: body, GitHubSig: hex.EncodeToString([]byte("x"))}); !errx.IsKind(err, errx.KindForbidden) {
+		t.Fatalf("malformed signature must be forbidden, got %v", err)
+	}
+}
+
+func TestVerifyWebhookGitLabToken(t *testing.T) {
+	repo := newFakeRepo()
+	svc := git.NewService(repo, fakeSites{ref: gitSite()}, &mockGW{})
+	ctx := context.Background()
+
+	src, err := svc.SetSource(ctx, "acme-uid", git.SetSourceInput{RepoURL: "https://gitlab.com/acme/app.git"})
+	if err != nil {
+		t.Fatalf("set source: %v", err)
+	}
+	secret := strings.TrimPrefix(src.WebhookURL, "/hooks/git/acme-uid?secret=")
+
+	if _, err := svc.VerifyWebhookSigned(ctx, "acme-uid", git.WebhookProof{GitLabToken: secret}); err != nil {
+		t.Fatalf("matching gitlab token should pass: %v", err)
+	}
+	if _, err := svc.VerifyWebhookSigned(ctx, "acme-uid", git.WebhookProof{GitLabToken: "nope"}); !errx.IsKind(err, errx.KindForbidden) {
+		t.Fatalf("wrong gitlab token must be forbidden, got %v", err)
+	}
+	if got := (git.WebhookProof{GitHubSig: "x"}).Kind(); got != "github_signature" {
+		t.Errorf("Kind() github = %q", got)
+	}
+	if got := (git.WebhookProof{}).Kind(); got != "none" {
+		t.Errorf("Kind() empty = %q", got)
 	}
 }
 

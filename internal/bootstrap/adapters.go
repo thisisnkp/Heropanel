@@ -130,6 +130,28 @@ func (a runtimeSiteAdapter) Resolve(ctx context.Context, siteUID string) (*runti
 	}, nil
 }
 
+// siteRuntimeAdapter adapts the runtime service to site.Runtime.
+//
+// The site service is only ever asking "is it running or not"; the runtime
+// record Control returns is of no use to it, and taking it would drag
+// runtime's concrete types across the boundary.
+type siteRuntimeAdapter struct {
+	svc *runtime.Service
+}
+
+func (a siteRuntimeAdapter) ProxyPort(ctx context.Context, siteID int64) (int, bool) {
+	return a.svc.ProxyPort(ctx, siteID)
+}
+
+func (a siteRuntimeAdapter) RemoveForSite(ctx context.Context, siteUID string) error {
+	return a.svc.RemoveForSite(ctx, siteUID)
+}
+
+func (a siteRuntimeAdapter) Control(ctx context.Context, siteUID, action string) error {
+	_, err := a.svc.Control(ctx, siteUID, action)
+	return err
+}
+
 // jobChannelAuthorizer authorizes WebSocket channel subscriptions. A principal
 // may subscribe to "job:<uid>" only if they own that job (or are an admin).
 func jobChannelAuthorizer(jobs *job.Dispatcher) ws.Authorizer {

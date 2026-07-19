@@ -3,6 +3,8 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"strconv"
+	"time"
 
 	"github.com/thisisnkp/heropanel/internal/broker"
 	"github.com/thisisnkp/heropanel/pkg/errx"
@@ -16,12 +18,15 @@ type Service struct {
 	sites   Sites
 	broker  broker.Gateway
 	reproxy func(context.Context) error // re-render the webserver (set at wiring)
+	prober  Prober
+	// readyTimeout overrides ReadyTimeout when non-zero.
+	readyTimeout time.Duration
 }
 
 // NewService constructs the runtime Service. broker may be nil (control ops then
 // report "unavailable"; reads still work).
 func NewService(repo Repo, sites Sites, gw broker.Gateway) *Service {
-	return &Service{repo: repo, sites: sites, broker: gw}
+	return &Service{repo: repo, sites: sites, broker: gw, prober: newHTTPProber()}
 }
 
 // WithReproxy sets the hook that re-renders the web server after a runtime
@@ -57,7 +62,8 @@ func (s *Service) SetRuntime(ctx context.Context, siteUID string, in SetInput) (
 	envJSON, _ := json.Marshal(in.Env)
 	rec := &Record{
 		SiteID: ref.ID, Runtime: in.Runtime, Command: in.Command,
-		Port: in.Port, Env: string(envJSON), Status: StatusRunning,
+		Port: in.Port, Env: string(envJSON), HealthPath: in.HealthPath,
+		Status: StatusRunning,
 	}
 	if err := s.repo.Upsert(ctx, rec); err != nil {
 		return nil, err
@@ -75,6 +81,12 @@ func (s *Service) SetRuntime(ctx context.Context, siteUID string, in SetInput) (
 		_ = s.repo.SetStatus(ctx, ref.ID, StatusError)
 		return nil, err
 	}
+
+	// systemd reporting "started" only means the process was forked. When a
+	// health path is configured, wait for the app to actually answer before
+	// claiming it is running.
+	rec.Status = statusFor(s.waitHealthy(ctx, rec), StatusRunning)
+	_ = s.repo.SetStatus(ctx, ref.ID, rec.Status)
 
 	// Re-render the web server so the vhost proxies to the app.
 	if s.reproxy != nil {
@@ -127,6 +139,9 @@ func (s *Service) Control(ctx context.Context, siteUID, action string) (*Runtime
 	status := StatusRunning
 	if action == "stop" {
 		status = StatusStopped
+	} else {
+		// A start/restart is only "running" once the app answers for itself.
+		status = statusFor(s.waitHealthy(ctx, rec), StatusRunning)
 	}
 	_ = s.repo.SetStatus(ctx, ref.ID, status)
 	rec.Status = status
@@ -141,7 +156,8 @@ func (s *Service) RestartForSite(ctx context.Context, siteUID string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.repo.GetBySiteID(ctx, ref.ID); err != nil {
+	rec, err := s.repo.GetBySiteID(ctx, ref.ID)
+	if err != nil {
 		return nil // no runtime configured; nothing to restart
 	}
 	if s.broker == nil {
@@ -153,8 +169,24 @@ func (s *Service) RestartForSite(ctx context.Context, siteUID string) error {
 		_ = s.repo.SetStatus(ctx, ref.ID, StatusError)
 		return err
 	}
-	_ = s.repo.SetStatus(ctx, ref.ID, StatusRunning)
+
+	// A deploy that builds fine but crashes the app on boot is a very common
+	// failure. Surface it as an error on the deploy rather than a green light.
+	h := s.waitHealthy(ctx, rec)
+	_ = s.repo.SetStatus(ctx, ref.ID, statusFor(h, StatusRunning))
+	if h != nil && !h.Healthy {
+		return errx.New(errx.KindUpstream, "app_unhealthy",
+			"The app restarted but did not pass its health check: "+healthReason(h))
+	}
 	return nil
+}
+
+// healthReason renders the most useful line about a failed probe.
+func healthReason(h *Health) string {
+	if h.Error != "" {
+		return h.Error
+	}
+	return "HTTP " + strconv.Itoa(h.StatusCode)
 }
 
 // ProxyPort returns the reverse-proxy port for a site if a runtime is
@@ -191,6 +223,7 @@ func toView(r *Record) *Runtime {
 	}
 	return &Runtime{
 		UID: r.UID, Runtime: r.Runtime, Command: r.Command, Port: r.Port,
-		Env: env, Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Env: env, HealthPath: r.HealthPath, Status: r.Status,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }

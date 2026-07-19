@@ -43,10 +43,15 @@ api -X POST $base/api/v1/sites/$uid/git/deploy >/dev/null
 echo "current -> $(readlink $site/current)"
 
 sec "SET RUNTIME (writes hardened unit, starts Node as the site user, reproxies vhost)"
+# The app serves /healthz, so the panel can verify it is actually up rather than
+# trusting systemd's "started".
 cat >/tmp/rt.json <<'EOF'
-{"runtime":"node","command":"node -e \"require('http').createServer((q,r)=>r.end('HeroPanel app live on port '+process.env.PORT+' pid '+process.pid)).listen(process.env.PORT,'127.0.0.1')\"","port":3000,"env":{"NODE_ENV":"production"}}
+{"runtime":"node","command":"node -e \"require('http').createServer((q,r)=>r.end('HeroPanel app live on port '+process.env.PORT+' pid '+process.pid)).listen(process.env.PORT,'127.0.0.1')\"","port":3000,"env":{"NODE_ENV":"production"},"health_path":"/healthz"}
 EOF
 api -X PUT $base/api/v1/sites/$uid/runtime -H 'Content-Type: application/json' --data @/tmp/rt.json; echo
+
+sec "*** HEALTH CHECK — the panel probes the app itself ***"
+api $base/api/v1/sites/$uid/runtime/health; echo
 
 sec "generated systemd unit"
 sed -n '1,20p' /etc/systemd/system/heropanel-app-hps1.service 2>&1
@@ -64,6 +69,16 @@ sec "RESTART the app (new pid), curl again"
 api -X POST $base/api/v1/sites/$uid/runtime/restart; echo
 /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
 echo -n "after restart: "; curl -s -H 'Host: app.test' http://127.0.0.1/; echo
+
+sec "*** A CRASHING APP MUST REPORT error, NOT running ***"
+# systemd reporting "started" says nothing about whether the app works. Point the
+# runtime at a command that exits immediately: without a probe the panel would
+# happily call this green.
+cat >/tmp/bad.json <<'EOF'
+{"runtime":"node","command":"node -e \"process.exit(1)\"","port":3000,"env":{},"health_path":"/healthz"}
+EOF
+api -X PUT $base/api/v1/sites/$uid/runtime -H 'Content-Type: application/json' --data @/tmp/bad.json | grep -oE '"status":"[a-z]+"'
+echo -n "health of the crashed app: "; api $base/api/v1/sites/$uid/runtime/health | grep -oE '"healthy":(true|false)'
 
 sec "broker audit (app.unit_apply / app.unit_control outcomes)"
 grep -oE '"capability":"app\.unit_[a-z]+","outcome":"[^"]+"' /tmp/broker.log

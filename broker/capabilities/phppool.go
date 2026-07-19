@@ -57,19 +57,41 @@ func (PHPWritePool) Execute(c capability.Context, raw json.RawMessage) (capabili
 		return capability.Result{}, errx.Upstream(err, "pool_write_failed", "Could not write the PHP pool config.")
 	}
 
-	service := fmt.Sprintf("php%s-fpm", in.Version)
+	restore := func() {
+		if hadPrior {
+			_ = c.FS.WriteFile(path, prior, 0o644)
+		} else {
+			_ = c.FS.Remove(path)
+		}
+	}
+
+	// Config-test before reloading — the same reload-first discipline as
+	// webserver.apply, and it matters more here. One FPM master serves every site
+	// on a PHP version, and it re-reads *all* pool files on SIGUSR2. A pool this
+	// site made invalid does not fail this site's reload; it stops the master
+	// coming back, and every other site on that version goes down with it. `-t`
+	// asks php-fpm whether it would accept the config while the running master is
+	// still untouched.
 	res, err := c.Runner.Run(c.Ctx, exec.Command{
+		Path:    fmt.Sprintf("/usr/sbin/php-fpm%s", in.Version),
+		Args:    []string{"-t"},
+		Timeout: 20 * time.Second,
+	})
+	if err != nil || res.ExitCode != 0 {
+		restore()
+		return capability.Result{}, errx.New(errx.KindValidation, "fpm_config_invalid",
+			"PHP-FPM rejected the pool configuration; the change was rolled back.")
+	}
+
+	service := fmt.Sprintf("php%s-fpm", in.Version)
+	res, err = c.Runner.Run(c.Ctx, exec.Command{
 		Path:    systemctlPath,
 		Args:    []string{"reload", service},
 		Timeout: 30 * time.Second,
 	})
 	if err != nil || res.ExitCode != 0 {
 		// Roll back the pool config on reload failure.
-		if hadPrior {
-			_ = c.FS.WriteFile(path, prior, 0o644)
-		} else {
-			_ = c.FS.Remove(path)
-		}
+		restore()
 		return capability.Result{}, errx.New(errx.KindUpstream, "fpm_reload_failed",
 			"Reloading PHP-FPM failed; the pool change was rolled back.")
 	}

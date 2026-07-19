@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/domain"
 )
 
@@ -36,6 +37,8 @@ func addDomainHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
+		audit.AddDetail(r.Context(), "fqdn", req.FQDN)
+		audit.AddDetail(r.Context(), "kind", req.Kind)
 		out, err := d.Domains.Add(r.Context(), chi.URLParam(r, "uid"), domain.AddInput{
 			FQDN: req.FQDN, Kind: req.Kind, RedirectTo: req.RedirectTo, RedirectCode: req.RedirectCode,
 		})
@@ -43,6 +46,7 @@ func addDomainHandler(d Deps) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
+		audit.AddDetail(r.Context(), "domain_uid", out.UID)
 		writeJSON(w, r, http.StatusCreated, out)
 	}
 }

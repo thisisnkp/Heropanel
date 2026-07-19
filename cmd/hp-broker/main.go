@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"os/user"
 	"strconv"
 	"syscall"
 
@@ -68,7 +69,14 @@ func runServe(socket string) error {
 	enc := json.NewEncoder(os.Stderr)
 	chain := audit.NewChain(func(e audit.Entry) error { return enc.Encode(e) })
 
-	b := broker.New(broker.DefaultRegistry(), policy.Default(), chain, exec.OSRunner{}, log)
+	pol := policy.Default()
+	// The account hpd runs as is a deployment fact: a packager may install under
+	// a different name, and a test harness may run the panel as root.
+	if v := os.Getenv("HP_BROKER_PANEL_USER"); v != "" {
+		pol.PanelUser = v
+	}
+
+	b := broker.New(broker.DefaultRegistry(), pol, chain, exec.OSRunner{}, log)
 	srv := transport.NewServer(b, token, log)
 	if v := os.Getenv("HP_BROKER_ALLOWED_UID"); v != "" {
 		if uid, err := strconv.Atoi(v); err == nil {
@@ -85,6 +93,22 @@ func runServe(socket string) error {
 	}
 	if err := os.Chmod(socket, 0o660); err != nil {
 		log.Warn("could not chmod broker socket", "err", err)
+	}
+	// Give the socket to the panel user's group so the unprivileged core (which
+	// runs as pol.PanelUser, not root) can connect through the 0660 mode. Without
+	// this the socket is root:root and privilege separation would wall hpd off
+	// from the very broker it must call. Best-effort: on a dev/test host that
+	// account may not exist, in which case we leave the mode as-is.
+	if pu := pol.EffectivePanelUser(); pu != "" {
+		if u, err := user.Lookup(pu); err == nil {
+			if gid, err := strconv.Atoi(u.Gid); err == nil {
+				if err := os.Chown(socket, 0, gid); err != nil {
+					log.Warn("could not set broker socket group to panel group", "user", pu, "err", err)
+				}
+			}
+		} else {
+			log.Debug("panel user not found; leaving broker socket group unchanged", "user", pu)
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

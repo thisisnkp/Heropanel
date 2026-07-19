@@ -25,8 +25,8 @@ func newTestDB(t *testing.T) *repository.DB {
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if applied != 10 {
-		t.Fatalf("applied %d migrations, want 10", applied)
+	if applied != 17 {
+		t.Fatalf("applied %d migrations, want 17", applied)
 	}
 	return db
 }
@@ -39,7 +39,7 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 	want := []string{"users", "roles", "permissions", "role_permissions",
 		"user_roles", "sessions", "api_keys", "audit_log", "settings", "jobs",
 		"schema_migrations", "git_sources", "git_deployments", "app_runtimes",
-		"dns_zones", "dns_records"}
+		"dns_zones", "dns_records", "db_sso_sessions", "site_limits"}
 	for _, table := range want {
 		var name string
 		err := db.GetContext(ctx, &name,

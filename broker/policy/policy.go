@@ -26,6 +26,15 @@ type Policy struct {
 	// UIDMin is the minimum uid permitted for created system users, keeping
 	// panel-created site users out of the system/reserved range.
 	UIDMin int
+
+	// PanelUser is the unprivileged account hpd runs as. Capabilities that hand a
+	// file back to the panel (a database export, say) chown it to this user, so
+	// the panel never needs a root file handle.
+	//
+	// It is policy rather than a constant because the account name is a
+	// deployment fact, not a property of the broker: a packager may install under
+	// a different name, and a test harness runs hpd as root.
+	PanelUser string
 }
 
 // Default returns a conservative starting policy for a single-node install.
@@ -37,13 +46,23 @@ func Default() Policy {
 			"system_user.delete":   true,
 			"site.create_dirs":     true,
 			"site.remove_dirs":     true,
+			"site.apply_slice":     true,
+			"site.remove_slice":    true,
+			"site.read_log":        true,
+			"site.copy_tree":       true,
 			"webserver.apply":      true,
 			"php.write_pool":       true,
+			"php.list_extensions":  true,
+			"php.set_extension":    true,
 			"db.create":            true,
 			"db.drop":              true,
 			"db.user.create":       true,
 			"db.user.drop":         true,
 			"db.grant":             true,
+			"db.revoke":            true,
+			"db.size":              true,
+			"db.export":            true,
+			"db.import":            true,
 			"cert.install":         true,
 			"cert.write_challenge": true,
 			"git.deploy":           true,
@@ -60,7 +79,17 @@ func Default() Policy {
 		},
 		PathRoots: []string{"/srv/heropanel/sites"},
 		UIDMin:    20000,
+		PanelUser: "heropanel",
 	}
+}
+
+// EffectivePanelUser returns the account hpd runs as, falling back to the
+// default when the policy leaves it unset.
+func (p Policy) EffectivePanelUser() string {
+	if p.PanelUser == "" {
+		return "heropanel"
+	}
+	return p.PanelUser
 }
 
 // CapabilityEnabled reports whether the named capability may run.

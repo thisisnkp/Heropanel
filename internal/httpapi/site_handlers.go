@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/site"
 )
@@ -49,6 +50,9 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 			OwnerID:       p.UserID,
 		}
 
+		audit.AddDetail(r.Context(), "primary_domain", req.PrimaryDomain)
+		audit.AddDetail(r.Context(), "type", req.Type)
+
 		if d.Jobs != nil {
 			// Reject bad input up front, then enqueue.
 			if err := site.ValidateInput(&in); err != nil {
@@ -60,6 +64,11 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 				writeError(w, r, err)
 				return
 			}
+			// The site does not exist yet, so there is no uid to file this under.
+			// Record the job instead: it is the thread that ties this request to
+			// whatever the worker — and then the broker's own chain — went on to
+			// do. See docs/05 §9 on async coverage.
+			audit.AddDetail(r.Context(), "job", j.UID)
 			writeJSON(w, r, http.StatusAccepted, map[string]any{"job": toJobView(j)})
 			return
 		}
@@ -69,6 +78,7 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
+		audit.SetResource(r.Context(), "sites", out.UID)
 		writeJSON(w, r, http.StatusCreated, out)
 	}
 }
@@ -82,6 +92,90 @@ func getSiteHandler(d Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// suspendSiteHandler takes a site offline. Gated by "site.write".
+func suspendSiteHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.Sites.Suspend(r.Context(), chi.URLParam(r, "uid"))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// resumeSiteHandler returns a suspended site to service. Gated by "site.write".
+func resumeSiteHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.Sites.Resume(r.Context(), chi.URLParam(r, "uid"))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// siteLogsHandler tails a site's access or error log. Gated by "site.read".
+func siteLogsHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		kind := r.URL.Query().Get("kind")
+		if kind == "" {
+			kind = site.LogAccess
+		}
+		out, err := d.Sites.Logs(r.Context(), chi.URLParam(r, "uid"), kind,
+			atoiDefault(r.URL.Query().Get("lines"), site.DefaultLogLines))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// cloneSiteHandler copies a site into a new one. Gated by "site.write". Async
+// when the queue is available (202 + job): copying a real document root takes
+// minutes, which no HTTP request survives.
+func cloneSiteHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		var req struct {
+			Name          string `json:"name"`
+			PrimaryDomain string `json:"primary_domain"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		in := site.CloneInput{
+			SourceUID:     chi.URLParam(r, "uid"),
+			Name:          req.Name,
+			PrimaryDomain: req.PrimaryDomain,
+			OwnerID:       p.UserID,
+		}
+		audit.AddDetail(r.Context(), "source_uid", in.SourceUID)
+		audit.AddDetail(r.Context(), "primary_domain", in.PrimaryDomain)
+
+		if d.Jobs != nil {
+			j, err := d.Jobs.Enqueue(r.Context(), "site.clone", p.UserID, in)
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			audit.AddDetail(r.Context(), "job", j.UID)
+			writeJSON(w, r, http.StatusAccepted, map[string]any{"job": toJobView(j)})
+			return
+		}
+
+		out, err := d.Sites.Clone(r.Context(), in)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.AddDetail(r.Context(), "clone_uid", out.UID)
+		writeJSON(w, r, http.StatusCreated, out)
 	}
 }
 

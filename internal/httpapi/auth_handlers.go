@@ -4,8 +4,21 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 )
+
+// auditLoginActor files an authentication under the account it authenticated,
+// rather than under "anonymous". The edge cannot infer this: authenticate() runs
+// before the handler and finds no session, because minting the session is what
+// the request is for.
+func auditLoginActor(r *http.Request, p *auth.Principal) {
+	if p == nil {
+		return
+	}
+	audit.SetActor(r.Context(), p.UserID, audit.ActorUser)
+	audit.SetResource(r.Context(), "users", p.UserUID)
+}
 
 // decodeJSON decodes the request body into dst, writing a 400 on failure.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
@@ -28,11 +41,15 @@ func bootstrapHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
+		audit.AddDetail(r.Context(), "email", req.Email)
 		p, err := d.Auth.Bootstrap(r.Context(), req.Email, req.Username, req.Password)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
+		// The very first entry in the chain: the creation of the account that
+		// owns everything after it.
+		auditLoginActor(r, p)
 		writeJSON(w, r, http.StatusCreated, p)
 	}
 }
@@ -65,15 +82,24 @@ func loginHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
+		// Record the address the login was for, on success *and* failure: a run
+		// of failures against one account is the signal that matters, and it is
+		// invisible if only successful logins name their subject. The password is
+		// never touched here — not even its length.
+		audit.AddDetail(r.Context(), "email", req.Email)
+
 		res, err := d.Auth.Login(r.Context(), req.Email, req.Password, clientIP(r), r.UserAgent())
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
 		if res.MFARequired {
+			audit.SetActor(r.Context(), res.Principal.UserID, audit.ActorUser)
+			audit.AddDetail(r.Context(), "mfa_required", true)
 			writeJSON(w, r, http.StatusOK, map[string]any{"mfa_required": true, "mfa_token": res.MFAToken})
 			return
 		}
+		auditLoginActor(r, res.Principal)
 		setSessionCookie(w, res.SessionToken, d.Auth.SessionCookieMaxAge(), secure)
 		setCSRFCookie(w, d.Auth.SessionCookieMaxAge(), secure)
 		writeJSON(w, r, http.StatusOK, res.Principal)
@@ -96,6 +122,7 @@ func mfaCompleteHandler(d Deps) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
+		auditLoginActor(r, res.Principal)
 		setSessionCookie(w, res.SessionToken, d.Auth.SessionCookieMaxAge(), secure)
 		setCSRFCookie(w, d.Auth.SessionCookieMaxAge(), secure)
 		writeJSON(w, r, http.StatusOK, res.Principal)

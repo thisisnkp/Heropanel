@@ -11,6 +11,11 @@ interface NavItem {
 const items: NavItem[] = [
   { to: "/", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   { to: "/sites", label: "Websites", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M2 12a10 10 0 0120 0" },
+  { to: "/databases", label: "Databases", icon: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" },
+  { to: "/dns", label: "DNS", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M12 2a10 10 0 010 20" },
+  { to: "/ssl", label: "SSL", icon: "M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6zM9 12l2 2 4-4" },
+  { to: "/audit", label: "Audit log", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5" },
+  { to: "/modules", label: "Modules", icon: "M4 4h7v7H4zM13 4h7v7h-7zM13 13h7v7h-7zM4 13h7v7H4z" },
   { to: "/users", label: "Users", icon: "M16 14a4 4 0 10-8 0M12 7a3 3 0 100 6 3 3 0 000-6M4 20a8 8 0 0116 0" },
 ];
 

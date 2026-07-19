@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/dns"
 )
@@ -37,6 +38,7 @@ func createZoneHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
+		audit.AddDetail(r.Context(), "zone", req.Name)
 		zone, err := d.DNS.CreateZone(r.Context(), dns.CreateZoneInput{
 			OwnerID: p.UserID, Name: req.Name, PrimaryNS: req.PrimaryNS, AdminEmail: req.AdminEmail, NSIP: req.NSIP,
 		})
@@ -44,6 +46,7 @@ func createZoneHandler(d Deps) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
+		audit.SetResource(r.Context(), "dns", zone.UID)
 		writeJSON(w, r, http.StatusCreated, zone)
 	}
 }
@@ -99,6 +102,9 @@ func createRecordHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
+		audit.AddDetail(r.Context(), "record", req.Name)
+		audit.AddDetail(r.Context(), "type", req.Type)
+		audit.AddDetail(r.Context(), "content", req.Content)
 		rec, err := d.DNS.AddRecord(r.Context(), chi.URLParam(r, "uid"), dns.AddRecordInput{
 			Name: req.Name, Type: req.Type, Content: req.Content, TTL: req.TTL, Priority: req.Priority,
 		})
@@ -106,6 +112,7 @@ func createRecordHandler(d Deps) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
+		audit.AddDetail(r.Context(), "record_uid", rec.UID)
 		writeJSON(w, r, http.StatusCreated, rec)
 	}
 }

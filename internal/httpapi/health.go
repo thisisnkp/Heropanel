@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"runtime"
 	"time"
+
+	"github.com/thisisnkp/heropanel/pkg/arch"
 )
 
 // healthHandler is a liveness probe: 200 while the process is up. It uses a
@@ -70,7 +72,7 @@ func systemInfoHandler(d Deps) http.HandlerFunc {
 			"version":        d.Version,
 			"go":             runtime.Version(),
 			"os":             runtime.GOOS,
-			"arch":           runtime.GOARCH,
+			"arch":           string(arch.Current()), // normalized to HeroPanel's naming
 			"cpus":           runtime.NumCPU(),
 			"started_at":     d.StartedAt.UTC().Format(time.RFC3339),
 			"uptime_seconds": int(time.Since(d.StartedAt).Seconds()),

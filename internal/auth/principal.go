@@ -8,6 +8,17 @@ import "context"
 // wildcard is the superuser permission: a principal holding it passes any check.
 const wildcard = "*"
 
+// Kind identifies how a principal authenticated. The audit log records it, so a
+// human session and a long-lived programmatic key are never conflated — "the
+// admin deleted the database" and "a CI key deleted the database" are different
+// events with different follow-ups.
+type Kind string
+
+const (
+	KindUser   Kind = "user"
+	KindAPIKey Kind = "apikey"
+)
+
 // Principal is the authenticated identity attached to a request. It is safe to
 // cache (JSON-serializable) for the short lifetime of a session lookup.
 type Principal struct {
@@ -16,6 +27,7 @@ type Principal struct {
 	Email       string   `json:"email"`
 	Username    string   `json:"username"`
 	DisplayName string   `json:"display_name"`
+	Kind        Kind     `json:"kind"`
 	Permissions []string `json:"permissions"`
 }
 

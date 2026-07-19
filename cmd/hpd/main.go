@@ -13,6 +13,7 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/bootstrap"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/pkg/logx"
 )
 
@@ -23,6 +24,7 @@ func main() {
 	var (
 		configPath  = flag.String("config", envOr("HP_CONFIG", "/etc/heropanel/config.yaml"), "path to config file")
 		showVersion = flag.Bool("version", false, "print version and exit")
+		migrate     = flag.Bool("migrate", false, "run datastore migrations and exit")
 	)
 	flag.Parse()
 
@@ -53,6 +55,30 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// --migrate is a one-shot: open the datastore, apply migrations, and exit.
+	// The installer's db.migrate step calls this so the schema is in place before
+	// the service starts; it is also handy operationally for an out-of-band
+	// upgrade. Running the full daemon migrates on boot anyway (bootstrap.New).
+	if *migrate {
+		if !repository.Configured(cfg.Database) {
+			fmt.Fprintln(os.Stderr, "hpd: --migrate requires a configured datastore")
+			os.Exit(1)
+		}
+		db, err := repository.Open(cfg.Database)
+		if err != nil {
+			log.Error("migrate: open datastore", "err", err)
+			os.Exit(1)
+		}
+		defer func() { _ = db.Close() }()
+		applied, err := repository.Migrate(ctx, db)
+		if err != nil {
+			log.Error("migrate failed", "err", err)
+			os.Exit(1)
+		}
+		log.Info("migrations applied", "count", applied, "dialect", db.Dialect)
+		return
+	}
 
 	app, err := bootstrap.New(ctx, cfg, log, version)
 	if err != nil {

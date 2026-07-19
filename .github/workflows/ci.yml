@@ -47,15 +47,31 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Ensure embed dir
-        run: |
-          mkdir -p web/dist
-          [ -f web/dist/index.html ] || echo '<!doctype html><title>HeroPanel</title>' > web/dist/index.html
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: Build linux binaries
+      # Build the real SPA so it is embedded via //go:embed all:dist — run-ui.sh
+      # asserts hpd serves the built bundle, not a placeholder.
+      - name: Build frontend
         run: |
-          GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hpd ./cmd/hpd
-          GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hp-broker ./cmd/hp-broker
+          cd web
+          npm ci
+          npm run build
+
+      - name: Build linux binaries (amd64 + arm64)
+        run: |
+          for arch in amd64 arm64; do
+            for b in hpd hp-broker hp-installer; do
+              CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -o bin/linux-$arch/$b ./cmd/$b
+            done
+          done
+
+      # Enable qemu so the arm64 binaries can be smoke-tested under emulation.
+      - name: Set up qemu (for arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Build e2e image (OLS + php-fpm + MariaDB)
         run: docker build -t heropanel-e2e -f deploy/docker/e2e/Dockerfile deploy/docker/e2e
@@ -83,12 +99,157 @@ jobs:
           grep -q 'after rollback:  <h1>v1'           <<<"$out" || { echo '::error::rollback did not revert the release'; exit 1; }
           grep -q '"capability":"git.rollback","outcome":"success"' <<<"$out" || { echo '::error::git.rollback did not succeed'; exit 1; }
 
+      - name: Private Git repo over SSH (panel-generated deploy key, real sshd)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git-private.sh)
+          echo "$out"
+          grep -q 'private key absent from API response: OK'  <<<"$out" || { echo '::error::the private key leaked into the API response'; exit 1; }
+          grep -q 'private key sealed at rest'                <<<"$out" || { echo '::error::the deploy key was stored in the clear'; exit 1; }
+          grep -q 'priv.test -> 200 <h1>private repo via HeroPanel</h1>' <<<"$out" || { echo '::error::the private repo was not deployed'; exit 1; }
+          grep -q 'no credential material left on /run: OK'   <<<"$out" || { echo '::error::credential material survived the deploy'; exit 1; }
+          grep -q '"capability":"git.deploy","outcome":"success"' <<<"$out" || { echo '::error::git.deploy did not succeed'; exit 1; }
+          grep -q 'wrong pin rejected: OK'   <<<"$out" || { echo '::error::a wrong pinned host key was not rejected under strict checking'; exit 1; }
+          grep -q 'correct pin deploy: success' <<<"$out" || { echo '::error::a correctly pinned host key did not allow the deploy'; exit 1; }
+
+      - name: Token/HTTPS clone against a real HTTPS git server (private-CA TLS)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git-token.sh)
+          echo "$out"
+          grep -q 'run-git-token.sh : PASS' <<<"$out" || { echo '::error::the token/HTTPS clone path failed'; exit 1; }
+
+      - name: Laravel-shaped app (private repo + Composer + MariaDB) and the database suite
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php-app.sh)
+          echo "$out"
+          grep -q 'composer dependency: loaded'  <<<"$out" || { echo '::error::Composer did not install the dependency'; exit 1; }
+          grep -q 'db row: hello from mariadb'   <<<"$out" || { echo '::error::the app could not reach the panel-created database'; exit 1; }
+          grep -q 'dependency present on disk: OK' <<<"$out" || { echo '::error::vendor/ was not produced'; exit 1; }
+          grep -q 'dump is gzip: OK'             <<<"$out" || { echo '::error::the export was not a gzip'; exit 1; }
+          grep -q 'server-side dump cleaned up: OK' <<<"$out" || { echo '::error::the export was left on the server'; exit 1; }
+          grep -q 'restored title:    hello from mariadb' <<<"$out" || { echo '::error::the import did not restore the data'; exit 1; }
+          grep -q 'grants after revoke: 0'       <<<"$out" || { echo '::error::revoke did not remove the grant'; exit 1; }
+          grep -q '"capability":"db.export","outcome":"success"' <<<"$out" || { echo '::error::db.export did not succeed'; exit 1; }
+          grep -q '"capability":"db.import","outcome":"success"' <<<"$out" || { echo '::error::db.import did not succeed'; exit 1; }
+          grep -q '"capability":"db.revoke","outcome":"success"' <<<"$out" || { echo '::error::db.revoke did not succeed'; exit 1; }
+
+      - name: PHP tuning — sizing / php.ini editor / OPcache / extensions on real php-fpm
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php-tuning.sh)
+          echo "$out"
+          # The php.ini editor and OPcache toggle, observed in a served phpinfo.
+          grep -q 'ok   php.ini override is live'  <<<"$out" || { echo '::error::php.ini override did not take effect'; exit 1; }
+          grep -q 'ok   memory_limit is live'      <<<"$out" || { echo '::error::memory_limit did not take effect'; exit 1; }
+          grep -q 'ok   OPcache turned off is live' <<<"$out" || { echo '::error::OPcache toggle did not take effect'; exit 1; }
+          # Two independent guards against a pool that would down every site on
+          # the version: hpd validation, and php-fpm -t before the reload.
+          grep -q 'ok   invalid sizing refused by the API'       <<<"$out" || { echo '::error::invalid FPM sizing was not rejected'; exit 1; }
+          grep -q 'ok   site still serving the last good config' <<<"$out" || { echo '::error::a rejected change disrupted the running site'; exit 1; }
+          # The pool file is where a site is confined; a value must not escape it.
+          grep -q 'ok   newline-injection refused' <<<"$out" || { echo '::error::a php.ini value could break out of its directive'; exit 1; }
+          grep -q 'ok   open_basedir not settable' <<<"$out" || { echo '::error::a confinement directive was settable'; exit 1; }
+          # The extension manager, proven by a real FPM restart + served phpinfo.
+          grep -q 'ok   disabling an extension is live in a served phpinfo' <<<"$out" || { echo '::error::disabling an extension had no effect'; exit 1; }
+          grep -q 'ok   re-enabling an extension is live' <<<"$out" || { echo '::error::re-enabling an extension had no effect'; exit 1; }
+          grep -q 'run-php-tuning.sh : PASS' <<<"$out" || { echo '::error::run-php-tuning.sh failed'; exit 1; }
+
+      - name: Site lifecycle — suspend / resume / clone / logs on real OpenLiteSpeed
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-lifecycle.sh)
+          echo "$out"
+          # Suspension is a claim about real OLS routing: a suspended site keeps
+          # its vhost so its domains cannot fall through to the first vhost —
+          # i.e. to another customer's site.
+          grep -q 'ok   suspended site returns 503' <<<"$out" || { echo '::error::a suspended site did not 503'; exit 1; }
+          grep -q 'ok   suspended domain did NOT fall through to the other site' <<<"$out" || { echo '::error::a suspended domain was served by another site'; exit 1; }
+          grep -q 'ok   the other site is untouched'  <<<"$out" || { echo '::error::suspending one site broke another'; exit 1; }
+          grep -q 'ok   resumed site serves again'    <<<"$out" || { echo '::error::resume did not restore the site'; exit 1; }
+          # Logs: 0750 and owned by the site user, so only the broker can read them.
+          grep -q 'ok   access log is readable through the broker' <<<"$out" || { echo '::error::site logs could not be read'; exit 1; }
+          grep -q 'ok   an unknown log kind is refused' <<<"$out" || { echo '::error::the log kind allowlist did not hold'; exit 1; }
+          # Clone: a separate site, and its files must belong to *its* user.
+          grep -q 'ok   clone content was copied' <<<"$out" || { echo '::error::the clone has no content'; exit 1; }
+          grep -q "ok   cloned content is owned by the clone's user, not the source's" <<<"$out" || { echo '::error::the clone shares the source user — the sites are not isolated'; exit 1; }
+          grep -q 'ok   source site still serves' <<<"$out" || { echo '::error::cloning broke the source site'; exit 1; }
+          grep -q 'run-lifecycle.sh : PASS' <<<"$out" || { echo '::error::run-lifecycle.sh failed'; exit 1; }
+
+      - name: Embedded SPA served + every UI page has a live endpoint
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-ui.sh)
+          echo "$out"
+          grep -q 'ok   it is the built bundle'          <<<"$out" || { echo '::error::the built SPA is not embedded in hpd'; exit 1; }
+          grep -q 'ok   deep links fall through to the SPA' <<<"$out" || { echo '::error::client-side routing deep links 404'; exit 1; }
+          grep -q 'ok   capabilities returned'            <<<"$out" || { echo '::error::the capability set endpoint is missing'; exit 1; }
+          grep -q 'ok   modules show running'             <<<"$out" || { echo '::error::in-core modules did not register'; exit 1; }
+          grep -q 'ok   php tab'                          <<<"$out" || { echo '::error::a site-detail facet has no endpoint'; exit 1; }
+          grep -q 'run-ui.sh : PASS'                      <<<"$out" || { echo '::error::run-ui.sh failed'; exit 1; }
+
+      - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-audit.sh)
+          echo "$out"
+          # The only suite that runs hpd's control-plane store on MariaDB, so it
+          # is also the only thing exercising the mysql migrations at all.
+          grep -q 'ok   all 15 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
+          # The chain must verify against the engine that ships, not just SQLite:
+          # MariaDB pads DATETIME(6) to six digits and the hash covers the stored bytes.
+          grep -q 'ok   chain intact on MariaDB'   <<<"$out" || { echo '::error::the audit chain does not verify on MariaDB'; exit 1; }
+          grep -q 'ok   six fractional digits'     <<<"$out" || { echo '::error::created_at did not round-trip as DATETIME(6)'; exit 1; }
+          grep -q 'ok   tampering detected'        <<<"$out" || { echo '::error::a row edited in SQL was not detected'; exit 1; }
+          # Coverage: mutations in, reads out, disclosure-heavy reads back in.
+          grep -q 'ok   database create recorded'  <<<"$out" || { echo '::error::a mutation was not audited'; exit 1; }
+          grep -q 'ok   denied attempt recorded'   <<<"$out" || { echo '::error::a refused request was not audited'; exit 1; }
+          grep -q 'ok   plain GET added no row'    <<<"$out" || { echo '::error::reads are being audited'; exit 1; }
+          grep -q 'ok   export forced a row'       <<<"$out" || { echo '::error::the export was not audited'; exit 1; }
+          # Secrets must never reach a table that is meant to be exported.
+          grep -q 'ok   password never recorded'   <<<"$out" || { echo '::error::a password reached the audit log'; exit 1; }
+          grep -q 'run-audit.sh : PASS'            <<<"$out" || { echo '::error::run-audit.sh failed'; exit 1; }
+
+      - name: FastAPI app via Git — auto-deploy (webhook) + rollback + cgroup slice
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-fastapi.sh)
+          echo "$out"
+          # The python runtime, on a real venv built from a real requirements.txt.
+          grep -q 'uvicorn installed in the release venv: OK' <<<"$out" || { echo '::error::the venv build did not produce uvicorn'; exit 1; }
+          grep -q 'api.test -> {"app":"fastapi","version":"v1"}' <<<"$out"   || { echo '::error::FastAPI was not reverse-proxied'; exit 1; }
+          # Auto-deploy: git push + the webhook, no panel session.
+          grep -q 'after webhook  -> {"app":"fastapi","version":"v2"}' <<<"$out" || { echo '::error::the webhook did not auto-deploy the push'; exit 1; }
+          grep -q '"trigger":"webhook"' <<<"$out"                          || { echo '::error::no webhook-triggered deployment was recorded'; exit 1; }
+          grep -q 'signed valid signature: OK'    <<<"$out" || { echo '::error::a valid GitHub HMAC signature was not accepted'; exit 1; }
+          grep -q 'tampered signature denied: OK'  <<<"$out" || { echo '::error::a tampered webhook signature was not rejected'; exit 1; }
+          grep -q 'audit proof kinds:.*github_signature' <<<"$out" || { echo '::error::the webhook proof kind was not audited'; exit 1; }
+          # Rollback has to actually restart the app, or the bad release keeps serving.
+          grep -q 'after rollback -> {"app":"fastapi","version":"v1"}' <<<"$out" || { echo '::error::rollback did not put the old release back in service'; exit 1; }
+          # The app must run inside its site slice, and limits must reach it.
+          grep -q 'Slice=heropanel-site-hps1.slice' <<<"$out"              || { echo '::error::the app unit is not in its site slice'; exit 1; }
+          grep -q 'CPUQuota=50%'                    <<<"$out"              || { echo '::error::the site slice did not get its CPU limit'; exit 1; }
+          grep -q 'MemoryMax=536870912'             <<<"$out"              || { echo '::error::the site slice did not get its memory limit'; exit 1; }
+
+      - name: Next.js app via Git (async job path — a real build cannot finish inside a request)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-nextjs.sh)
+          echo "$out"
+          grep -q 'job queue enabled'              <<<"$out" || { echo '::error::the queue was not enabled'; exit 1; }
+          grep -q 'next build output present: OK'  <<<"$out" || { echo '::error::next build did not produce .next'; exit 1; }
+          grep -q 'Next.js live via HeroPanel'     <<<"$out" || { echo '::error::the Next.js app was not served'; exit 1; }
+          grep -qi 'x-powered-by: Next.js'         <<<"$out" || { echo '::error::next start is not serving'; exit 1; }
+
+      - name: Go app via Git (compiled as the unprivileged site user)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-go.sh)
+          echo "$out"
+          grep -q 'compiled binary present: OK'          <<<"$out" || { echo '::error::go build did not produce a binary'; exit 1; }
+          grep -q 'binary is owned by the site user: hps1' <<<"$out" || { echo '::error::the binary is not owned by the site user'; exit 1; }
+          grep -q 'Go app live via HeroPanel pid'        <<<"$out" || { echo '::error::the Go app was not reverse-proxied'; exit 1; }
+
       - name: App runtime (git-deployed Node app reverse-proxied by OpenLiteSpeed)
         run: |
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-app.sh)
           echo "$out"
           grep -q 'HeroPanel app live on port 3000'    <<<"$out" || { echo '::error::app was not reverse-proxied'; exit 1; }
           grep -q '"capability":"app.unit_apply","outcome":"success"' <<<"$out" || { echo '::error::app.unit_apply did not succeed'; exit 1; }
+          grep -q '"healthy":true'                     <<<"$out" || { echo '::error::the health probe did not pass for a live app'; exit 1; }
+          # systemd "started" is not "working": a crashing app must report error.
+          grep -q '"status":"error"'                   <<<"$out" || { echo '::error::a crashing app was not reported as unhealthy'; exit 1; }
 
       - name: Authoritative DNS (BIND9 serves zones/records created via the API)
         run: |
@@ -106,3 +267,39 @@ jobs:
           grep -q 'acme.test (force)  -> 301 Location: https://acme.test/'  <<<"$out" || { echo '::error::force-HTTPS did not redirect'; exit 1; }
           grep -q 'acme.test (off)    -> 200'                               <<<"$out" || { echo '::error::force-HTTPS off did not serve'; exit 1; }
           grep -q 'alias dropped from map: OK'                              <<<"$out" || { echo '::error::deleted alias still mapped'; exit 1; }
+
+      # The installer runs on a *fresh* distro image (not heropanel-e2e) so it
+      # proves cross-distro package management. Once on apt (Ubuntu), once on dnf
+      # (Rocky): each does a real execute → resume → rollback and confirms the
+      # panel comes up.
+      - name: Real ACME HTTP-01 issuance against Pebble (a live test CA)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-acme.sh)
+          echo "$out"
+          grep -q 'run-acme.sh : PASS' <<<"$out" || { echo '::error::real ACME issuance against Pebble failed'; exit 1; }
+
+      - name: Installer execute/resume/rollback on Ubuntu (apt)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" ubuntu:24.04 bash /e2e/run-installer.sh)
+          echo "$out"
+          grep -q 'run-installer.sh : PASS' <<<"$out" || { echo '::error::installer failed on Ubuntu'; exit 1; }
+
+      - name: Installer execute/resume/rollback on Rocky (dnf)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" rockylinux:9 bash /e2e/run-installer.sh)
+          echo "$out"
+          grep -q 'run-installer.sh : PASS' <<<"$out" || { echo '::error::installer failed on Rocky'; exit 1; }
+
+      # arm64 is a first-class target: prove the cross-compiled binaries run on
+      # aarch64 (arch detection, the SQLite driver + every migration, the broker
+      # self-check) under qemu, on both distro families. A full emulated apt/dnf
+      # install would mostly re-test the emulator; the install logic itself is
+      # arch-agnostic and already proven on amd64 above.
+      - name: arm64 smoke on Ubuntu + Rocky (qemu)
+        run: |
+          for img in ubuntu:24.04 rockylinux:9; do
+            echo "=== arm64 smoke on $img ==="
+            out=$(docker run --rm --platform linux/arm64 -v "$PWD/bin/linux-arm64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" "$img" bash /e2e/run-arch-smoke.sh)
+            echo "$out"
+            grep -q 'run-arch-smoke.sh : PASS' <<<"$out" || { echo "::error::arm64 smoke failed on $img"; exit 1; }
+          done

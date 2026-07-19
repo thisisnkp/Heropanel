@@ -11,7 +11,11 @@ import (
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
-type mockGateway struct{ calls []call }
+type mockGateway struct {
+	calls   []call
+	results map[string]map[string]any // canned results per capability
+	failOn  string
+}
 type call struct {
 	capability string
 	input      map[string]any
@@ -20,9 +24,26 @@ type call struct {
 func (m *mockGateway) Invoke(_ context.Context, c string, input any) (map[string]any, error) {
 	in, _ := input.(map[string]any)
 	m.calls = append(m.calls, call{c, in})
+	if m.results != nil {
+		if res, ok := m.results[c]; ok {
+			return res, nil
+		}
+	}
+	if m.failOn == c {
+		return nil, errx.New(errx.KindUpstream, "boom", "simulated broker failure")
+	}
 	return map[string]any{"ok": true}, nil
 }
 func (m *mockGateway) Health(context.Context) error { return nil }
+
+func (m *mockGateway) last(capability string) *call {
+	for i := len(m.calls) - 1; i >= 0; i-- {
+		if m.calls[i].capability == capability {
+			return &m.calls[i]
+		}
+	}
+	return nil
+}
 
 func newSvc(t *testing.T) (*database.Service, *mockGateway) {
 	t.Helper()
@@ -39,6 +60,27 @@ func newSvc(t *testing.T) (*database.Service, *mockGateway) {
 		&repository.User{Email: "o@x.com", Username: "o"})
 	gw := &mockGateway{}
 	return database.NewService(repository.NewDatabaseStore(dbh), gw), gw
+}
+
+// newSSOSvc is newSvc with the Adminer hand-off wired, and hands back the store
+// so a test can inspect what the sweeper will see.
+func newSSOSvc(t *testing.T) (*database.Service, *mockGateway, *repository.DatabaseStore) {
+	t.Helper()
+	dsn := filepath.Join(t.TempDir(), "db.db")
+	dbh, err := repository.Open(config.Database{Driver: "sqlite", DSN: dsn})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = dbh.Close() })
+	if _, err := repository.Migrate(context.Background(), dbh); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	_ = repository.NewUserRepository(dbh).Create(context.Background(),
+		&repository.User{Email: "o@x.com", Username: "o"})
+	store := repository.NewDatabaseStore(dbh)
+	gw := &mockGateway{}
+	svc := database.NewService(store, gw).WithAdminer("https://panel.test/adminer/", store)
+	return svc, gw, store
 }
 
 func TestCreateDatabaseAndUserAndGrant(t *testing.T) {

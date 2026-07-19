@@ -164,3 +164,92 @@ func TestRenderConfigMultiSite(t *testing.T) {
 		}
 	}
 }
+
+// ── suspension ──────────────────────────────────────────────────────────────
+
+func TestRenderConfigSuspendedKeepsTheDomainMapping(t *testing.T) {
+	s := staticSite()
+	s.Suspended = true
+	cfg, err := webserver.RenderConfig([]webserver.Site{s})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	// The mapping is the whole point. OpenLiteSpeed answers an unrecognized Host
+	// with its first vhost, so an unmapped suspended domain would be served by
+	// somebody else's site.
+	if !strings.Contains(cfg, "map                     hps1 acme.example.com") {
+		t.Fatalf("suspended site lost its domain mapping:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "virtualhost hps1 {") {
+		t.Fatalf("suspended site lost its vhost:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "RewriteRule ^(.*)$ - [R=503,L]") {
+		t.Fatalf("suspended site does not return 503:\n%s", cfg)
+	}
+}
+
+func TestRenderConfigSuspendedPHPSiteCannotExecute(t *testing.T) {
+	s := staticSite()
+	s.IsPHP = true
+	s.FpmSocket = "/run/heropanel/php/hps1.sock"
+	s.PhpBin = "/usr/lib/php/8.3/php-fpm"
+	s.Suspended = true
+
+	cfg, err := webserver.RenderConfig([]webserver.Site{s})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	// A suspended site that still has a script handler is one .php request away
+	// from running the code the suspension was meant to stop.
+	if strings.Contains(cfg, "scriptHandler") {
+		t.Fatalf("suspended PHP site still has a script handler:\n%s", cfg)
+	}
+	if strings.Contains(cfg, "extProcessor hps_hps1") {
+		t.Fatalf("suspended PHP site still wires its FPM pool:\n%s", cfg)
+	}
+}
+
+func TestRenderConfigSuspendedProxySiteIsNotProxied(t *testing.T) {
+	s := staticSite()
+	s.ProxyTarget = "127.0.0.1:3000"
+	s.Suspended = true
+
+	cfg, err := webserver.RenderConfig([]webserver.Site{s})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(cfg, "proxy_hps1") {
+		t.Fatalf("suspended proxy site still forwards to its app:\n%s", cfg)
+	}
+}
+
+// Suspension overrides redirects and force-HTTPS: sending a suspended site's
+// visitor onward would defeat the wall.
+func TestRenderConfigSuspensionOverridesRedirects(t *testing.T) {
+	s := staticSite()
+	s.ForceHTTPS = true
+	s.Redirects = []webserver.Redirect{{From: "old.example.com", To: "https://new.example.com", Code: 301}}
+	s.Suspended = true
+
+	cfg, err := webserver.RenderConfig([]webserver.Site{s})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(cfg, "R=301") {
+		t.Fatalf("suspended site still redirects:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "R=503") {
+		t.Fatalf("suspended site does not 503:\n%s", cfg)
+	}
+}
+
+// An active site must be untouched by any of the above.
+func TestRenderConfigActiveSiteHasNo503(t *testing.T) {
+	cfg, err := webserver.RenderConfig([]webserver.Site{staticSite()})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(cfg, "R=503") {
+		t.Fatalf("an active site rendered a 503 wall:\n%s", cfg)
+	}
+}

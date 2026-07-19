@@ -141,3 +141,64 @@ func (s *DatabaseStore) InsertGrant(ctx context.Context, dbUserID, dbInstanceID 
 	}
 	return nil
 }
+
+// DeleteUser removes a database user's record. Its grants go with it via the
+// db_grants foreign key.
+func (s *DatabaseStore) DeleteUser(ctx context.Context, uid string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM db_users WHERE uid = ?`, uid); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// DeleteGrant removes the recorded grant for a user/database pair.
+func (s *DatabaseStore) DeleteGrant(ctx context.Context, dbUserID, dbInstanceID int64) error {
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM db_grants WHERE db_user_id = ? AND db_instance_id = ?`,
+		dbUserID, dbInstanceID); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// ── Adminer/phpMyAdmin hand-off sessions ─────────────────────────────────────
+
+const ssoSessionCols = `id, uid, db_instance_id, username, created_at, expires_at`
+
+// InsertSSOSession records a hand-off account so the sweeper can drop it later.
+func (s *DatabaseStore) InsertSSOSession(ctx context.Context, r *database.SSOSessionRecord) error {
+	if r.UID == "" {
+		r.UID = idgen.NewULID()
+	}
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO db_sso_sessions (uid, db_instance_id, username, expires_at) VALUES (?, ?, ?, ?)`,
+		r.UID, r.DBInstanceID, r.Username, r.ExpiresAt)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if id, err := res.LastInsertId(); err == nil {
+		r.ID = id
+	}
+	return nil
+}
+
+// ListExpiredSSOSessions returns the sessions whose accounts are due to be
+// dropped. `now` is formatted by the caller so the comparison is a plain string
+// compare that behaves identically on SQLite TEXT and MariaDB DATETIME.
+func (s *DatabaseStore) ListExpiredSSOSessions(ctx context.Context, now string) ([]database.SSOSessionRecord, error) {
+	var recs []database.SSOSessionRecord
+	if err := s.db.SelectContext(ctx, &recs,
+		`SELECT `+ssoSessionCols+` FROM db_sso_sessions WHERE expires_at <= ? ORDER BY id LIMIT 500`,
+		now); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return recs, nil
+}
+
+// DeleteSSOSession removes a hand-off session record.
+func (s *DatabaseStore) DeleteSSOSession(ctx context.Context, uid string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM db_sso_sessions WHERE uid = ?`, uid); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}

@@ -52,11 +52,17 @@ type Domains interface {
 }
 
 // Runtime is the app-runtime facet the site service consults: the reverse-proxy
-// port for a proxy site, and unit removal during de-provisioning. Implemented by
-// internal/runtime (the site service stays off that concrete type).
+// port for a proxy site, unit removal during de-provisioning, and start/stop for
+// suspension. Implemented by internal/runtime (the site service stays off that
+// concrete type).
 type Runtime interface {
 	ProxyPort(ctx context.Context, siteID int64) (int, bool)
 	RemoveForSite(ctx context.Context, siteUID string) error
+	// Control starts/stops/restarts a site's app process. Suspension uses it:
+	// a 503 in the vhost is a curtain, not a stop — behind it the app would keep
+	// running, keep holding memory, and keep reaching the network and its
+	// database. A suspended site must not be able to do work.
+	Control(ctx context.Context, siteUID, action string) error
 }
 
 // Service creates and manages sites. Privileged effects (Linux user, directory
@@ -143,6 +149,16 @@ func (s *Service) RunCreate(ctx context.Context, in CreateInput, p job.Progress)
 		return nil, err
 	}
 
+	// Every site gets its cgroup slice up front, with accounting on and no caps.
+	// The slice has to exist before anything is placed in it — the app unit names
+	// it in `Slice=` — and the accounting is what lets an operator see a site's
+	// real CPU/memory use before deciding what to limit.
+	p.Report(60, "creating resource slice")
+	if err := s.applySlice(ctx, linuxUser, Limits{}); err != nil {
+		_ = s.repo.UpdateStatus(ctx, id, string(StatusError))
+		return nil, err
+	}
+
 	// PHP sites get a dedicated FPM pool (default version) before serving.
 	if in.Type == TypePHP && s.php != nil {
 		p.Report(70, "configuring PHP")
@@ -207,12 +223,17 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 	var sites []webserver.Site
 	for i := range recs {
 		r := recs[i]
-		if r.Status != string(StatusActive) && r.ID != includeID {
+		// Suspended sites stay in the config. They render as a 503 wall
+		// (webserver.Site.Suspended) precisely so their domains remain mapped
+		// here instead of falling through to whichever vhost happens to be first.
+		serving := r.Status == string(StatusActive) || r.Status == string(StatusSuspended)
+		if !serving && r.ID != includeID {
 			continue
 		}
 		if !r.LinuxUser.Valid {
 			continue
 		}
+		suspended := r.Status == string(StatusSuspended)
 		isPHP := r.Type == string(TypePHP)
 		fpmSocket, phpBin := "", ""
 		if isPHP {
@@ -241,6 +262,7 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 			ProxyTarget:   proxyTarget,
 			ForceHTTPS:    forceHTTPS,
 			Redirects:     redirects,
+			Suspended:     suspended,
 		})
 	}
 	return s.web.Apply(ctx, sites)
@@ -297,13 +319,20 @@ func (s *Service) phpVersion(ctx context.Context, siteID int64) string {
 	return php.DefaultVersion
 }
 
-// PHPView is the API view of a site's PHP configuration.
+// PHPView is the API view of a site's PHP configuration: the version selector,
+// the FPM sizing, the allowlisted php.ini overrides, and OPcache — everything
+// that renders into the site's one pool file.
 type PHPView struct {
-	Version       string `json:"version"`
-	SocketPath    string `json:"socket_path"`
-	PM            string `json:"pm"`
-	MaxChildren   int    `json:"pm_max_children"`
-	MemoryLimitMB int    `json:"memory_limit_mb"`
+	Version       string            `json:"version"`
+	SocketPath    string            `json:"socket_path"`
+	MemoryLimitMB int               `json:"memory_limit_mb"`
+	FPM           php.FPM           `json:"fpm"`
+	INI           map[string]string `json:"ini"`
+	OPcache       php.OPcache       `json:"opcache"`
+	// AllowedINI is the set of directives that may appear in INI. The UI builds
+	// its editor from this instead of carrying its own copy, which would drift
+	// from the server's allowlist and offer fields that are always rejected.
+	AllowedINI []string `json:"allowed_ini"`
 }
 
 // GetPHP returns the PHP pool configuration for a PHP site.
@@ -347,13 +376,53 @@ func (s *Service) SetPHPVersion(ctx context.Context, uid, version string) (*PHPV
 	return phpView(pool), nil
 }
 
+// SetPHPSettings replaces a site's whole PHP configuration.
+//
+// It is a full replace rather than a patch, because it maps onto a file that is
+// rewritten whole: a field the caller omits means "default", not "leave as-is".
+// Anything else would make the pool on disk depend on the order of past
+// requests. Callers that want to change one thing read the current settings,
+// change it, and send the envelope back.
+func (s *Service) SetPHPSettings(ctx context.Context, uid string, settings php.Settings) (*PHPView, error) {
+	rec, err := s.phpSite(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := s.php.ApplySettings(ctx, php.PoolRequest{
+		SiteID: rec.ID, User: rec.LinuxUser.String, Home: rec.HomeDir.String,
+		DocumentRoot: rec.DocumentRoot, Version: settings.Version,
+	}, settings)
+	if err != nil {
+		return nil, err
+	}
+	return phpView(pool), nil
+}
+
+// phpSite loads a site and refuses anything that is not a PHP site.
+func (s *Service) phpSite(ctx context.Context, uid string) (*Record, error) {
+	rec, err := s.repo.GetByUID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	if rec.Type != string(TypePHP) {
+		return nil, errx.Validation("not_a_php_site", "This site is not a PHP site.")
+	}
+	if s.php == nil {
+		return nil, errx.New(errx.KindUnavailable, "php_unavailable", "PHP management is not available.")
+	}
+	return rec, nil
+}
+
 func phpView(p *php.PoolRecord) *PHPView {
+	s := php.SettingsOf(p)
 	return &PHPView{
-		Version:       p.PHPVersion,
+		Version:       s.Version,
 		SocketPath:    p.SocketPath,
-		PM:            p.PM,
-		MaxChildren:   p.MaxChildren,
-		MemoryLimitMB: p.MemoryLimitMB,
+		MemoryLimitMB: s.MemoryLimitMB,
+		FPM:           s.FPM,
+		INI:           s.INI,
+		OPcache:       s.OPcache,
+		AllowedINI:    php.AllowedINIKeys(),
 	}
 }
 
@@ -377,6 +446,82 @@ func (s *Service) List(ctx context.Context, ownerID int64, limit, offset int) ([
 		out[i] = *toView(&recs[i])
 	}
 	return out, nil
+}
+
+// Suspend takes a site offline without destroying anything.
+//
+// It is the lever an operator pulls for non-payment or abuse, so it has to be
+// both immediate and completely reversible: the files, the database, the Linux
+// user and the vhost all survive, and Resume puts it back exactly as it was.
+//
+// Two things happen, and both are needed. The vhost re-renders as a 503 wall
+// (its domains stay mapped here — see webserver.Site.Suspended for why removing
+// it would be worse than useless), and a proxy site's app process is stopped. A
+// suspended app that keeps running would still burn the CPU and memory the
+// suspension was meant to reclaim, and still reach its database and the network.
+func (s *Service) Suspend(ctx context.Context, uid string) (*Site, error) {
+	return s.setSuspension(ctx, uid, true)
+}
+
+// Resume returns a suspended site to service.
+func (s *Service) Resume(ctx context.Context, uid string) (*Site, error) {
+	return s.setSuspension(ctx, uid, false)
+}
+
+func (s *Service) setSuspension(ctx context.Context, uid string, suspend bool) (*Site, error) {
+	rec, err := s.repo.GetByUID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	want, from := StatusSuspended, StatusActive
+	if !suspend {
+		want, from = StatusActive, StatusSuspended
+	}
+	if rec.Status == string(want) {
+		return toView(rec), nil // idempotent: already where the caller wants it
+	}
+	// Only a healthy site may be suspended, and only a suspended one resumed.
+	// Suspending a half-provisioned or errored site would write a status that
+	// hides why it is actually broken.
+	if rec.Status != string(from) {
+		return nil, errx.New(errx.KindConflict, "site_status_conflict",
+			"This site is "+rec.Status+"; only an "+string(from)+" site can be "+
+				map[bool]string{true: "suspended", false: "resumed"}[suspend]+".")
+	}
+
+	if err := s.repo.UpdateStatus(ctx, rec.ID, string(want)); err != nil {
+		return nil, err
+	}
+	// The web server is told after the row, not before: applyWebserver reads the
+	// status back out of the repo to decide what to render.
+	if err := s.applyWebserver(ctx, 0); err != nil {
+		// Put the status back. A site recorded as suspended while still serving
+		// is the one outcome worse than a failed suspension, because the panel
+		// would report it as handled.
+		_ = s.repo.UpdateStatus(ctx, rec.ID, rec.Status)
+		return nil, err
+	}
+	s.controlApp(ctx, rec, suspend)
+
+	rec.Status = string(want)
+	return toView(rec), nil
+}
+
+// controlApp stops or starts a proxy site's app process alongside a suspension.
+//
+// A failure here is deliberately not fatal. The site is already walled off at
+// the web server, which is what the operator asked for; refusing the whole
+// operation because a unit would not stop would leave the site serving.
+func (s *Service) controlApp(ctx context.Context, rec *Record, suspend bool) {
+	if s.runtime == nil || rec.Type != string(TypeProxy) {
+		return
+	}
+	action := "start"
+	if suspend {
+		action = "stop"
+	}
+	_ = s.runtime.Control(ctx, rec.UID, action)
 }
 
 // Delete soft-deletes and de-provisions a site synchronously.
@@ -419,6 +564,16 @@ func (s *Service) deprovision(ctx context.Context, rec *Record, p job.Progress) 
 	if s.runtime != nil {
 		if err := s.runtime.RemoveForSite(ctx, rec.UID); err != nil {
 			return fmt.Errorf("remove app runtime: %w", err)
+		}
+	}
+	// Tear the slice down after the unit inside it is gone, so nothing is left
+	// pointing at a cgroup that no longer exists.
+	if rec.LinuxUser.Valid {
+		p.Report(60, "removing resource slice")
+		if _, err := s.broker.Invoke(ctx, "site.remove_slice", map[string]any{
+			"vhost": rec.LinuxUser.String,
+		}); err != nil {
+			return fmt.Errorf("remove site slice: %w", err)
 		}
 	}
 	p.Report(70, "removing system user")

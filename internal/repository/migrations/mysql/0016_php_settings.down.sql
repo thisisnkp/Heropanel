@@ -1,0 +1,9 @@
+ALTER TABLE php_pools
+    DROP COLUMN opcache_jit,
+    DROP COLUMN opcache_enabled,
+    DROP COLUMN ini_overrides,
+    DROP COLUMN pm_idle_timeout_sec,
+    DROP COLUMN pm_max_requests,
+    DROP COLUMN pm_max_spare_servers,
+    DROP COLUMN pm_min_spare_servers,
+    DROP COLUMN pm_start_servers;

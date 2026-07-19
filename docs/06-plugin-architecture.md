@@ -2,6 +2,19 @@
 
 The whole product is composed of **modules**. Some are compiled into the core (cheap, always-on essentials); heavy/optional ones are **independent processes** installed and supervised on demand. This document defines the contract that makes "install / enable / disable / restart / update independently" real.
 
+> **Implementation status (Phase 0 skeleton).** The **contract** exists and is
+> exercised in-process; the **gRPC transport does not exist yet** and is Phase
+> 9/10. What is built: [`pkg/proto`](../pkg/proto) (the manifest + lifecycle
+> types as plain Go, §2–3), [`pkg/plugin`](../pkg/plugin) (the `Module`/`Core`
+> interfaces and a `Handler` that enforces the API-version stamp, the capability
+> allowlist, and shutdown, §5), and [`internal/registry`](../internal/registry)
+> (the live capability set + module states, §6). In-core features register as
+> Providers through the same interface a satellite process will, so the registry
+> already drives real feature-gating (`GET /api/v1/capabilities`,
+> `GET /api/v1/modules`) — the wire is the only thing deferred. This is
+> ADR-0007's transport-agnostic discipline applied to modules: the types the
+> registry reasons about do not change when gRPC lands; gRPC just serializes them.
+
 ## 1. Two module tiers
 
 | Tier | Where it runs | Examples | Rationale |

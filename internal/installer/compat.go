@@ -1,5 +1,7 @@
 package installer
 
+import "github.com/thisisnkp/heropanel/pkg/arch"
+
 // Verdict is the overall compatibility outcome.
 type Verdict string
 
@@ -18,8 +20,6 @@ type Report struct {
 
 // minRAM is the floor below which we recommend the minimal/SQLite profile.
 const minRAM = 1 << 30 // 1 GiB
-
-var supportedArch = map[string]bool{"amd64": true, "arm64": true, "386": true}
 
 // supportedDistro reports whether a distro is fully supported (vs. best-effort).
 func supportedDistro(id string) (supported, bestEffort bool) {
@@ -40,7 +40,7 @@ func Compatibility(p Profile) Report {
 	if p.OS != "linux" {
 		r.Blocks = append(r.Blocks, "unsupported operating system: "+p.OS+" (Linux is required)")
 	}
-	if !supportedArch[p.Arch] {
+	if !arch.Arch(p.Arch).Supported() {
 		r.Blocks = append(r.Blocks, "unsupported CPU architecture: "+p.Arch)
 	}
 	if p.OS == "linux" && !p.HasSystemd {

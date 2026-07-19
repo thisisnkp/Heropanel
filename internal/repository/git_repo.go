@@ -19,25 +19,30 @@ func NewGitStore(db *DB) *GitStore { return &GitStore{db: db} }
 
 var _ git.Repo = (*GitStore)(nil)
 
-const gitSourceCols = `id, uid, site_id, repo_url, branch, build_command, web_root, webhook_secret, created_at, updated_at`
+const gitSourceCols = `id, uid, site_id, repo_url, branch, build_command, web_root, webhook_secret,
+	auth_kind, auth_username, credential_enc, public_key, host_key, auto_composer, created_at, updated_at`
 
 // UpsertSource writes the site's single Git source. It updates in place when one
 // exists (a site has at most one source) and inserts otherwise, then reloads the
 // row so uid/timestamps are populated. Dialect-agnostic (no ON CONFLICT).
 func (s *GitStore) UpsertSource(ctx context.Context, r *git.SourceRecord) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE git_sources SET repo_url = ?, branch = ?, build_command = ?, web_root = ?, webhook_secret = ?, updated_at = ?
+		`UPDATE git_sources SET repo_url = ?, branch = ?, build_command = ?, web_root = ?, webhook_secret = ?,
+			auth_kind = ?, auth_username = ?, credential_enc = ?, public_key = ?, host_key = ?, auto_composer = ?, updated_at = ?
 		 WHERE site_id = ?`,
-		r.RepoURL, r.Branch, r.BuildCommand, r.WebRoot, r.WebhookSecret, fmtTS(time.Now()), r.SiteID)
+		r.RepoURL, r.Branch, r.BuildCommand, r.WebRoot, r.WebhookSecret,
+		r.AuthKind, r.AuthUsername, r.CredentialEnc, r.PublicKey, r.HostKey, r.AutoComposer, fmtTS(time.Now()), r.SiteID)
 	if err != nil {
 		return errx.Internal(err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		r.UID = idgen.NewULID()
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO git_sources (uid, site_id, repo_url, branch, build_command, web_root, webhook_secret)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			r.UID, r.SiteID, r.RepoURL, r.Branch, r.BuildCommand, r.WebRoot, r.WebhookSecret); err != nil {
+			`INSERT INTO git_sources (uid, site_id, repo_url, branch, build_command, web_root, webhook_secret,
+				auth_kind, auth_username, credential_enc, public_key, host_key, auto_composer)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.UID, r.SiteID, r.RepoURL, r.Branch, r.BuildCommand, r.WebRoot, r.WebhookSecret,
+			r.AuthKind, r.AuthUsername, r.CredentialEnc, r.PublicKey, r.HostKey, r.AutoComposer); err != nil {
 			return errx.Wrap(err, errx.KindConflict, "git_source_exists", "A Git source already exists for this site.")
 		}
 	}

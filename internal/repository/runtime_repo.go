@@ -19,24 +19,24 @@ func NewRuntimeStore(db *DB) *RuntimeStore { return &RuntimeStore{db: db} }
 
 var _ runtime.Repo = (*RuntimeStore)(nil)
 
-const runtimeCols = `id, uid, site_id, runtime, command, port, env, status, created_at, updated_at`
+const runtimeCols = `id, uid, site_id, runtime, command, port, env, health_path, status, created_at, updated_at`
 
 // Upsert writes the site's single runtime, updating in place when present. It
 // reloads the row so uid/timestamps are populated. Dialect-agnostic.
 func (s *RuntimeStore) Upsert(ctx context.Context, r *runtime.Record) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE app_runtimes SET runtime = ?, command = ?, port = ?, env = ?, status = ?, updated_at = ?
+		`UPDATE app_runtimes SET runtime = ?, command = ?, port = ?, env = ?, health_path = ?, status = ?, updated_at = ?
 		 WHERE site_id = ?`,
-		r.Runtime, r.Command, r.Port, r.Env, r.Status, fmtTS(time.Now()), r.SiteID)
+		r.Runtime, r.Command, r.Port, r.Env, r.HealthPath, r.Status, fmtTS(time.Now()), r.SiteID)
 	if err != nil {
 		return errx.Internal(err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		r.UID = idgen.NewULID()
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO app_runtimes (uid, site_id, runtime, command, port, env, status)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			r.UID, r.SiteID, r.Runtime, r.Command, r.Port, r.Env, r.Status); err != nil {
+			`INSERT INTO app_runtimes (uid, site_id, runtime, command, port, env, health_path, status)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.UID, r.SiteID, r.Runtime, r.Command, r.Port, r.Env, r.HealthPath, r.Status); err != nil {
 			return errx.Wrap(err, errx.KindConflict, "runtime_exists", "A runtime already exists for this site.")
 		}
 	}

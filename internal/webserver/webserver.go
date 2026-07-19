@@ -38,6 +38,16 @@ type Site struct {
 	// otherwise. When set, the vhost proxies "/" to the app instead of serving files.
 	ForceHTTPS bool       // redirect plain HTTP to HTTPS (opt-in; needs a cert)
 	Redirects  []Redirect // per-domain redirects, evaluated before force-HTTPS
+	// Suspended renders the vhost as a 503 wall: the domains stay mapped here,
+	// but nothing is served and no PHP or app process is reachable.
+	//
+	// A suspended site keeps its vhost rather than being dropped from the config,
+	// and that is not cosmetic. OpenLiteSpeed routes a request by the listener's
+	// domain map and falls back to the *first* vhost for a host it does not
+	// recognize. Omitting a suspended site would unmap its domains — and start
+	// answering them with whichever site happens to be first, i.e. serving one
+	// customer's content on another customer's domain.
+	Suspended bool
 }
 
 // Redirect sends one of the vhost's domains to another absolute URL.
@@ -91,14 +101,14 @@ var tmplFuncs = template.FuncMap{
 // handlers (server-level), inline virtual hosts, and the listener with its
 // domain map.
 var configTmpl = template.Must(template.New("olsconfig").Funcs(tmplFuncs).Parse(
-	`{{range .}}{{if .IsPHP}}extProcessor hps_{{.VhostName}} {
+	`{{range .}}{{if and .IsPHP (not .Suspended)}}extProcessor hps_{{.VhostName}} {
   type                    fcgi
   address                 uds://{{.FpmSocket}}
   maxConns                10
   path                    {{.PhpBin}}
   autoStart               0
 }
-{{end}}{{if .ProxyTarget}}extProcessor proxy_{{.VhostName}} {
+{{end}}{{if and .ProxyTarget (not .Suspended)}}extProcessor proxy_{{.VhostName}} {
   type                    proxy
   address                 {{.ProxyTarget}}
   maxConns                100
@@ -123,7 +133,14 @@ var configTmpl = template.Must(template.New("olsconfig").Funcs(tmplFuncs).Parse(
   accesslog {{.LogDir}}/access.log {
     useServer             0
   }
-{{if or .ForceHTTPS .Redirects}}  rewrite  {
+{{if .Suspended}}  rewrite  {
+    enable                1
+    autoLoadHtaccess      0
+    rules                 <<<END_rules
+RewriteRule ^(.*)$ - [R=503,L]
+END_rules
+  }
+{{else}}{{if or .ForceHTTPS .Redirects}}  rewrite  {
     enable                1
     autoLoadHtaccess      0
     rules                 <<<END_rules
@@ -141,7 +158,7 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
     handler               proxy_{{.VhostName}}
     addDefaultCharset     off
   }
-{{end}}}
+{{end}}{{end}}}
 {{end}}listener HeroPanelHTTP {
   address                 *:80
   secure                  0

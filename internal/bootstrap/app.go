@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	icache "github.com/thisisnkp/heropanel/internal/cache"
@@ -25,6 +26,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
+	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
@@ -33,6 +35,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/ws"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
 	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/heropanel/pkg/secrets"
 )
 
 // App holds the wired application, its HTTP server, and owned resources.
@@ -103,11 +106,32 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Info("broker gateway configured", "socket", cfg.Broker.Socket)
 	}
 
+	// The master key that seals the *_enc columns (Git credentials today). An
+	// operator who has not set one gets a working panel minus the features that
+	// must store a secret at rest — those report "unavailable" rather than
+	// silently keeping the secret in the clear.
+	cipher, err := secrets.FromBase64(cfg.Security.SecretKey)
+	if err != nil {
+		_ = cacheWiring.Close()
+		_ = l1.Close()
+		if db != nil {
+			_ = db.Close()
+		}
+		return nil, fmt.Errorf("bootstrap: secret key: %w", err)
+	}
+	if cipher.Configured() {
+		log.Info("secret encryption enabled")
+	} else {
+		log.Warn("no security.secret_key set — private Git repositories are disabled")
+	}
+
 	// Services are available only with a datastore. Seed baseline RBAC
 	// (idempotent), then construct the auth and site services.
 	var authSvc *auth.Service
+	var auditSvc *audit.Service
 	var userDir httpapi.UserDirectory
 	var siteSvc *site.Service
+	var phpSvc *php.Service
 	var dbSvc *database.Service
 	var sslSvc *ssl.Service
 	var gitSvc *git.Service
@@ -126,26 +150,36 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig()).
 			WithAPIKeys(repository.NewAPIKeyRepository(db))
+		auditSvc = audit.NewService(repository.NewAuditRepository(db))
 		userDir = &userDirectoryAdapter{repo: users}
 		siteStore := repository.NewSiteStore(db)
 		runtimeSvc = runtime.NewService(repository.NewRuntimeStore(db), runtimeSiteAdapter{repo: siteStore}, gw)
 		domainSvc = domain.NewService(repository.NewDomainStore(db), domainSiteAdapter{repo: siteStore})
+		phpSvc = php.NewService(repository.NewPHPPoolStore(db), gw)
 		siteSvc = site.NewService(site.Deps{
 			Repo:    siteStore,
 			Broker:  gw,
 			Web:     webserver.NewService(gw),
-			PHP:     php.NewService(repository.NewPHPPoolStore(db), gw),
-			Runtime: runtimeSvc,
+			PHP:     phpSvc,
+			Runtime: siteRuntimeAdapter{svc: runtimeSvc},
 			Domains: siteDomainsAdapter{svc: domainSvc},
 		})
 		// The runtime re-renders the vhost (as a proxy) after a runtime change;
 		// the domain service re-renders it after an alias/redirect/force-HTTPS change.
 		runtimeSvc.WithReproxy(siteSvc.ReapplyWebserver)
 		domainSvc.WithReapply(siteSvc.ReapplyWebserver)
-		dbSvc = database.NewService(repository.NewDatabaseStore(db), gw)
+		dbStore := repository.NewDatabaseStore(db)
+		dbSvc = database.NewService(dbStore, gw)
+		if cfg.Database.AdminerURL != "" {
+			// Hand-off signs in with a throwaway account, so it needs somewhere to
+			// record what to drop later.
+			dbSvc.WithAdminer(cfg.Database.AdminerURL, dbStore)
+			log.Info("database client hand-off enabled", "url", cfg.Database.AdminerURL)
+		}
 		dnsSvc = dns.NewService(repository.NewDNSStore(db), gw)
 		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw).
-			WithRestarter(runtimeSvc) // auto-restart a proxy app after each deploy
+			WithRestarter(runtimeSvc). // auto-restart a proxy app after each deploy
+			WithSecrets(cipher)        // enables private repos (token / deploy key)
 
 		// SSL: self-signed and custom uploads always available; Let's Encrypt
 		// (ACME) enabled only when an account email is configured.
@@ -164,6 +198,38 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
 
+	// The module registry. In-core features register the capabilities they
+	// provide — but only the ones actually wired (their datastore is present) —
+	// so the set the UI gates on reflects what this hpd can really do, not what
+	// the binary was compiled with. Satellite modules (Phase 9/10) will Register
+	// here at enable time over the same interface.
+	reg := registry.New()
+	if db != nil {
+		type incore struct {
+			slug string
+			caps []string
+			on   bool
+		}
+		for _, m := range []incore{
+			{"sites", []string{"site.manage", "site.php", "site.limits", "site.logs"}, siteSvc != nil},
+			{"php", []string{"php.pool", "php.extensions"}, phpSvc != nil},
+			{"databases", []string{"database.manage", "database.export", "database.adminer"}, dbSvc != nil},
+			{"git", []string{"git.deploy", "git.rollback"}, gitSvc != nil},
+			{"runtime", []string{"runtime.app", "runtime.health"}, runtimeSvc != nil},
+			{"ssl", []string{"ssl.issue", "ssl.dns01"}, sslSvc != nil},
+			{"dns", []string{"dns.zone", "dns.record"}, dnsSvc != nil},
+			{"domains", []string{"domain.alias", "domain.redirect"}, domainSvc != nil},
+			{"audit", []string{"audit.read", "audit.verify"}, auditSvc != nil},
+		} {
+			if !m.on {
+				continue
+			}
+			if err := reg.Register(ctx, registry.NewInCore(m.slug, m.caps...)); err != nil {
+				log.Warn("could not register in-core module", "slug", m.slug, "err", err)
+			}
+		}
+	}
+
 	// Async job queue (requires a datastore and Redis). When absent, site
 	// operations run synchronously in the request.
 	var jobs *job.Dispatcher
@@ -175,6 +241,17 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				return nil, err
 			}
 			s, err := siteSvc.RunCreate(ctx, in, p)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"site_uid": s.UID}, nil
+		})
+		d.Register("site.clone", func(ctx context.Context, j *job.Job, p job.Progress) (any, error) {
+			var in site.CloneInput
+			if err := json.Unmarshal(j.Payload, &in); err != nil {
+				return nil, err
+			}
+			s, err := siteSvc.RunClone(ctx, in, p)
 			if err != nil {
 				return nil, err
 			}
@@ -234,6 +311,13 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			"interval", ssl.DefaultRenewInterval.String(), "window", ssl.DefaultRenewWindow.String())
 	}
 
+	// Drops the throwaway accounts minted for Adminer hand-offs once they expire.
+	// It also sweeps on startup, cleaning up after a restart mid-session.
+	if dbSvc != nil && cfg.Database.AdminerURL != "" {
+		go dbSvc.RunSSOSweeper(ctx, log)
+		log.Info("database sign-on sweeper enabled", "ttl", database.SSOTTL.String())
+	}
+
 	// Realtime WebSocket hub: bridges Redis Pub/Sub job events to browsers.
 	var wsHub *ws.Hub
 	if jobs != nil {
@@ -252,8 +336,10 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Redis:     redisHealth,
 		Broker:    brokerHealth,
 		Auth:      authSvc,
+		Audit:     auditSvc,
 		Users:     userDir,
 		Sites:     siteSvc,
+		PHP:       phpSvc,
 		Databases: dbSvc,
 		SSL:       sslSvc,
 		DNS:       dnsSvc,
@@ -261,6 +347,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Git:       gitSvc,
 		Runtime:   runtimeSvc,
 		Jobs:      jobs,
+		Registry:  reg,
 		WS:        wsHub,
 	})
 

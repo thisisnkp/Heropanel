@@ -17,6 +17,21 @@ fpm_reload(){
   fi
 }
 
+# A real restart of a php-fpm master, as systemd would do it. SIGUSR2 (reload)
+# re-reads pool config but does not re-link extensions into a running master —
+# so an extension change needs the master torn down and re-exec'd. Extract the
+# version from the service name (php8.3-fpm -> 8.3) and bring a fresh master up.
+fpm_restart(){
+  local svc="$1" ver
+  ver="${svc#php}"; ver="${ver%-fpm}"
+  local pf="/run/php/php${ver}-fpm.pid"
+  if [ -f "$pf" ]; then kill -QUIT "$(cat "$pf")" 2>/dev/null || true; fi
+  pkill -QUIT -f "php-fpm${ver}" 2>/dev/null || true
+  sleep 0.5
+  "/usr/sbin/php-fpm${ver}" --daemonize 2>/dev/null || true
+  sleep 0.5
+}
+
 stop_app(){
   local pf; pf="$(pidfile "$1")"
   if [ -f "$pf" ]; then
@@ -52,6 +67,9 @@ case "$verb" in
   start|restart)
     case "$unit" in
       heropanel-app-*) start_app "$unit" ;;
+      php*-fpm)
+        # A reload cannot pick up an extension; a restart must be a real one.
+        if [ "$verb" = "restart" ]; then fpm_restart "$unit"; else fpm_reload; fi ;;
       *) fpm_reload ;;
     esac
     exit 0 ;;

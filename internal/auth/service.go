@@ -150,6 +150,7 @@ func (s *Service) issueSession(ctx context.Context, id identity, ip, userAgent s
 			Email:       id.email,
 			Username:    id.username,
 			DisplayName: id.displayName,
+			Kind:        KindUser,
 			Permissions: perms,
 		},
 	}, nil
@@ -188,6 +189,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		Email:       u.Email,
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
+		Kind:        KindUser,
 		Permissions: perms,
 	}
 	if s.cache != nil {
@@ -253,6 +255,7 @@ func (s *Service) Bootstrap(ctx context.Context, email, username, password strin
 		Email:       u.Email,
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
+		Kind:        KindUser,
 		Permissions: perms,
 	}, nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
@@ -19,6 +20,8 @@ import (
 	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/php"
+	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
@@ -39,20 +42,23 @@ type Deps struct {
 	Logger    *slog.Logger
 	Version   string
 	StartedAt time.Time
-	DB        HealthChecker     // nil when no datastore is configured
-	Redis     HealthChecker     // nil when Redis is disabled
-	Broker    HealthChecker     // nil when the broker is not configured
-	Auth      *auth.Service     // nil when no datastore is configured
-	Users     UserDirectory     // nil when no datastore is configured
-	Sites     *site.Service     // nil when no datastore is configured
-	Databases *database.Service // nil when no datastore is configured
-	SSL       *ssl.Service      // nil when no datastore is configured
-	DNS       *dns.Service      // nil when no datastore is configured
-	Domains   *domain.Service   // nil when no datastore is configured
-	Git       *git.Service      // nil when no datastore is configured
-	Runtime   *runtime.Service  // nil when no datastore is configured
-	Jobs      *job.Dispatcher   // nil when the async job queue is disabled (no Redis)
-	WS        *ws.Hub           // nil when the realtime hub is disabled (no Redis)
+	DB        HealthChecker      // nil when no datastore is configured
+	Redis     HealthChecker      // nil when Redis is disabled
+	Broker    HealthChecker      // nil when the broker is not configured
+	Auth      *auth.Service      // nil when no datastore is configured
+	Audit     *audit.Service     // nil when no datastore is configured
+	Users     UserDirectory      // nil when no datastore is configured
+	Sites     *site.Service      // nil when no datastore is configured
+	PHP       *php.Service       // nil when no datastore is configured
+	Databases *database.Service  // nil when no datastore is configured
+	SSL       *ssl.Service       // nil when no datastore is configured
+	DNS       *dns.Service       // nil when no datastore is configured
+	Domains   *domain.Service    // nil when no datastore is configured
+	Git       *git.Service       // nil when no datastore is configured
+	Runtime   *runtime.Service   // nil when no datastore is configured
+	Jobs      *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
+	WS        *ws.Hub            // nil when the realtime hub is disabled (no Redis)
+	Registry  *registry.Registry // module capability set; never nil (may be empty)
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -90,12 +96,21 @@ func NewRouter(d Deps) http.Handler {
 	// Versioned API surface.
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/system/info", systemInfoHandler(d))
+		// The OpenAPI 3.1 description of this instance's surface. Unauthenticated:
+		// it names no secrets and a client needs it to learn how to authenticate.
+		// Built by walking the live routing tree (openapi.go), so it cannot drift.
+		r.Get("/openapi.json", openapiHandler(d))
 
 		// Auth-dependent routes are mounted only when a datastore (and thus the
 		// auth service) is available.
 		if d.Auth != nil {
 			r.Group(func(r chi.Router) {
-				r.Use(authenticate(d.Auth))                 // attach principal if present
+				r.Use(authenticate(d.Auth)) // attach principal if present
+				// The auditor sits above CSRF so that a rejected mutation is
+				// still recorded: "someone tried and was refused" is precisely
+				// the entry an operator goes looking for. Below CSRF it would
+				// never run, because CSRF short-circuits the chain.
+				r.Use(auditor(d.Audit, d.Logger))
 				r.Use(csrf(d.Config.Security.CSRF.Enabled)) // double-submit CSRF (opt-in)
 
 				r.Get("/auth/status", statusHandler(d))
@@ -116,13 +131,40 @@ func NewRouter(d Deps) http.Handler {
 				if d.Users != nil {
 					r.With(requirePermission("user.read")).Get("/users", listUsersHandler(d))
 				}
+				// The module/capability set. The UI reads this at login to decide
+				// which features to render (docs/06 §6); a feature whose module is
+				// absent greys out rather than 404-ing on click.
+				r.With(requireAuth).Get("/capabilities", capabilitiesHandler(d))
+				r.With(requireAuth).Get("/modules", modulesHandler(d))
+				if d.Audit != nil {
+					r.With(requirePermission("audit.read")).Get("/audit", listAuditHandler(d))
+					r.With(requirePermission("audit.read")).Get("/audit/verify", verifyAuditHandler(d))
+				}
+				if d.PHP != nil {
+					// Server-scope, not site-scope: an extension belongs to a PHP
+					// version and toggling it restarts FPM for every site on it.
+					// Gating this behind site.write would let a tenant with one
+					// site restart everyone else's.
+					r.With(requirePermission("system.read")).Get("/php/extensions", listPHPExtensionsHandler(d))
+					r.With(requirePermission("system.write")).Post("/php/extensions", setPHPExtensionHandler(d))
+				}
 				if d.Databases != nil {
 					r.With(requirePermission("database.read")).Get("/databases", listDatabasesHandler(d))
 					r.With(requirePermission("database.write")).Post("/databases", createDatabaseHandler(d))
 					r.With(requirePermission("database.write")).Delete("/databases/{uid}", deleteDatabaseHandler(d))
 					r.With(requirePermission("database.write")).Post("/databases/{uid}/grant", grantDatabaseHandler(d))
+					r.With(requirePermission("database.write")).Post("/databases/{uid}/revoke", revokeDatabaseHandler(d))
+					r.With(requirePermission("database.read")).Get("/databases/{uid}/size", databaseSizeHandler(d))
+					// An export is a full copy of the data leaving the server, so it
+					// takes write, not read.
+					r.With(requirePermission("database.write")).Get("/databases/{uid}/export", exportDatabaseHandler(d))
+					r.With(requirePermission("database.write")).Post("/databases/{uid}/import", importDatabaseHandler(d))
+					// The hand-off mints a live credential, so it is write-gated
+					// even though it only reads data.
+					r.With(requirePermission("database.write")).Post("/databases/{uid}/adminer-sso", adminerSSOHandler(d))
 					r.With(requirePermission("database.read")).Get("/database-users", listDBUsersHandler(d))
 					r.With(requirePermission("database.write")).Post("/database-users", createDBUserHandler(d))
+					r.With(requirePermission("database.write")).Delete("/database-users/{uid}", deleteDBUserHandler(d))
 				}
 				if d.SSL != nil {
 					r.With(requirePermission("ssl.read")).Get("/ssl/certificates", listCertsHandler(d))
@@ -137,6 +179,12 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.write")).Delete("/sites/{uid}", deleteSiteHandler(d))
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/php", getSitePHPHandler(d))
 					r.With(requirePermission("site.write")).Put("/sites/{uid}/php", setSitePHPHandler(d))
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/limits", getSiteLimitsHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/limits", setSiteLimitsHandler(d))
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/logs", siteLogsHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/suspend", suspendSiteHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/resume", resumeSiteHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/clone", cloneSiteHandler(d))
 				}
 				if d.DNS != nil {
 					r.With(requirePermission("dns.read")).Get("/dns/zones", listZonesHandler(d))
@@ -162,6 +210,7 @@ func NewRouter(d Deps) http.Handler {
 				}
 				if d.Runtime != nil {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/runtime", getSiteRuntimeHandler(d))
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/runtime/health", runtimeHealthHandler(d))
 					r.With(requirePermission("site.write")).Put("/sites/{uid}/runtime", setSiteRuntimeHandler(d))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/start", runtimeControlHandler(d, "start"))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/stop", runtimeControlHandler(d, "stop"))
@@ -182,9 +231,22 @@ func NewRouter(d Deps) http.Handler {
 	// Git push webhook: unauthenticated by session, authorized by the per-source
 	// secret (constant-time compare in the handler). Mounted outside the auth
 	// group and before the SPA catch-all so a push can trigger a deploy.
+	//
+	// It carries the auditor of its own accord. Being outside the auth group
+	// means it is outside that group's middleware too, and an endpoint that
+	// deploys code to a site on presentation of a shared secret is the last one
+	// that should be missing from the chain.
 	if d.Git != nil {
-		r.Post("/hooks/git/{uid}", gitWebhookHandler(d))
+		r.With(auditor(d.Audit, d.Logger)).Post("/hooks/git/{uid}", gitWebhookHandler(d))
 	}
+
+	// Interactive API docs: a small viewer that renders /api/v1/openapi.json
+	// client-side. Unauthenticated like the spec it renders, and served as
+	// separate same-origin assets so the strict CSP needs no exception. Mounted
+	// before the SPA catch-all so these exact paths are not swallowed by it.
+	r.Get("/api/docs", docsPageHandler())
+	r.Get("/api/docs.css", docsAssetHandler("text/css; charset=utf-8", docsCSS))
+	r.Get("/api/docs.js", docsAssetHandler("application/javascript; charset=utf-8", docsJS))
 
 	// Embedded SPA (served for GET/HEAD on all non-API routes; falls back to a
 	// placeholder when no frontend build is embedded). Registering only GET/HEAD

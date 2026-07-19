@@ -5,14 +5,21 @@ package database
 
 import (
 	"context"
+	"os"
 	"regexp"
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/broker"
 	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/heropanel/pkg/idgen"
 )
 
 var reName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+
+// DumpDir is where exports are produced and imports are staged. It must match
+// the broker's dumpRoot: hpd writes uploads here and reads dumps back, while the
+// broker is the only thing that ever runs SQL against them.
+const DumpDir = "/var/lib/heropanel/dumps"
 
 // Instance is the API view of a database.
 type Instance struct {
@@ -55,6 +62,22 @@ type UserRecord struct {
 	CreatedAt string `db:"created_at"`
 }
 
+// Size is the API view of a database's on-disk footprint.
+type Size struct {
+	Bytes  int64 `json:"bytes"`
+	Tables int64 `json:"tables"`
+}
+
+// Export is a finished dump waiting to be streamed to the client.
+type Export struct {
+	// Path is the server-side file. It is not exposed to API clients; the handler
+	// streams the file and then calls DiscardExport.
+	Path  string
+	Name  string
+	File  string
+	Bytes int64
+}
+
 // Repo is the persistence contract (implemented by internal/repository).
 type Repo interface {
 	InsertDatabase(ctx context.Context, r *InstanceRecord) error
@@ -64,13 +87,17 @@ type Repo interface {
 	InsertUser(ctx context.Context, r *UserRecord) error
 	ListUsers(ctx context.Context, ownerID int64, limit, offset int) ([]UserRecord, error)
 	GetUserByUID(ctx context.Context, uid string) (*UserRecord, error)
+	DeleteUser(ctx context.Context, uid string) error
 	InsertGrant(ctx context.Context, dbUserID, dbInstanceID int64, privileges string) error
+	DeleteGrant(ctx context.Context, dbUserID, dbInstanceID int64) error
 }
 
 // Service orchestrates database operations.
 type Service struct {
-	repo   Repo
-	broker broker.Gateway
+	repo       Repo
+	broker     broker.Gateway
+	adminerURL string
+	ssoRepo    SSORepo
 }
 
 // NewService constructs the database Service.
@@ -198,6 +225,143 @@ func (s *Service) Grant(ctx context.Context, dbUID, userUID string, privileges [
 		return err
 	}
 	return s.repo.InsertGrant(ctx, userRec.ID, dbRec.ID, strings.Join(privileges, ","))
+}
+
+// DeleteUser drops a database user and removes its record.
+func (s *Service) DeleteUser(ctx context.Context, uid string) error {
+	rec, err := s.repo.GetUserByUID(ctx, uid)
+	if err != nil {
+		return err
+	}
+	if err := s.requireBroker(); err != nil {
+		return err
+	}
+	if _, err := s.broker.Invoke(ctx, "db.user.drop", map[string]any{
+		"username": rec.Username, "host": rec.Host,
+	}); err != nil {
+		return err
+	}
+	return s.repo.DeleteUser(ctx, uid)
+}
+
+// Revoke removes a user's privileges on a database. The record is dropped only
+// after MariaDB confirms, so the panel never claims access was removed when it
+// was not.
+func (s *Service) Revoke(ctx context.Context, dbUID, userUID string, privileges []string) error {
+	dbRec, err := s.repo.GetDatabaseByUID(ctx, dbUID)
+	if err != nil {
+		return err
+	}
+	userRec, err := s.repo.GetUserByUID(ctx, userUID)
+	if err != nil {
+		return err
+	}
+	if len(privileges) == 0 {
+		privileges = []string{"ALL"}
+	}
+	if err := s.requireBroker(); err != nil {
+		return err
+	}
+	if _, err := s.broker.Invoke(ctx, "db.revoke", map[string]any{
+		"database":   dbRec.Name,
+		"username":   userRec.Username,
+		"host":       userRec.Host,
+		"privileges": privileges,
+	}); err != nil {
+		return err
+	}
+	return s.repo.DeleteGrant(ctx, userRec.ID, dbRec.ID)
+}
+
+// Size reports a database's on-disk size.
+func (s *Service) Size(ctx context.Context, uid string) (*Size, error) {
+	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireBroker(); err != nil {
+		return nil, err
+	}
+	res, err := s.broker.Invoke(ctx, "db.size", map[string]any{"name": rec.Name})
+	if err != nil {
+		return nil, err
+	}
+	return &Size{Bytes: asInt64(res["bytes"]), Tables: asInt64(res["tables"])}, nil
+}
+
+// Export dumps a database and returns the server-side file for the caller to
+// stream. The caller must call DiscardExport when done, however it goes: the
+// dump is a full copy of the customer's data sitting on disk.
+func (s *Service) Export(ctx context.Context, uid string) (*Export, error) {
+	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireBroker(); err != nil {
+		return nil, err
+	}
+	// A fresh filename per export: two concurrent exports of the same database
+	// must not write over each other's dump mid-stream.
+	file := rec.Name + "-" + idgen.NewULID() + ".sql"
+	res, err := s.broker.Invoke(ctx, "db.export", map[string]any{
+		"name": rec.Name, "file": file,
+	})
+	if err != nil {
+		return nil, err
+	}
+	path, _ := res["path"].(string)
+	if path == "" {
+		return nil, errx.New(errx.KindUpstream, "export_failed", "The export did not produce a file.")
+	}
+	return &Export{Path: path, Name: rec.Name, File: file + ".gz", Bytes: asInt64(res["bytes"])}, nil
+}
+
+// DiscardExport removes a finished dump from the server.
+func (s *Service) DiscardExport(path string) error {
+	if path == "" {
+		return nil
+	}
+	return os.Remove(path)
+}
+
+// ImportStagePath returns where the caller must write an upload before calling
+// Import, along with the bare filename Import expects.
+//
+// hpd stages the upload itself rather than shipping the bytes through the
+// broker: the broker's transport is length-prefixed JSON, and a database dump is
+// arbitrarily large.
+func (s *Service) ImportStagePath(gzipped bool) (path, file string) {
+	file = "import-" + idgen.NewULID() + ".sql"
+	if gzipped {
+		file += ".gz"
+	}
+	return DumpDir + "/" + file, file
+}
+
+// Import loads a SQL file previously staged at ImportStagePath into a database.
+func (s *Service) Import(ctx context.Context, uid, file string) error {
+	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	if err != nil {
+		return err
+	}
+	if err := s.requireBroker(); err != nil {
+		return err
+	}
+	_, err = s.broker.Invoke(ctx, "db.import", map[string]any{"name": rec.Name, "file": file})
+	return err
+}
+
+// asInt64 normalizes a JSON number (float64 over the wire) to an int64.
+func asInt64(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	}
+	return 0
 }
 
 func instanceView(r *InstanceRecord) *Instance {

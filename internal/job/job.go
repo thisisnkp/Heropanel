@@ -51,6 +51,49 @@ func (noopProgress) Report(int, string) {}
 // Noop is a Progress that does nothing.
 var Noop Progress = noopProgress{}
 
+// scaledProgress maps an inner 0-100 range onto an outer [lo, hi] window.
+type scaledProgress struct {
+	inner  Progress
+	lo, hi int
+}
+
+// ScaleProgress adapts a Progress so that one job can delegate to a routine that
+// reports 0-100 for itself, without that routine's "100%" meaning the whole job
+// is finished.
+//
+// Cloning a site is the motivating case: it calls the create flow, which
+// legitimately reports its own progress from 0 to 100, and the bar would run to
+// the end and then sit there while the actual copy — the part the operator is
+// waiting on — had not started. Scaling create into [10, 70] keeps the bar
+// honest about how much is left.
+func ScaleProgress(p Progress, lo, hi int) Progress {
+	if p == nil {
+		return Noop
+	}
+	if lo < 0 {
+		lo = 0
+	}
+	if hi > 100 {
+		hi = 100
+	}
+	if hi <= lo {
+		// A window that cannot represent progress: report nothing rather than
+		// send the bar backwards.
+		return Noop
+	}
+	return scaledProgress{inner: p, lo: lo, hi: hi}
+}
+
+func (s scaledProgress) Report(pct int, step string) {
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
+	s.inner.Report(s.lo+(pct*(s.hi-s.lo))/100, step)
+}
+
 // Repo is the job persistence contract (implemented by internal/repository).
 type Repo interface {
 	Create(ctx context.Context, j *Job) error

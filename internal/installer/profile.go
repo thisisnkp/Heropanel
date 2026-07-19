@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/thisisnkp/heropanel/pkg/arch"
 )
 
 // Profile is a snapshot of the host relevant to installation.
@@ -28,7 +30,7 @@ type Profile struct {
 // Detect gathers the host profile from the live system.
 func Detect() Profile {
 	p := Profile{
-		Arch:           resolveArch(runtime.GOARCH),
+		Arch:           string(arch.Current()),
 		OS:             runtime.GOOS,
 		CPUCores:       runtime.NumCPU(),
 		Virtualization: "unknown",
@@ -49,16 +51,6 @@ func Detect() Profile {
 		}
 	}
 	return p
-}
-
-// resolveArch normalizes Go's arch names to HeroPanel's supported set.
-func resolveArch(goarch string) string {
-	switch goarch {
-	case "amd64", "arm64", "386":
-		return goarch
-	default:
-		return goarch
-	}
 }
 
 // parseOSRelease extracts ID, VERSION_ID and PRETTY_NAME from an os-release file.

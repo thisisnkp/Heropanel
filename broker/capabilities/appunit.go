@@ -128,6 +128,10 @@ func renderAppUnit(in appUnitApplyInput, home, launcher string) string {
 	b.WriteString("ExecStart=" + launcher + "\n")
 	b.WriteString("Restart=on-failure\n")
 	b.WriteString("RestartSec=2\n")
+	// The app lives in its site's cgroup slice, so the site's CPU/memory/task
+	// limits actually bound it. Without this the unit lands in system.slice and a
+	// runaway app is bounded only by the size of the node.
+	b.WriteString("Slice=" + SiteSliceName(in.Vhost) + "\n")
 	// Hardening: the app can only touch its own tree.
 	b.WriteString("NoNewPrivileges=true\n")
 	b.WriteString("PrivateTmp=true\n")

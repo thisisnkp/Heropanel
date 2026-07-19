@@ -65,6 +65,10 @@ type Database struct {
 	MaxOpenConns    int      `yaml:"max_open_conns"`
 	MaxIdleConns    int      `yaml:"max_idle_conns"`
 	ConnMaxLifetime Duration `yaml:"conn_max_lifetime"`
+	// AdminerURL is where Adminer (or phpMyAdmin) is served. Setting it enables
+	// the one-click hand-off, which signs in with a throwaway account rather than
+	// a stored password. Empty disables the hand-off.
+	AdminerURL string `yaml:"adminer_url"`
 }
 
 // Redis configures the cache/queue/bus.
@@ -86,6 +90,12 @@ type Security struct {
 	RateLimit      RateLimit `yaml:"rate_limit"`
 	CORS           CORS      `yaml:"cors"`
 	CSRF           CSRF      `yaml:"csrf"`
+	// SecretKey is the base64-encoded 32-byte master key that encrypts the *_enc
+	// columns (Git credentials today). Supply it via HP_SECRET_KEY or the
+	// secrets.env file, never in config.yaml. Empty disables features that must
+	// store a secret at rest — they report "unavailable" rather than falling back
+	// to plaintext storage.
+	SecretKey string `yaml:"-"`
 }
 
 // CSRF configures double-submit CSRF protection for cookie-authenticated
@@ -177,6 +187,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("HP_DATABASE_DSN"); v != "" {
 		c.Database.DSN = v
 	}
+	if v := os.Getenv("HP_DATABASE_ADMINER_URL"); v != "" {
+		c.Database.AdminerURL = v
+	}
 	if v := os.Getenv("HP_REDIS_ADDR"); v != "" {
 		c.Redis.Addr = v
 	}
@@ -188,6 +201,19 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_BROKER_TOKEN"); v != "" {
 		c.Broker.Token = v
+	}
+	if v := os.Getenv("HP_SECRET_KEY"); v != "" {
+		c.Security.SecretKey = v
+	}
+	// ACME (Let's Encrypt) account email and directory URL. Email enables
+	// issuance; Directory points at a staging or test CA (e.g. Pebble) instead of
+	// production — invaluable for testing against a real ACME server without
+	// hitting Let's Encrypt's rate limits.
+	if v := os.Getenv("HP_SSL_EMAIL"); v != "" {
+		c.SSL.Email = v
+	}
+	if v := os.Getenv("HP_SSL_DIRECTORY"); v != "" {
+		c.SSL.Directory = v
 	}
 }
 

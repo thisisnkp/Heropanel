@@ -55,4 +55,9 @@ type Repo interface {
 	List(ctx context.Context, ownerID int64, limit, offset int) ([]Record, error)
 	// SoftDelete marks a site deleted.
 	SoftDelete(ctx context.Context, uid string) error
+	// GetLimits returns a site's resource limits. A site that has never been
+	// given any returns the zero value (all unlimited), not a not-found error.
+	GetLimits(ctx context.Context, siteID int64) (*Limits, error)
+	// UpsertLimits writes a site's resource limits.
+	UpsertLimits(ctx context.Context, siteID int64, l Limits) error
 }

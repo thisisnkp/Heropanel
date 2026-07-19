@@ -2,6 +2,42 @@
 
 Goal: a **single command** that turns a fresh Linux box into a running HeroPanel install, safely, on any supported arch/OS, with detection, backups, and automatic rollback on failure.
 
+> **Implementation status.** The **execute path is implemented and verified**
+> ([`internal/installer/execute.go`](../internal/installer/execute.go),
+> [`cmd/hp-installer`](../cmd/hp-installer)). `hp-installer --detect` / `--plan`
+> report the host profile, compatibility verdict, and ordered action list;
+> `--execute` runs the install, journaling each step to
+> `/var/lib/heropanel/install-journal.json` so `--resume` continues an
+> interrupted run and `--rollback` walks the completed steps in reverse and runs
+> each one's inverse. The package-manager split (apt/dnf) is the only
+> distro-specific code ([`pkgmgr.go`](../internal/installer/pkgmgr.go)); every
+> other step is identical across distributions. **Verified live** (`run-installer.sh`,
+> in CI) on a **fresh `ubuntu:24.04` (apt)** *and* **`rockylinux:9` (dnf)** image:
+> a real execute installs packages, creates the `heropanel` user, renders the
+> config + hardened systemd units, migrates a SQLite datastore as the service
+> user, starts the broker + daemon, and the installer's own verify step confirms
+> `/healthz` answers — with the broker socket group-owned by the panel group so
+> the unprivileged daemon can reach it (the privilege-separation contract). A
+> re-run resumes as a no-op; `--rollback` removes the user, files, and units and
+> the panel stops answering.
+>
+> **Integrity:** the binaries step verifies every artifact against a `SHA256SUMS`
+> manifest before anything lands in place — a mismatch fails the step and rolls
+> back (`run-installer.sh` asserts "binaries verified against SHA256SUMS"; the
+> tamper-rejection path is unit-tested). **arm64** is a first-class target:
+> `run-arch-smoke.sh` runs the cross-compiled binaries under qemu on aarch64
+> (both distro families) — detection, the SQLite driver + every migration, and
+> the broker self-check.
+>
+> *Deferred:* backup/restore of pre-existing web/db/firewall configs before
+> touching them; a **cryptographic signature** over the manifest (checksum
+> verification is done; artifact *signing* is not, §6); `hpctl`; the uninstall
+> subcommand; coexistence handling for a pre-existing Apache/Nginx/MySQL/Docker;
+> the OLS panel reverse-proxy vhost (the panel is served by `hpd` directly for
+> now, and the Docker verification runs `--no-webserver`); and package-level
+> rollback (OS packages are intentionally **not** removed on rollback — other
+> software may now depend on them, so that step records itself as not-reversible).
+
 ```
 curl -fsSL https://get.heropanel.io/install.sh | bash
 # or, pinned + verified:

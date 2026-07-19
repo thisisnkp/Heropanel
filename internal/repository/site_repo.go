@@ -125,3 +125,39 @@ func (s *SiteStore) SoftDelete(ctx context.Context, uid string) error {
 	}
 	return nil
 }
+
+// GetLimits returns a site's resource limits. A site that has never been given
+// any has no row, which is not an error — it means "unlimited", so the zero
+// value is returned.
+func (s *SiteStore) GetLimits(ctx context.Context, siteID int64) (*site.Limits, error) {
+	var l site.Limits
+	err := s.db.GetContext(ctx, &l,
+		`SELECT cpu_quota_pct, mem_limit_bytes, pids_max FROM site_limits WHERE site_id = ?`, siteID)
+	if isNoRows(err) {
+		return &site.Limits{}, nil
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &l, nil
+}
+
+// UpsertLimits writes a site's resource limits (portable update-then-insert).
+func (s *SiteStore) UpsertLimits(ctx context.Context, siteID int64, l site.Limits) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE site_limits SET cpu_quota_pct = ?, mem_limit_bytes = ?, pids_max = ?, updated_at = ?
+		 WHERE site_id = ?`,
+		l.CPUQuotaPct, l.MemLimitBytes, l.PidsMax, fmtTS(time.Now()), siteID)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO site_limits (site_id, cpu_quota_pct, mem_limit_bytes, pids_max) VALUES (?, ?, ?, ?)`,
+		siteID, l.CPUQuotaPct, l.MemLimitBytes, l.PidsMax); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}

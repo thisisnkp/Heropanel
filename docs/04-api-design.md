@@ -9,7 +9,8 @@ Three surfaces: **REST** (operator/UI/automation), **WebSocket** (realtime), and
 - **Consistent envelope**, consistent errors, consistent pagination.
 - **Idempotency** on unsafe creates via `Idempotency-Key` header.
 - **Async by default** for anything that touches the OS: return `202` + a Job; stream progress over WS.
-- **OpenAPI 3.1** is generated from code annotations and served at `/api/v1/openapi.json` + interactive docs at `/api/docs`.
+- **OpenAPI 3.1** is served at `/api/v1/openapi.json` (unauthenticated — a client needs it to learn how to authenticate). It is **not** a hand-maintained file: [`internal/httpapi/openapi.go`](../internal/httpapi/openapi.go) walks the *live* Chi routing tree, so every path and method in the document is one that is actually mounted, and enriches each operation from the metadata table in [`openapi_routes.go`](../internal/httpapi/openapi_routes.go) (summary, tags, the `requirePermission` scope as `x-required-permission`, request/response schemas). A route that is mounted but undocumented fails the drift test (`TestOpenAPINoUndocumentedRoutes`), which is what keeps the spec honest as the surface grows. The generated document is committed at [`docs/openapi.json`](openapi.json) and regenerated with `HP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden`.
+  - A dependency-free viewer is served at `/api/docs` ([`docs_assets.go`](../internal/httpapi/docs_assets.go)): it fetches the spec client-side and renders a grouped, filterable, collapsible reference. It ships as same-origin CSS/JS (not inlined) so the strict `default-src 'self'` CSP needs no exception.
 
 ## 2. Response Envelope
 

@@ -14,9 +14,18 @@ import (
 )
 
 // fakeApplier records the web-server sites it is asked to apply.
-type fakeApplier struct{ calls [][]webserver.Site }
+type fakeApplier struct {
+	calls [][]webserver.Site
+	// failNext makes the next Apply fail, standing in for a config the real
+	// server refuses (lshttpd -t) — the case where a status change must not stick.
+	failNext bool
+}
 
 func (f *fakeApplier) Apply(_ context.Context, sites []webserver.Site) error {
+	if f.failNext {
+		f.failNext = false
+		return errx.New(errx.KindUpstream, "config_rejected", "simulated config test failure")
+	}
 	f.calls = append(f.calls, sites)
 	return nil
 }
@@ -82,14 +91,22 @@ func TestCreateProvisionsAndActivates(t *testing.T) {
 		t.Fatalf("unexpected provisioning: user=%q docroot=%q", out.SystemUser, out.DocumentRoot)
 	}
 
-	// Broker was asked to create the user, then the directory tree, in order.
-	if len(gw.calls) != 2 ||
+	// Broker was asked to create the user, the directory tree, then the cgroup
+	// slice, in order. The slice comes last of the three but before anything is
+	// placed in it — the app unit names it in `Slice=`.
+	if len(gw.calls) != 3 ||
 		gw.calls[0].capability != "system_user.create" ||
-		gw.calls[1].capability != "site.create_dirs" {
+		gw.calls[1].capability != "site.create_dirs" ||
+		gw.calls[2].capability != "site.apply_slice" {
 		t.Fatalf("unexpected broker calls: %+v", gw.calls)
 	}
 	if gw.calls[0].input["username"] != "hps1" || gw.calls[0].input["home"] != "/srv/heropanel/sites/1" {
 		t.Fatalf("system_user.create input = %+v", gw.calls[0].input)
+	}
+	// A new site's slice has accounting but no caps: 0 means unlimited.
+	sl := gw.calls[2].input
+	if sl["vhost"] != "hps1" || sl["cpu_quota_pct"] != 0 || sl["pids_max"] != 0 {
+		t.Fatalf("site.apply_slice input = %+v", sl)
 	}
 }
 
@@ -271,17 +288,23 @@ func TestDeleteDeprovisions(t *testing.T) {
 		t.Fatalf("expected empty serving set after delete, got %d", len(last))
 	}
 
-	// The broker was asked to delete the user, then remove the directories.
+	// The broker was asked to remove the slice, delete the user, then remove the
+	// directories. The slice goes after the unit inside it is gone, so nothing is
+	// left pointing at a cgroup that no longer exists.
 	deprov := gw.calls[createCalls:]
-	if len(deprov) != 2 ||
-		deprov[0].capability != "system_user.delete" ||
-		deprov[1].capability != "site.remove_dirs" {
+	if len(deprov) != 3 ||
+		deprov[0].capability != "site.remove_slice" ||
+		deprov[1].capability != "system_user.delete" ||
+		deprov[2].capability != "site.remove_dirs" {
 		t.Fatalf("unexpected deprovision calls: %+v", deprov)
 	}
-	if deprov[0].input["username"] != "hps1" {
-		t.Fatalf("userdel input = %+v", deprov[0].input)
+	if deprov[0].input["vhost"] != "hps1" {
+		t.Fatalf("site.remove_slice input = %+v", deprov[0].input)
 	}
-	if deprov[1].input["root"] != "/srv/heropanel/sites/1" {
-		t.Fatalf("remove_dirs input = %+v", deprov[1].input)
+	if deprov[1].input["username"] != "hps1" {
+		t.Fatalf("userdel input = %+v", deprov[1].input)
+	}
+	if deprov[2].input["root"] != "/srv/heropanel/sites/1" {
+		t.Fatalf("remove_dirs input = %+v", deprov[2].input)
 	}
 }

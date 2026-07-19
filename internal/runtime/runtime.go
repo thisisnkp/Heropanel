@@ -36,28 +36,43 @@ var supportedRuntimes = map[string]bool{
 
 // Runtime is the API view of a site's app runtime.
 type Runtime struct {
-	UID       string            `json:"uid"`
-	Runtime   string            `json:"runtime"`
-	Command   string            `json:"command"`
-	Port      int               `json:"port"`
-	Env       map[string]string `json:"env"`
-	Status    string            `json:"status"`
-	CreatedAt string            `json:"created_at"`
-	UpdatedAt string            `json:"updated_at"`
+	UID     string            `json:"uid"`
+	Runtime string            `json:"runtime"`
+	Command string            `json:"command"`
+	Port    int               `json:"port"`
+	Env     map[string]string `json:"env"`
+	// HealthPath is an HTTP path on the app's own port, e.g. "/healthz". Empty
+	// means no probe: the status then only reflects what systemd reported.
+	HealthPath string `json:"health_path,omitempty"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
+// Health is the result of one probe against a site's app.
+type Health struct {
+	// Healthy is the only field a caller needs; the rest is for diagnosis.
+	Healthy    bool   `json:"healthy"`
+	Configured bool   `json:"configured"`
+	StatusCode int    `json:"status_code,omitempty"`
+	LatencyMS  int64  `json:"latency_ms,omitempty"`
+	Error      string `json:"error,omitempty"`
+	CheckedAt  string `json:"checked_at"`
 }
 
 // Record is the persistence row. Env is stored as a JSON object string.
 type Record struct {
-	ID        int64  `db:"id"`
-	UID       string `db:"uid"`
-	SiteID    int64  `db:"site_id"`
-	Runtime   string `db:"runtime"`
-	Command   string `db:"command"`
-	Port      int    `db:"port"`
-	Env       string `db:"env"`
-	Status    string `db:"status"`
-	CreatedAt string `db:"created_at"`
-	UpdatedAt string `db:"updated_at"`
+	ID         int64  `db:"id"`
+	UID        string `db:"uid"`
+	SiteID     int64  `db:"site_id"`
+	Runtime    string `db:"runtime"`
+	Command    string `db:"command"`
+	Port       int    `db:"port"`
+	Env        string `db:"env"`
+	HealthPath string `db:"health_path"`
+	Status     string `db:"status"`
+	CreatedAt  string `db:"created_at"`
+	UpdatedAt  string `db:"updated_at"`
 }
 
 // Repo is the persistence contract (implemented by internal/repository).
@@ -86,6 +101,8 @@ type SetInput struct {
 	Command string
 	Port    int
 	Env     map[string]string
+	// HealthPath is an optional HTTP path to probe, e.g. "/healthz".
+	HealthPath string
 }
 
 // ── validation ───────────────────────────────────────────────────────────────
@@ -117,6 +134,29 @@ func validateSet(in *SetInput) error {
 		if strings.ContainsAny(v, "\x00\n\r") || len(v) > 2000 {
 			return errx.Validation("invalid_env_value", "Invalid value for "+k+".")
 		}
+	}
+	if err := validateHealthPath(&in.HealthPath); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateHealthPath normalizes and bounds the probe path. It must be a path on
+// the app's own port — never a full URL, which would turn the panel's probe into
+// a request-forgery primitive aimed at whatever host the caller names.
+func validateHealthPath(p *string) error {
+	*p = strings.TrimSpace(*p)
+	if *p == "" {
+		return nil
+	}
+	invalid := errx.Validation("invalid_health_path",
+		"Health path must be a path on the app's own port, e.g. \"/healthz\".",
+		errx.Field{Field: "health_path", Code: "invalid", Message: "invalid path"})
+	if !strings.HasPrefix(*p, "/") || strings.HasPrefix(*p, "//") {
+		return invalid
+	}
+	if len(*p) > 255 || strings.ContainsAny(*p, " \t\r\n\x00#") {
+		return invalid
 	}
 	return nil
 }

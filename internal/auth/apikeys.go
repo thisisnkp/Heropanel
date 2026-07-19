@@ -132,6 +132,7 @@ func (s *Service) AuthenticateAPIKey(ctx context.Context, key string) (*Principa
 		Email:       u.Email,
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
+		Kind:        KindAPIKey,
 		Permissions: scopes,
 	}, nil
 }
