@@ -121,6 +121,10 @@
           "authenticated": {
             "type": "boolean"
           },
+          "configured": {
+            "description": "False when hpd has no datastore configured, so sign-in is impossible until one is set.",
+            "type": "boolean"
+          },
           "needs_bootstrap": {
             "description": "True on a fresh install with no admin yet.",
             "type": "boolean"
@@ -424,6 +428,91 @@
           },
           "start_servers": {
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "FileEntry": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "file",
+              "dir",
+              "symlink",
+              "other"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "Octal permission bits, e.g. \"644\".",
+            "type": "string"
+          },
+          "mtime": {
+            "description": "Modification time, epoch seconds.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Entry name (basename, not a path).",
+            "type": "string"
+          },
+          "size": {
+            "description": "Size in bytes.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "FileListing": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FileEntry"
+            },
+            "type": "array"
+          },
+          "path": {
+            "description": "The absolute directory that was listed.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FileSearch": {
+        "properties": {
+          "entries": {
+            "items": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "file",
+                    "dir",
+                    "symlink",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Path relative to the searched directory.",
+                  "type": "string"
+                },
+                "size": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "path": {
+            "description": "The absolute directory that was searched.",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True when the result cap was hit.",
+            "type": "boolean"
           }
         },
         "type": "object"
@@ -4623,6 +4712,1179 @@
         "x-required-permission": "site.write"
       }
     },
+    "/api/v1/sites/{uid}/files": {
+      "delete": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_delete_a_file_or_directory",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query: path=\u003csite-relative path\u003e. Refuses the site root."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a file or directory",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      },
+      "get": {
+        "description": "Requires the `file.read` permission.",
+        "operationId": "api_v1_sites_uid_files_list_a_directory",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FileListing"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Query: path=\u003csite-relative dir\u003e (empty lists the site root). Baremetal sites only."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List a directory",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.read"
+      }
+    },
+    "/api/v1/sites/{uid}/files/archive": {
+      "get": {
+        "description": "Requires the `file.read` permission.",
+        "operationId": "api_v1_sites_uid_files_archive_download_a_directory_as_a_zip",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams a zip of the directory (application/zip). Query: path=\u003csite-relative directory\u003e; empty means the site root. The archive is built server-side and deleted once the response completes, so nothing is left in the site's tree."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Download a directory as a .zip",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.read"
+      }
+    },
+    "/api/v1/sites/{uid}/files/chmod": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_chmod_change_a_path_s_mode",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mode": {
+                    "description": "Octal mode, 3–4 digits, e.g. \"644\".",
+                    "type": "string"
+                  },
+                  "path": {
+                    "description": "Site-relative path.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "mode"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Mode changed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Change a path's mode",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/chown": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_chown_repair_ownership",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "path": {
+                    "description": "Site-relative path; applied recursively.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ownership reset to the site's Linux user. The target account cannot be chosen — it is always the site's own user."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Repair ownership",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/compress": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_compress_create_an_archive",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "archive": {
+                    "description": "Site-relative destination, e.g. assets/backup.zip.",
+                    "type": "string"
+                  },
+                  "format": {
+                    "description": "Defaults to the archive's suffix.",
+                    "enum": [
+                      "zip",
+                      "tar.gz"
+                    ],
+                    "type": "string"
+                  },
+                  "sources": {
+                    "items": {
+                      "description": "Site-relative entries, all from the same folder.",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "sources",
+                  "archive"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Archive created."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create an archive",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/content": {
+      "get": {
+        "description": "Requires the `file.read` permission.",
+        "operationId": "api_v1_sites_uid_files_content_download_a_file",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams the raw file bytes (application/octet-stream). Query: path=\u003csite-relative file\u003e. Force-audited."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Download a file",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.read"
+      },
+      "put": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_content_write_save_upload_a_file",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File written; returns the byte count."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Write (save/upload) a file",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/copy": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_copy_copy_a_path",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "from": {
+                    "description": "Site-relative source path.",
+                    "type": "string"
+                  },
+                  "on_conflict": {
+                    "description": "\"fail\" (default) or \"rename\" to land beside an existing entry.",
+                    "type": "string"
+                  },
+                  "to": {
+                    "description": "Site-relative destination path.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Path copied; the response echoes the destination actually used."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Copy a path",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/extract": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_extract_extract_an_archive",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "archive": {
+                    "description": "Site-relative .zip or .tar[.gz|.bz2|.xz] archive.",
+                    "type": "string"
+                  },
+                  "dest": {
+                    "description": "Site-relative destination directory (created if absent).",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "archive",
+                  "dest"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Archive extracted."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Extract an archive",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/mkdir": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_mkdir_create_a_directory",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "path": {
+                    "description": "Site-relative directory to create (with parents).",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Directory created."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create a directory",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/move": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_move_move_a_path",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "from": {
+                    "description": "Site-relative source path.",
+                    "type": "string"
+                  },
+                  "on_conflict": {
+                    "description": "\"fail\" (default) or \"rename\" to land beside an existing entry.",
+                    "type": "string"
+                  },
+                  "to": {
+                    "description": "Site-relative destination path.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Path moved; the response echoes the destination actually used."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Move a path",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/rename": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_rename_move_or_rename_a_path",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "from": {
+                    "description": "Site-relative source path.",
+                    "type": "string"
+                  },
+                  "to": {
+                    "description": "Site-relative destination path.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Path moved."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Move or rename a path",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
+    "/api/v1/sites/{uid}/files/search": {
+      "get": {
+        "description": "Requires the `file.read` permission.",
+        "operationId": "api_v1_sites_uid_files_search_search_the_file_tree",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FileSearch"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Query: q=\u003cterm\u003e, path=\u003csite-relative subtree\u003e, mode=name|content. Results are capped; `truncated` says whether they were."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Search the file tree",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.read"
+      }
+    },
     "/api/v1/sites/{uid}/force-https": {
       "put": {
         "description": "Requires the `site.write` permission.",
@@ -6397,6 +7659,140 @@
         "x-required-permission": "site.write"
       }
     },
+    "/api/v1/sites/{uid}/terminal": {
+      "get": {
+        "description": "Requires the `terminal.use` permission.",
+        "operationId": "api_v1_sites_uid_terminal_open_an_interactive_terminal_websocket",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Upgrades to a WebSocket carrying a PTY session run as the site's Linux user. Query: cwd (site-relative, clamped), cols, rows. Terminal bytes travel as binary frames in both directions; JSON text frames carry control messages ({type:\"resize\",cols,rows} in, {type:\"exit\",exit_code} / {type:\"error\",message} out). Force-audited: the session records the Linux account it ran as."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Open an interactive terminal (WebSocket)",
+        "tags": [
+          "Terminal"
+        ],
+        "x-required-permission": "terminal.use"
+      }
+    },
+    "/api/v1/sites/{uid}/terminal/recordings": {
+      "get": {
+        "description": "Requires the `terminal.recordings.read` permission.",
+        "operationId": "api_v1_sites_uid_terminal_recordings_list_a_site_s_recorded_terminal_sessions",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recordings for this site, newest first. Query: limit, offset."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List a site's recorded terminal sessions",
+        "tags": [
+          "Terminal"
+        ],
+        "x-required-permission": "terminal.recordings.read"
+      }
+    },
     "/api/v1/ssl/certificates": {
       "get": {
         "description": "Requires the `ssl.read` permission.",
@@ -6825,6 +8221,261 @@
         ]
       }
     },
+    "/api/v1/terminal/recordings": {
+      "get": {
+        "description": "Requires the `terminal.recordings.read` permission.",
+        "operationId": "api_v1_terminal_recordings_list_recorded_terminal_sessions",
+        "responses": {
+          "200": {
+            "description": "All recordings, newest first. Query: limit, offset."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List recorded terminal sessions",
+        "tags": [
+          "Terminal"
+        ],
+        "x-required-permission": "terminal.recordings.read"
+      }
+    },
+    "/api/v1/terminal/recordings/{rid}": {
+      "delete": {
+        "description": "Requires the `terminal.recordings.delete` permission.",
+        "operationId": "api_v1_terminal_recordings_rid_delete_a_recording",
+        "parameters": [
+          {
+            "description": "rid path parameter.",
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes the row and its file. Separate from the read permission on purpose: destroying an audit artifact is grantable to fewer people than viewing one."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a recording",
+        "tags": [
+          "Terminal"
+        ],
+        "x-required-permission": "terminal.recordings.delete"
+      },
+      "get": {
+        "description": "Requires the `terminal.recordings.read` permission.",
+        "operationId": "api_v1_terminal_recordings_rid_get_a_recording_s_metadata",
+        "parameters": [
+          {
+            "description": "rid path parameter.",
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Who opened the session, as which Linux user, how long it ran, and whether the recording is complete."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get a recording's metadata",
+        "tags": [
+          "Terminal"
+        ],
+        "x-required-permission": "terminal.recordings.read"
+      }
+    },
+    "/api/v1/terminal/recordings/{rid}/cast": {
+      "get": {
+        "description": "Requires the `terminal.recordings.read` permission.",
+        "operationId": "api_v1_terminal_recordings_rid_cast_download_a_recording",
+        "parameters": [
+          {
+            "description": "rid path parameter.",
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams the session as asciicast v2 (application/x-asciicast). Force-audited — this is the route that hands over the transcript. Input typed while the terminal had echo disabled (a password prompt) was redacted before it was ever written."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Download a recording",
+        "tags": [
+          "Terminal"
+        ],
+        "x-required-permission": "terminal.recordings.read"
+      }
+    },
     "/api/v1/users": {
       "get": {
         "description": "Requires the `user.read` permission.",
@@ -7104,6 +8755,14 @@
     {
       "description": "Git source, deployments, rollback, and the push webhook.",
       "name": "Git"
+    },
+    {
+      "description": "Baremetal site file manager: browse, edit, upload/download, and archive extraction, run as the site's Linux user.",
+      "name": "Files"
+    },
+    {
+      "description": "Interactive PTY session on a site, run as its Linux user over a WebSocket.",
+      "name": "Terminal"
     },
     {
       "description": "Databases, database users, grants, dumps, and Adminer hand-off.",

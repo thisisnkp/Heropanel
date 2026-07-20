@@ -6,6 +6,7 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
 // auditLoginActor files an authentication under the account it authenticated,
@@ -67,7 +68,37 @@ func statusHandler(d Deps) http.HandlerFunc {
 		writeJSON(w, r, http.StatusOK, map[string]any{
 			"needs_bootstrap": needs,
 			"authenticated":   authed,
+			"configured":      true,
 		})
+	}
+}
+
+// The no-datastore fallbacks below are mounted *instead of* the auth group when
+// no database is configured. Without them every auth route — including
+// /auth/status, which the UI asks first — simply does not exist, so the browser
+// gets a bare 404 and the operator is told "the requested resource was not
+// found" when the real problem is that the panel has no database. A panel that
+// cannot work should say why.
+
+// unconfiguredStatusHandler reports a panel with no datastore, so the UI can
+// render an explanation instead of guessing.
+func unconfiguredStatusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"needs_bootstrap": false,
+			"authenticated":   false,
+			"configured":      false,
+		})
+	}
+}
+
+// unconfiguredAuthHandler answers login/bootstrap attempts with the actual
+// reason they cannot succeed.
+func unconfiguredAuthHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, errx.New(errx.KindUnavailable, "datastore_not_configured",
+			"HeroPanel has no datastore configured, so it cannot sign anyone in. "+
+				"Set database.dsn in the config file (or the HP_DATABASE_DSN environment variable) and restart."))
 	}
 }
 

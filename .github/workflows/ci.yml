@@ -57,6 +57,7 @@ jobs:
         run: |
           cd web
           npm ci
+          npm test
           npm run build
 
       - name: Build linux binaries (amd64 + arm64)
@@ -66,12 +67,37 @@ jobs:
               CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -o bin/linux-$arch/$b ./cmd/$b
             done
           done
+          # A WebSocket client for the terminal e2e. It is a test tool, not a
+          # shipped binary, so it lives under deploy/docker/e2e rather than cmd/.
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hp-termtest ./deploy/docker/e2e/termclient
 
       # Enable qemu so the arm64 binaries can be smoke-tested under emulation.
       - name: Set up qemu (for arm64 emulation)
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
+
+      # Browser-level tests, against the real hpd serving the real bundle. They
+      # cover what only a browser can prove — routing, forms, keyboard handling,
+      # error states. Privileged behaviour (file ops as the site user, a PTY,
+      # session recording) is covered by the container e2e below, which is the
+      # only place a root broker and real Linux accounts exist.
+      - name: Browser e2e (Playwright)
+        run: |
+          cd web
+          npx playwright install --with-deps chromium
+          # test:e2e rebuilds the bundle and hpd itself: the suite runs a
+          # prebuilt binary with the bundle embedded, so building it anywhere
+          # else risks the two drifting apart and the suite testing a stale UI.
+          npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
 
       - name: Build e2e image (OLS + php-fpm + MariaDB)
         run: docker build -t heropanel-e2e -f deploy/docker/e2e/Dockerfile deploy/docker/e2e
@@ -182,6 +208,68 @@ jobs:
           grep -q 'ok   modules show running'             <<<"$out" || { echo '::error::in-core modules did not register'; exit 1; }
           grep -q 'ok   php tab'                          <<<"$out" || { echo '::error::a site-detail facet has no endpoint'; exit 1; }
           grep -q 'run-ui.sh : PASS'                      <<<"$out" || { echo '::error::run-ui.sh failed'; exit 1; }
+
+      - name: File Manager on a real site (run-as-user + path confinement + baremetal gate)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-files.sh)
+          echo "$out"
+          # Invariant 1: a file written through the API is owned by the site's uid,
+          # not root — the whole point of running every op as the site user.
+          grep -q 'write ran as the site user' <<<"$out" || { echo '::error::a file op did not run as the site user'; exit 1; }
+          # Content round-trips, including binary (base64 over the wire).
+          grep -q 'download matches what was written' <<<"$out" || { echo '::error::file read/download did not round-trip'; exit 1; }
+          grep -q 'binary content survived the round-trip' <<<"$out" || { echo '::error::binary content was corrupted'; exit 1; }
+          grep -q 'archive extracted' <<<"$out" || { echo '::error::archive extraction failed'; exit 1; }
+          # Compress: the archive must hold relative paths and round-trip back.
+          grep -q 'archive holds relative paths' <<<"$out" || { echo '::error::the created archive embedded absolute server paths'; exit 1; }
+          grep -q 'compress -> extract round-trips' <<<"$out" || { echo '::error::compress/extract did not round-trip'; exit 1; }
+          # Search, including that it cannot be pointed outside the site.
+          grep -q 'name search found the file' <<<"$out" || { echo '::error::recursive name search failed'; exit 1; }
+          grep -q 'content search found the file' <<<"$out" || { echo '::error::recursive content search failed'; exit 1; }
+          grep -q 'a traversing search path cannot list /etc' <<<"$out" || { echo '::error::search escaped the site root'; exit 1; }
+          # Copy/move: the paste half of copy-cut-paste. Both ends are confined,
+          # and neither may silently clobber what is already there.
+          grep -q 'copy ran as the site user' <<<"$out" || { echo '::error::copy did not run as the site user'; exit 1; }
+          grep -q 'copy refuses to overwrite by default' <<<"$out" || { echo '::error::copy overwrote an existing destination'; exit 1; }
+          grep -q 'on_conflict=rename landed beside the original' <<<"$out" || { echo '::error::duplicate did not pick a free name'; exit 1; }
+          grep -q 'move relocated the file' <<<"$out" || { echo '::error::move did not relocate the file'; exit 1; }
+          grep -q 'a traversing copy destination was clamped' <<<"$out" || { echo '::error::copy escaped the site root'; exit 1; }
+          # Folder download exists so nothing is left behind; that is the assertion.
+          grep -q 'the folder downloaded as a valid zip' <<<"$out" || { echo '::error::folder download did not produce a valid zip'; exit 1; }
+          grep -q 'no temporary archive was left in the site tree' <<<"$out" || { echo '::error::folder download leaked a temp archive'; exit 1; }
+          # chown is the one root-run file op; it must only ever target the site user.
+          grep -q 'ownership repaired to the site user' <<<"$out" || { echo '::error::ownership repair failed'; exit 1; }
+          # Invariant 2: a traversal never touches the real /etc/passwd and is
+          # clamped back under the site root.
+          grep -q 'the real /etc/passwd was NOT modified' <<<"$out" || { echo '::error::path traversal escaped the site root'; exit 1; }
+          grep -q 'traversal was clamped to <site-root>' <<<"$out" || { echo '::error::the traversal clamp did not land under the site root'; exit 1; }
+          # The File Manager is baremetal-only.
+          grep -q 'git site is refused (not_baremetal)' <<<"$out" || { echo '::error::a git site was not refused file ops'; exit 1; }
+          grep -q 'run-files.sh : PASS' <<<"$out" || { echo '::error::run-files.sh failed'; exit 1; }
+
+      - name: Web terminal (PTY as the site user, audited, confined)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-terminal.sh)
+          echo "$out"
+          # The invariant: the shell is the site's Linux account, never root.
+          grep -q 'the PTY reported the site user' <<<"$out" || { echo '::error::the terminal did not run as the site user'; exit 1; }
+          grep -q 'the shell executed input and returned its output' <<<"$out" || { echo '::error::terminal I/O did not round-trip'; exit 1; }
+          grep -q 'pwd is the site home' <<<"$out" || { echo '::error::the session did not start in the site home'; exit 1; }
+          # A traversing cwd must never land the operator in the real /etc.
+          grep -q 'clamped under the site root' <<<"$out" || { echo '::error::the terminal start directory escaped the site root'; exit 1; }
+          # An unauthenticated upgrade must be refused, and sessions must be audited.
+          grep -q 'no session cookie -> upgrade refused' <<<"$out" || { echo '::error::an unauthenticated client got a terminal'; exit 1; }
+          grep -q 'terminal.open recorded as success' <<<"$out" || { echo '::error::the terminal session was not audited'; exit 1; }
+          grep -q 'no orphaned shell left behind' <<<"$out" || { echo '::error::a shell survived the disconnect'; exit 1; }
+          # Session recording. The first of these is the one that matters: if a
+          # typed password ever reaches the transcript, the panel has become a
+          # plaintext password store.
+          grep -q 'the typed password is NOT in the recording' <<<"$out" || { echo '::error::A TYPED PASSWORD WAS STORED IN A SESSION RECORDING'; exit 1; }
+          grep -q 'the redaction marker is present' <<<"$out" || { echo '::error::redaction dropped input silently instead of marking it'; exit 1; }
+          grep -q 'normal input either side of the prompt was still recorded' <<<"$out" || { echo '::error::redaction swallowed ordinary input'; exit 1; }
+          grep -q 'valid asciicast v2' <<<"$out" || { echo '::error::the recording is not a readable asciicast'; exit 1; }
+          grep -q 'the downloaded transcript also holds no password' <<<"$out" || { echo '::error::the password came back through the API'; exit 1; }
+          grep -q 'run-terminal.sh : PASS' <<<"$out" || { echo '::error::run-terminal.sh failed'; exit 1; }
 
       - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
         run: |

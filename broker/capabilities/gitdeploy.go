@@ -55,13 +55,19 @@ func deployEnv(home string) []string {
 // a deterministic environment (and optional working directory) supplied through
 // /usr/bin/env. Nothing here runs as root.
 func runAsUser(c capability.Context, user, workDir string, env []string, timeout time.Duration, argv ...string) (exec.Result, error) {
+	return runAsUserStdin(c, user, workDir, env, nil, timeout, argv...)
+}
+
+// runAsUserStdin is runAsUser with data piped to the child's stdin (e.g. the
+// bytes tee writes to a file). Nothing here runs as root.
+func runAsUserStdin(c capability.Context, user, workDir string, env []string, stdin []byte, timeout time.Duration, argv ...string) (exec.Result, error) {
 	a := []string{"-u", user, "--", envPath}
 	if workDir != "" {
 		a = append(a, "-C", workDir)
 	}
 	a = append(a, env...)
 	a = append(a, argv...)
-	return c.Runner.Run(c.Ctx, exec.Command{Path: runuserPath, Args: a, Timeout: timeout})
+	return c.Runner.Run(c.Ctx, exec.Command{Path: runuserPath, Args: a, Stdin: stdin, Timeout: timeout})
 }
 
 // logTail returns the last n bytes of combined output, for a bounded deploy log.

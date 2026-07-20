@@ -43,6 +43,8 @@ deferred list, and definition of done.
 | 14 | [Databases](14-databases.md) | MariaDB CRUD/grants, size, export/import, Adminer hand-off |
 | 15 | [Audit Log](15-audit.md) | Hash-chained accountability, the edge auditor, tamper detection |
 | 16 | [PHP](16-php.md) | Version selector, FPM sizing, php.ini editor, OPcache/JIT, extensions |
+| 17 | [File Manager](17-file-manager.md) | Baremetal file browser + CodeMirror editor, run-as-site-user, path confinement, chunked I/O |
+| 18 | [Web Terminal](18-web-terminal.md) | xterm.js + broker-hosted PTY as the site user, stream upgrade, audited sessions |
 
 ## Product Principles
 
@@ -93,8 +95,73 @@ against a live TLS git server (`run-git-token.sh`), SSH host-key pinning and
 GitHub webhook-signature verification, an interactive `/api/docs` viewer, installer
 artifact checksum verification, and arm64 proven under qemu (`run-arch-smoke.sh`)._
 
+_**Phase 4 is complete**, and complete against the feature list rather than only
+the exit criteria. The **File Manager** (in-core, baremetal-only) landed first:
+twelve path-confined broker capabilities — browse, read/write, mkdir, remove,
+rename, **copy**, chmod, extract, **compress**, **ownership repair**, and
+recursive **search** — all run as the site's Linux user, bar `file.chown`, which
+must be root to change an owner at all and is constrained so it can only ever
+assign the site's own account. On top: the `internal/files` service with the
+baremetal gate, chunked streaming, and a conflict policy that never silently
+overwrites; `file.read`/`file.write` RBAC with force-audited downloads; and a
+**Files** site tab with a right-click menu, **copy/cut/paste and duplicate**,
+folder download (the server builds the zip, streams it, and deletes it — nothing
+is left in the tree), drag-and-drop upload with a cancellable byte-accurate
+progress bar (over `XMLHttpRequest`, since `fetch` has no upload-progress event
+at all), sortable columns, a hidden-files
+toggle, multi-select with bulk actions, recursive search, **nested**
+gitignore-aware listing with git's precedence, and image preview — plus a
+**CodeMirror 6** editor, chosen over Monaco for bundle size and strict-CSP
+compatibility, code-split to load only on open, with multi-file tabs, a
+dependency-free **diff view**, and working shortcuts (`Ctrl/⌘-S` bound inside the
+editor so it never hits the browser's save dialog). See
+[17 — File Manager](17-file-manager.md)._
+
+_The **Web Terminal** then closed the phase: a real PTY hosted by the root broker
+and run as the site's Linux user, bridged to xterm.js over a WebSocket. The
+broker connection *upgrades* to a bidirectional stream rather than growing a
+second protocol, so the peer-credential check, token handshake, policy gate, and
+audit chain all still apply; it carries its own `terminal.use` permission, and a
+disconnect kills the whole process group. Its UI handles what a terminal actually
+needs: `Ctrl/⌘-Shift-C`/`-V` copy-paste (plain `Ctrl-C` is left alone — it is
+still SIGINT), scrollback search, a persisted font size, and fullscreen.
+**Sessions are recorded** as asciicast v2 and replayed in-panel through the same
+xterm.js the live terminal uses — output *and* keystrokes, kept 30 days, behind
+their own read and delete permissions, with downloads force-audited. They get a
+**top-level Recordings page** across every site, sitting beside the audit log
+rather than inside the terminal: the list first lived only in the Terminal tab,
+which is gated on `terminal.use`, so an auditor holding `terminal.recordings.read`
+and no shell access could not reach one — the permission was right in the API and
+wrong in the navigation, and only a browser test could see that. Passwords
+are never stored: input at a password prompt becomes a single `[redacted]`
+marker. The rule that makes that work is not "redact while echo is off" — a shell
+runs with echo off nearly all the time because readline echoes for itself — but
+"echo off **while still canonical**", which is what `read -s`, `sudo` and getpass
+actually do. See [18 — Web Terminal](18-web-terminal.md)._
+
+_Both are proven live in CI, not mocked: `run-files.sh` (run-as-user ownership,
+binary round-trip, `../../etc/passwd` clamping, copy refusing to clobber and
+clamping a traversing destination, a folder download that leaves no temp archive,
+baremetal gate) and `run-terminal.sh` (shell runs as the site user and never root,
+I/O round-trip, a traversing `cwd` never reaching `/etc`, unauthenticated upgrade
+refused, no orphaned processes, session on the hash chain). The PTY layer itself
+is unit-tested against a real pseudo-terminal, and the frontend's pure logic — the
+gitignore matcher, the differ, the path helpers — now has a `vitest` suite that
+runs in CI before the bundle is built._
+
+_Two gaps surfaced **after** Phase 4 was first called done, and both were the
+quiet kind: uploads had no progress indicator at all, and the File Manager and
+terminal routes were **missing from `docs/openapi.json`** — the spec is generated
+by walking a test router that never mounted those services, so about 1500 lines
+of the published API were absent while the drift test happily passed. Both are
+fixed, and a new **permission drift test** now drives the real router to prove
+that the permission each route is documented with is the permission it actually
+enforces — a mapping nothing had ever verified._
+
 _Still **not** signed off: the genuinely later-phase items each phase lists below
 (e.g. DNS as a true satellite module, cgroup kernel-enforcement of `site_limits`,
 PostgreSQL/Mongo engines, OAuth app authorization, cryptographic artifact
-**signing** on top of checksums, the public `install.sh` bootstrap host). The
-honest per-bullet accounting lives in [10 — Roadmap](10-roadmap.md)._
+**signing** on top of checksums, the public `install.sh` bootstrap host), plus the
+Phase 4 items deliberately carried forward: terminal session recording, nested
+`.gitignore` precedence, server-side archive streaming, and archived multi-file
+upload. The honest per-bullet accounting lives in [10 — Roadmap](10-roadmap.md)._

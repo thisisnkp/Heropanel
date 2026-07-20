@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
@@ -25,5 +25,12 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
+  },
+  // Unit tests cover the pure logic that has no server to catch its mistakes —
+  // the gitignore matcher, the diff, and the path helpers. Rendering tests would
+  // need jsdom; the e2e suite exercises the UI against a real panel instead.
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"],
   },
 });

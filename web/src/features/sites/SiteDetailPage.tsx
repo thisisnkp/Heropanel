@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiRequestError } from "@/lib/api";
+import { ApiRequestError, can } from "@/lib/api";
 import { Alert, Button, Card, Spinner, StatusBadge, Tabs } from "@/components/ui";
 import { toast } from "@/stores/toast";
 import { useJobs } from "@/stores/jobs";
+import { useMe } from "@/features/auth/auth";
 import { useSite, useSuspend } from "./site-detail";
 import { OverviewTab } from "./tabs/OverviewTab";
 import { DomainsTab } from "./tabs/DomainsTab";
 import { PHPTab } from "./tabs/PHPTab";
 import { RuntimeTab } from "./tabs/RuntimeTab";
 import { GitTab } from "./tabs/GitTab";
+import { FilesTab } from "./tabs/FilesTab";
+import { TerminalTab } from "./tabs/TerminalTab";
 import { LogsTab } from "./tabs/LogsTab";
 import { AdvancedTab } from "./tabs/AdvancedTab";
 
@@ -17,6 +20,7 @@ export function SiteDetailPage() {
   const { uid = "" } = useParams();
   const navigate = useNavigate();
   const { data: site, isLoading, error } = useSite(uid);
+  const { data: me } = useMe();
   const [tab, setTab] = useState("overview");
   const suspend = useSuspend(uid);
 
@@ -34,12 +38,21 @@ export function SiteDetailPage() {
   const isProxy = site.type === "proxy";
   const isPHP = site.type === "php";
   const suspended = site.status === "suspended";
+  // The File Manager is baremetal-only (git/docker content is owned by the
+  // deploy pipeline) and needs file.read; hide the tab otherwise rather than
+  // letting it 403 on click.
+  const showFiles = site.deploy_mode === "baremetal" && can(me, "file.read");
+  // A terminal needs a real Linux account to attach to, and its own permission —
+  // running arbitrary commands is a much larger grant than editing a file.
+  const showTerminal = !!site.system_user && can(me, "terminal.use");
 
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "domains", label: "Domains" },
     ...(isPHP ? [{ id: "php", label: "PHP" }] : []),
     ...(isProxy ? [{ id: "runtime", label: "Runtime" }] : []),
+    ...(showFiles ? [{ id: "files", label: "Files" }] : []),
+    ...(showTerminal ? [{ id: "terminal", label: "Terminal" }] : []),
     { id: "git", label: "Git" },
     { id: "logs", label: "Logs" },
     { id: "advanced", label: "Advanced" },
@@ -83,6 +96,8 @@ export function SiteDetailPage() {
       {tab === "domains" && <DomainsTab uid={uid} />}
       {tab === "php" && <PHPTab uid={uid} />}
       {tab === "runtime" && <RuntimeTab uid={uid} />}
+      {tab === "files" && showFiles && <FilesTab uid={uid} />}
+      {tab === "terminal" && showTerminal && <TerminalTab uid={uid} systemUser={site.system_user} />}
       {tab === "git" && <GitTab uid={uid} />}
       {tab === "logs" && <LogsTab uid={uid} />}
       {tab === "advanced" && (

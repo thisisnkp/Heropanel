@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/domain"
+	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
@@ -31,6 +33,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/heropanel/internal/terminal"
 	"github.com/thisisnkp/heropanel/internal/webserver"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
@@ -70,7 +73,13 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Info("database ready", "dialect", opened.Dialect, "migrations_applied", applied)
 		db = opened
 	} else {
-		log.Warn("no datastore configured (empty DSN); running without persistence")
+		// This is not a normal degraded mode: with no datastore there is no auth
+		// service, so nobody can log in and no feature works. Say so plainly and
+		// say how to fix it — the alternative is an operator staring at a login
+		// screen that rejects every attempt.
+		log.Error("no datastore configured — the panel cannot sign anyone in",
+			"fix", "set database.dsn in the config file, or the HP_DATABASE_DSN environment variable, then restart",
+			"example_sqlite", "HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/var/lib/heropanel/hp.db")
 	}
 
 	// Two-tier cache: an always-present in-process L1, composed with Redis L2 +
@@ -135,6 +144,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var dbSvc *database.Service
 	var sslSvc *ssl.Service
 	var gitSvc *git.Service
+	var filesSvc *files.Service
+	var terminalSvc *terminal.Service
+	var recordings *terminal.RecordingStore
 	var runtimeSvc *runtime.Service
 	var dnsSvc *dns.Service
 	var domainSvc *domain.Service
@@ -181,6 +193,39 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			WithRestarter(runtimeSvc). // auto-restart a proxy app after each deploy
 			WithSecrets(cipher)        // enables private repos (token / deploy key)
 
+		// The File Manager needs the privileged broker to act as the site's Linux
+		// user; it is baremetal-only (the gate lives in the service). Wired even
+		// when the broker is absent — its calls then report "unavailable" rather
+		// than the feature vanishing from the UI mid-session.
+		filesSvc = files.NewService(filesSiteAdapter{repo: siteStore}, gw)
+
+		// The web terminal needs a *streaming* broker connection, which only the
+		// concrete client provides. Without a broker there is no way to run a
+		// shell as another user, so the feature stays switched off rather than
+		// offering a terminal that cannot open.
+		if client, ok := gw.(*brokerclient.Client); ok && client != nil {
+			terminalSvc = terminal.NewService(terminalSiteAdapter{repo: siteStore}, client)
+		}
+
+		// Session recording. The transcript files live on disk; only their
+		// metadata is in the database. An unwritable directory disables recording
+		// rather than the terminal — a shell the operator asked for must not fail
+		// because its audit artifact could not be stored — but it is logged at
+		// ERROR, because a panel that believes it is recording and is not is worse
+		// than one that never claimed to.
+		if dir := cfg.Terminal.Recording.Dir; dir != "" {
+			retention := time.Duration(cfg.Terminal.Recording.RetentionDays) * 24 * time.Hour
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				log.Error("terminal session recording is DISABLED: the recordings directory could not be created",
+					"dir", dir, "err", err,
+					"fix", "create the directory and make it writable by the hpd user, or set terminal.recording.dir to \"\" to silence this")
+			} else {
+				recordings = terminal.NewRecordingStore(dir, repository.NewRecordingStore(db), retention)
+				log.Info("terminal session recording enabled",
+					"dir", dir, "retention_days", cfg.Terminal.Recording.RetentionDays)
+			}
+		}
+
 		// SSL: self-signed and custom uploads always available; Let's Encrypt
 		// (ACME) enabled only when an account email is configured.
 		var acmeProvider ssl.ACME
@@ -215,6 +260,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			{"php", []string{"php.pool", "php.extensions"}, phpSvc != nil},
 			{"databases", []string{"database.manage", "database.export", "database.adminer"}, dbSvc != nil},
 			{"git", []string{"git.deploy", "git.rollback"}, gitSvc != nil},
+			{"files", []string{"file.browse", "file.edit", "file.upload"}, filesSvc != nil},
+			{"terminal", []string{"terminal.session"}, terminalSvc != nil && terminalSvc.Available()},
 			{"runtime", []string{"runtime.app", "runtime.health"}, runtimeSvc != nil},
 			{"ssl", []string{"ssl.issue", "ssl.dns01"}, sslSvc != nil},
 			{"dns", []string{"dns.zone", "dns.record"}, dnsSvc != nil},
@@ -314,6 +361,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	// Drops the throwaway accounts minted for Adminer hand-offs once they expire.
 	// It also sweeps on startup, cleaning up after a restart mid-session.
 	if dbSvc != nil && cfg.Database.AdminerURL != "" {
+		if recordings != nil {
+			// Retention is not optional housekeeping: it is the half of the policy
+			// that says the panel stops holding a transcript of someone's work.
+			go recordings.RunPurger(ctx, log)
+		}
 		go dbSvc.RunSSOSweeper(ctx, log)
 		log.Info("database sign-on sweeper enabled", "ttl", database.SSOTTL.String())
 	}
@@ -327,28 +379,31 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	}
 
 	handler := httpapi.NewRouter(httpapi.Deps{
-		Ctx:       ctx,
-		Config:    cfg,
-		Logger:    log,
-		Version:   version,
-		StartedAt: time.Now(),
-		DB:        dbHealth,
-		Redis:     redisHealth,
-		Broker:    brokerHealth,
-		Auth:      authSvc,
-		Audit:     auditSvc,
-		Users:     userDir,
-		Sites:     siteSvc,
-		PHP:       phpSvc,
-		Databases: dbSvc,
-		SSL:       sslSvc,
-		DNS:       dnsSvc,
-		Domains:   domainSvc,
-		Git:       gitSvc,
-		Runtime:   runtimeSvc,
-		Jobs:      jobs,
-		Registry:  reg,
-		WS:        wsHub,
+		Ctx:        ctx,
+		Config:     cfg,
+		Logger:     log,
+		Version:    version,
+		StartedAt:  time.Now(),
+		DB:         dbHealth,
+		Redis:      redisHealth,
+		Broker:     brokerHealth,
+		Auth:       authSvc,
+		Audit:      auditSvc,
+		Users:      userDir,
+		Sites:      siteSvc,
+		PHP:        phpSvc,
+		Databases:  dbSvc,
+		SSL:        sslSvc,
+		DNS:        dnsSvc,
+		Domains:    domainSvc,
+		Git:        gitSvc,
+		Files:      filesSvc,
+		Terminal:   terminalSvc,
+		Recordings: recordings,
+		Runtime:    runtimeSvc,
+		Jobs:       jobs,
+		Registry:   reg,
+		WS:         wsHub,
 	})
 
 	srv := &http.Server{

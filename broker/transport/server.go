@@ -97,6 +97,12 @@ func (s *Server) ServeConn(ctx context.Context, conn net.Conn) {
 		if err := brokerwire.ReadFrame(conn, &req); err != nil {
 			return // EOF or read error → close
 		}
+		// An interactive terminal is a stream, not a result. It takes over the
+		// connection for its lifetime and never returns to this loop.
+		if req.Capability == broker.CapTerminalOpen {
+			s.handleTerminal(ctx, conn, req)
+			return
+		}
 		resp := s.dispatch(ctx, req)
 		if err := brokerwire.WriteFrame(conn, resp); err != nil {
 			return

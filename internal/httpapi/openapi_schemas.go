@@ -14,6 +14,8 @@ var openapiTags = []any{
 	map[string]any{"name": "Domains", "description": "Aliases, redirects, and force-HTTPS for a site."},
 	map[string]any{"name": "Runtime", "description": "Supervised app process for proxy sites (Node/Python/Go/generic)."},
 	map[string]any{"name": "Git", "description": "Git source, deployments, rollback, and the push webhook."},
+	map[string]any{"name": "Files", "description": "Baremetal site file manager: browse, edit, upload/download, and archive extraction, run as the site's Linux user."},
+	map[string]any{"name": "Terminal", "description": "Interactive PTY session on a site, run as its Linux user over a WebSocket."},
 	map[string]any{"name": "Databases", "description": "Databases, database users, grants, dumps, and Adminer hand-off."},
 	map[string]any{"name": "DNS", "description": "Authoritative zones and records."},
 	map[string]any{"name": "SSL", "description": "Certificates: Let's Encrypt, self-signed, and custom upload."},
@@ -54,6 +56,7 @@ var openapiSchemas = map[string]any{
 	"AuthStatus": object(map[string]any{
 		"needs_bootstrap": prop("boolean", "True on a fresh install with no admin yet."),
 		"authenticated":   prop("boolean", ""),
+		"configured":      prop("boolean", "False when hpd has no datastore configured, so sign-in is impossible until one is set."),
 	}),
 	"LoginResult": object(map[string]any{
 		"authenticated": prop("boolean", ""),
@@ -179,6 +182,29 @@ var openapiSchemas = map[string]any{
 		"uid":    prop("string", ""),
 		"status": prop("string", ""),
 		"job":    ref("Job"),
+	}),
+
+	// ── files ────────────────────────────────────────────────────────────────
+	"FileEntry": object(map[string]any{
+		"name":  prop("string", "Entry name (basename, not a path)."),
+		"kind":  map[string]any{"type": "string", "enum": []any{"file", "dir", "symlink", "other"}},
+		"size":  prop("integer", "Size in bytes."),
+		"mode":  prop("string", "Octal permission bits, e.g. \"644\"."),
+		"mtime": prop("integer", "Modification time, epoch seconds."),
+	}),
+	"FileListing": object(map[string]any{
+		"path":    prop("string", "The absolute directory that was listed."),
+		"entries": arrayOf(ref("FileEntry")),
+	}),
+	"FileSearch": object(map[string]any{
+		"path": prop("string", "The absolute directory that was searched."),
+		"entries": arrayOf(object(map[string]any{
+			"name": prop("string", ""),
+			"path": prop("string", "Path relative to the searched directory."),
+			"kind": map[string]any{"type": "string", "enum": []any{"file", "dir", "symlink", "other"}},
+			"size": prop("integer", ""),
+		})),
+		"truncated": prop("boolean", "True when the result cap was hit."),
 	}),
 
 	// ── databases ────────────────────────────────────────────────────────────

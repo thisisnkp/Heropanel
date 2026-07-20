@@ -389,6 +389,135 @@ var apiDocs = map[string]opMeta{
 		RespSchema: ref("DeployResult"), RespStatus: 202,
 	},
 
+	// ── files ─────────────────────────────────────────────────────────────────
+	"GET /api/v1/sites/{uid}/files": {
+		Summary: "List a directory", Tags: []string{"Files"}, Permission: "file.read",
+		RespSchema: ref("FileListing"),
+		RespDesc:   "Query: path=<site-relative dir> (empty lists the site root). Baremetal sites only.",
+	},
+	"GET /api/v1/sites/{uid}/files/content": {
+		Summary: "Download a file", Tags: []string{"Files"}, Permission: "file.read",
+		RespDesc: "Streams the raw file bytes (application/octet-stream). Query: path=<site-relative file>. Force-audited.",
+	},
+	"GET /api/v1/sites/{uid}/files/archive": {
+		Summary: "Download a directory as a .zip", Tags: []string{"Files"}, Permission: "file.read",
+		RespDesc: "Streams a zip of the directory (application/zip). Query: path=<site-relative directory>; empty means the site root. " +
+			"The archive is built server-side and deleted once the response completes, so nothing is left in the site's tree.",
+	},
+	"PUT /api/v1/sites/{uid}/files/content": {
+		Summary: "Write (save/upload) a file", Tags: []string{"Files"}, Permission: "file.write",
+		ReqDesc:  "The raw file bytes as the request body; truncates then writes. Query: path=<site-relative file>.",
+		RespDesc: "File written; returns the byte count.",
+	},
+	"DELETE /api/v1/sites/{uid}/files": {
+		Summary: "Delete a file or directory", Tags: []string{"Files"}, Permission: "file.write",
+		RespDesc: "Query: path=<site-relative path>. Refuses the site root.",
+	},
+	"POST /api/v1/sites/{uid}/files/mkdir": {
+		Summary: "Create a directory", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema:  object(map[string]any{"path": prop("string", "Site-relative directory to create (with parents).")}, "path"),
+		RespStatus: 201, RespDesc: "Directory created.",
+	},
+	"POST /api/v1/sites/{uid}/files/rename": {
+		Summary: "Move or rename a path", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{
+			"from": prop("string", "Site-relative source path."),
+			"to":   prop("string", "Site-relative destination path."),
+		}, "from", "to"),
+		RespDesc: "Path moved.",
+	},
+	"GET /api/v1/sites/{uid}/terminal/recordings": {
+		Summary: "List a site's recorded terminal sessions", Tags: []string{"Terminal"},
+		Permission: "terminal.recordings.read",
+		RespDesc:   "Recordings for this site, newest first. Query: limit, offset.",
+	},
+	"GET /api/v1/terminal/recordings": {
+		Summary: "List recorded terminal sessions", Tags: []string{"Terminal"},
+		Permission: "terminal.recordings.read",
+		RespDesc:   "All recordings, newest first. Query: limit, offset.",
+	},
+	"GET /api/v1/terminal/recordings/{rid}": {
+		Summary: "Get a recording's metadata", Tags: []string{"Terminal"},
+		Permission: "terminal.recordings.read",
+		RespDesc:   "Who opened the session, as which Linux user, how long it ran, and whether the recording is complete.",
+	},
+	"GET /api/v1/terminal/recordings/{rid}/cast": {
+		Summary: "Download a recording", Tags: []string{"Terminal"},
+		Permission: "terminal.recordings.read",
+		RespDesc: "Streams the session as asciicast v2 (application/x-asciicast). Force-audited — this is the route that hands over the transcript. " +
+			"Input typed while the terminal had echo disabled (a password prompt) was redacted before it was ever written.",
+	},
+	"DELETE /api/v1/terminal/recordings/{rid}": {
+		Summary: "Delete a recording", Tags: []string{"Terminal"},
+		Permission: "terminal.recordings.delete",
+		RespDesc:   "Removes the row and its file. Separate from the read permission on purpose: destroying an audit artifact is grantable to fewer people than viewing one.",
+	},
+	"POST /api/v1/sites/{uid}/files/copy": {
+		Summary: "Copy a path", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{
+			"from":        prop("string", "Site-relative source path."),
+			"to":          prop("string", "Site-relative destination path."),
+			"on_conflict": prop("string", "\"fail\" (default) or \"rename\" to land beside an existing entry."),
+		}, "from", "to"),
+		RespDesc: "Path copied; the response echoes the destination actually used.",
+	},
+	"POST /api/v1/sites/{uid}/files/move": {
+		Summary: "Move a path", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{
+			"from":        prop("string", "Site-relative source path."),
+			"to":          prop("string", "Site-relative destination path."),
+			"on_conflict": prop("string", "\"fail\" (default) or \"rename\" to land beside an existing entry."),
+		}, "from", "to"),
+		RespDesc: "Path moved; the response echoes the destination actually used.",
+	},
+	"POST /api/v1/sites/{uid}/files/chmod": {
+		Summary: "Change a path's mode", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{
+			"path": prop("string", "Site-relative path."),
+			"mode": prop("string", "Octal mode, 3–4 digits, e.g. \"644\"."),
+		}, "path", "mode"),
+		RespDesc: "Mode changed.",
+	},
+	"POST /api/v1/sites/{uid}/files/extract": {
+		Summary: "Extract an archive", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{
+			"archive": prop("string", "Site-relative .zip or .tar[.gz|.bz2|.xz] archive."),
+			"dest":    prop("string", "Site-relative destination directory (created if absent)."),
+		}, "archive", "dest"),
+		RespDesc: "Archive extracted.",
+	},
+
+	"POST /api/v1/sites/{uid}/files/compress": {
+		Summary: "Create an archive", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{
+			"sources": arrayOf(prop("string", "Site-relative entries, all from the same folder.")),
+			"archive": prop("string", "Site-relative destination, e.g. assets/backup.zip."),
+			"format":  map[string]any{"type": "string", "enum": []any{"zip", "tar.gz"}, "description": "Defaults to the archive's suffix."},
+		}, "sources", "archive"),
+		RespStatus: 201, RespDesc: "Archive created.",
+	},
+	"POST /api/v1/sites/{uid}/files/chown": {
+		Summary: "Repair ownership", Tags: []string{"Files"}, Permission: "file.write",
+		ReqSchema: object(map[string]any{"path": prop("string", "Site-relative path; applied recursively.")}, "path"),
+		RespDesc:  "Ownership reset to the site's Linux user. The target account cannot be chosen — it is always the site's own user.",
+	},
+	"GET /api/v1/sites/{uid}/files/search": {
+		Summary: "Search the file tree", Tags: []string{"Files"}, Permission: "file.read",
+		RespSchema: ref("FileSearch"),
+		RespDesc:   "Query: q=<term>, path=<site-relative subtree>, mode=name|content. Results are capped; `truncated` says whether they were.",
+	},
+
+	// ── terminal ──────────────────────────────────────────────────────────────
+	"GET /api/v1/sites/{uid}/terminal": {
+		Summary: "Open an interactive terminal (WebSocket)", Tags: []string{"Terminal"}, Permission: "terminal.use",
+		RespStatus: 101,
+		RespDesc: "Upgrades to a WebSocket carrying a PTY session run as the site's Linux user. " +
+			"Query: cwd (site-relative, clamped), cols, rows. Terminal bytes travel as binary frames in both " +
+			"directions; JSON text frames carry control messages ({type:\"resize\",cols,rows} in, " +
+			"{type:\"exit\",exit_code} / {type:\"error\",message} out). Force-audited: the session records the " +
+			"Linux account it ran as.",
+	},
+
 	// ── jobs ──────────────────────────────────────────────────────────────────
 	"GET /api/v1/jobs": {
 		Summary: "List jobs", Tags: []string{"Jobs"}, RespSchema: arrayOf(ref("Job")),

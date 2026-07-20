@@ -1,7 +1,9 @@
 package capability
 
 import (
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/thisisnkp/heropanel/broker/policy"
 	"github.com/thisisnkp/heropanel/pkg/errx"
@@ -116,6 +118,30 @@ func ValidatePath(pth string, p policy.Policy) error {
 			"Path is outside the permitted roots.")
 	}
 	return nil
+}
+
+// ConfinedPath joins a caller-supplied relative path onto a policy-confined
+// root, clamping any traversal so the result can never leave the root.
+//
+// This is the single implementation of that clamp: the File Manager's file
+// operations and the interactive terminal's working directory both go through
+// it, so there is one place to review and one place a mistake could live.
+//
+// `path.Clean` on an absolute path cannot ascend above "/", so prefixing "/"
+// before cleaning neutralises "../" sequences and absolute inputs alike; the
+// joined result is then re-validated against the policy roots.
+func ConfinedPath(root, rel string, p policy.Policy) (string, error) {
+	if err := ValidatePath(root, p); err != nil {
+		return "", err
+	}
+	abs := path.Clean(root + "/" + path.Clean("/"+rel))
+	if abs != path.Clean(root) && !strings.HasPrefix(abs, path.Clean(root)+"/") {
+		return "", errx.Forbidden("path_escape", "Path escapes the permitted root.")
+	}
+	if err := ValidatePath(abs, p); err != nil {
+		return "", err
+	}
+	return abs, nil
 }
 
 // splitDots splits s on '.' without importing strings for a single use pattern

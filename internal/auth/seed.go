@@ -30,6 +30,15 @@ var basePermissions = []seedPermission{
 	{"database.write", "database", "write", "Create and manage databases"},
 	{"git.read", "git", "read", "View Git sources and deployments"},
 	{"git.write", "git", "write", "Configure Git sources and trigger deployments"},
+	{"file.read", "file", "read", "Browse and download a site's files"},
+	{"file.write", "file", "write", "Create, edit, upload, and delete a site's files"},
+	{"terminal.use", "terminal", "use", "Open an interactive shell as a site's Linux user"},
+	// Reading a recording is a bigger grant than opening your own shell: it is
+	// reading a transcript of what someone else typed. Deleting one is bigger
+	// still — destroying an audit artifact is precisely what an operator under
+	// scrutiny would want — so it is grantable separately.
+	{"terminal.recordings.read", "terminal", "recordings.read", "View and replay recorded terminal sessions"},
+	{"terminal.recordings.delete", "terminal", "recordings.delete", "Delete recorded terminal sessions"},
 	{"system.read", "system", "read", "View system status"},
 	{"system.write", "system", "write", "Change system configuration"},
 	{"audit.read", "audit", "read", "View the audit log"},

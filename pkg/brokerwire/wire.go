@@ -48,11 +48,14 @@ type Request struct {
 }
 
 // Response is the result of a Request. On failure, OK is false and Error is set.
+// When Stream is true the connection has been upgraded: no further Responses
+// follow, and both ends exchange StreamFrames until the connection closes.
 type Response struct {
-	ID    string         `json:"id"`
-	OK    bool           `json:"ok"`
-	Data  map[string]any `json:"data,omitempty"`
-	Error *WireError     `json:"error,omitempty"`
+	ID     string         `json:"id"`
+	OK     bool           `json:"ok"`
+	Data   map[string]any `json:"data,omitempty"`
+	Error  *WireError     `json:"error,omitempty"`
+	Stream bool           `json:"stream,omitempty"`
 }
 
 // WireError is the transport form of a domain error.
@@ -60,6 +63,50 @@ type WireError struct {
 	Kind    string `json:"kind"`
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// ── streaming (interactive PTY sessions) ─────────────────────────────────────
+//
+// Most capabilities are one-shot request/response. A terminal is not: it is a
+// long-lived, bidirectional byte stream. Rather than bolt a second protocol (or
+// a second socket) onto the broker, a connection *upgrades*: the client sends a
+// normal Request for a streaming capability, the broker replies with a Response
+// carrying Stream=true, and from then on both ends exchange StreamFrames on that
+// same connection until it closes. The existing framing, size cap, peer-credential
+// check, and token handshake all still apply — which is the point.
+
+// Stream frame kinds.
+const (
+	StreamIn     = "in"     // client → broker: bytes to write to the PTY
+	StreamOut    = "out"    // broker → client: bytes read from the PTY
+	StreamResize = "resize" // client → broker: new window size
+	StreamExit   = "exit"   // broker → client: the session ended
+	StreamError  = "error"  // broker → client: the session failed
+	// StreamEcho tells the client whether the PTY is currently echoing what is
+	// typed. It is emitted only when the state changes.
+	//
+	// It exists for session recording. A password prompt (sudo, mysql -p, ssh)
+	// works by turning the terminal's ECHO bit off, so the typed secret never
+	// reaches the screen — and therefore never reaches the recorded *output*. But
+	// a recording that also captures *input* would capture it, turning the panel
+	// into a plaintext password store. Only the broker can see the termios state,
+	// since only the broker holds the PTY, so it has to say so on the wire.
+	StreamEcho = "echo"
+)
+
+// StreamFrame is one message in an upgraded (streaming) connection. Data is
+// base64-encoded by encoding/json, so terminal bytes are binary-safe.
+type StreamFrame struct {
+	Kind     string `json:"kind"`
+	Data     []byte `json:"data,omitempty"`
+	Cols     uint16 `json:"cols,omitempty"`
+	Rows     uint16 `json:"rows,omitempty"`
+	ExitCode int    `json:"exit_code,omitempty"`
+	Error    string `json:"error,omitempty"`
+	// Echo carries the PTY's echo state on a StreamEcho frame. It is a pointer so
+	// that "echo is off" (false) is distinguishable from "this frame says nothing
+	// about echo", which every other kind does.
+	Echo *bool `json:"echo,omitempty"`
 }
 
 // WriteFrame marshals v to JSON and writes it with a 4-byte length prefix.

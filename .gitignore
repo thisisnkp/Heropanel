@@ -16,6 +16,12 @@ web/dist/*
 !web/dist/.gitkeep
 web/.vite/
 *.local
+# Playwright's run output: traces and screenshots of a failed run, useful
+# locally and as a CI artifact, never something to commit.
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/.playwright/
 
 # ── Secrets / runtime (never commit) ────────────────────────────────
 *.pem

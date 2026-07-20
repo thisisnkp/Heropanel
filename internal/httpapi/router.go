@@ -18,6 +18,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/domain"
+	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/php"
@@ -25,6 +26,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/heropanel/internal/terminal"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	"github.com/thisisnkp/heropanel/web"
 )
@@ -42,23 +44,29 @@ type Deps struct {
 	Logger    *slog.Logger
 	Version   string
 	StartedAt time.Time
-	DB        HealthChecker      // nil when no datastore is configured
-	Redis     HealthChecker      // nil when Redis is disabled
-	Broker    HealthChecker      // nil when the broker is not configured
-	Auth      *auth.Service      // nil when no datastore is configured
-	Audit     *audit.Service     // nil when no datastore is configured
-	Users     UserDirectory      // nil when no datastore is configured
-	Sites     *site.Service      // nil when no datastore is configured
-	PHP       *php.Service       // nil when no datastore is configured
-	Databases *database.Service  // nil when no datastore is configured
-	SSL       *ssl.Service       // nil when no datastore is configured
-	DNS       *dns.Service       // nil when no datastore is configured
-	Domains   *domain.Service    // nil when no datastore is configured
-	Git       *git.Service       // nil when no datastore is configured
-	Runtime   *runtime.Service   // nil when no datastore is configured
-	Jobs      *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
-	WS        *ws.Hub            // nil when the realtime hub is disabled (no Redis)
-	Registry  *registry.Registry // module capability set; never nil (may be empty)
+	DB        HealthChecker     // nil when no datastore is configured
+	Redis     HealthChecker     // nil when Redis is disabled
+	Broker    HealthChecker     // nil when the broker is not configured
+	Auth      *auth.Service     // nil when no datastore is configured
+	Audit     *audit.Service    // nil when no datastore is configured
+	Users     UserDirectory     // nil when no datastore is configured
+	Sites     *site.Service     // nil when no datastore is configured
+	PHP       *php.Service      // nil when no datastore is configured
+	Databases *database.Service // nil when no datastore is configured
+	SSL       *ssl.Service      // nil when no datastore is configured
+	DNS       *dns.Service      // nil when no datastore is configured
+	Domains   *domain.Service   // nil when no datastore is configured
+	Git       *git.Service      // nil when no datastore is configured
+	Files     *files.Service    // nil when no datastore is configured
+	Terminal  *terminal.Service // nil when no datastore is configured
+	// Recordings stores terminal session transcripts. It may be nil, and its
+	// Enabled() reports false when no recordings directory is configured — a
+	// terminal still works, it is simply not recorded.
+	Recordings *terminal.RecordingStore
+	Runtime    *runtime.Service   // nil when no datastore is configured
+	Jobs       *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
+	WS         *ws.Hub            // nil when the realtime hub is disabled (no Redis)
+	Registry   *registry.Registry // module capability set; never nil (may be empty)
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -102,7 +110,16 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/openapi.json", openapiHandler(d))
 
 		// Auth-dependent routes are mounted only when a datastore (and thus the
-		// auth service) is available.
+		// auth service) is available. When it is not, the panel cannot sign anyone
+		// in — so the three routes the login screen actually calls are still
+		// mounted, answering with the real reason. Without them every auth route
+		// 404s and the operator is told "the requested resource was not found"
+		// when the actual problem is that no database is configured.
+		if d.Auth == nil {
+			r.Get("/auth/status", unconfiguredStatusHandler())
+			r.Post("/auth/login", unconfiguredAuthHandler())
+			r.Post("/auth/bootstrap", unconfiguredAuthHandler())
+		}
 		if d.Auth != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(authenticate(d.Auth)) // attach principal if present
@@ -201,6 +218,49 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("git.read")).Get("/sites/{uid}/git/deployments", listSiteDeploymentsHandler(d))
 					r.With(requirePermission("git.write")).Post("/sites/{uid}/git/deploy", deploySiteHandler(d))
 					r.With(requirePermission("git.write")).Post("/sites/{uid}/git/rollback/{dep}", rollbackSiteHandler(d))
+				}
+				if d.Files != nil {
+					// The File Manager is baremetal-only (enforced in the service).
+					// Reads (browse, download) take file.read; every mutation takes
+					// file.write. A download hands a file's bytes to the caller, so it
+					// is read-gated but force-audited in the handler.
+					r.With(requirePermission("file.read")).Get("/sites/{uid}/files", listFilesHandler(d))
+					r.With(requirePermission("file.read")).Get("/sites/{uid}/files/content", readFileHandler(d))
+					r.With(requirePermission("file.read")).Get("/sites/{uid}/files/archive", archiveFileHandler(d))
+					r.With(requirePermission("file.write")).Put("/sites/{uid}/files/content", writeFileHandler(d))
+					r.With(requirePermission("file.write")).Delete("/sites/{uid}/files", deleteFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/mkdir", mkdirFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/rename", renameFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/copy", copyFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/move", moveFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/chmod", chmodFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/extract", extractFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/compress", compressFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/chown", chownFileHandler(d))
+					r.With(requirePermission("file.read")).Get("/sites/{uid}/files/search", searchFilesHandler(d))
+				}
+				if d.Terminal != nil && d.Terminal.Available() {
+					// An interactive shell as the site's Linux user. Its own
+					// permission, not file.write: being able to edit a file is a
+					// much smaller grant than being able to run arbitrary commands
+					// as that user. Force-audited in the handler.
+					r.With(requirePermission("terminal.use")).Get("/sites/{uid}/terminal", terminalHandler(d))
+				}
+				if d.Recordings != nil {
+					// Recordings are a transcript of privileged work, so they carry
+					// their own permission rather than riding on terminal.use: being
+					// allowed to open your own shell is a much smaller grant than being
+					// allowed to read what everyone else typed in theirs.
+					r.With(requirePermission("terminal.recordings.read")).
+						Get("/sites/{uid}/terminal/recordings", listRecordingsHandler(d))
+					r.With(requirePermission("terminal.recordings.read")).
+						Get("/terminal/recordings", listRecordingsHandler(d))
+					r.With(requirePermission("terminal.recordings.read")).
+						Get("/terminal/recordings/{rid}", getRecordingHandler(d))
+					r.With(requirePermission("terminal.recordings.read")).
+						Get("/terminal/recordings/{rid}/cast", downloadRecordingHandler(d))
+					r.With(requirePermission("terminal.recordings.delete")).
+						Delete("/terminal/recordings/{rid}", deleteRecordingHandler(d))
 				}
 				if d.Domains != nil {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/domains", listDomainsHandler(d))

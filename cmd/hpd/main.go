@@ -34,11 +34,17 @@ func main() {
 	}
 
 	// The config file is optional: if it is absent we run on defaults + env,
-	// which keeps local/dev runs frictionless.
+	// which keeps local/dev runs frictionless. But "absent" and "somewhere I am
+	// not looking" are the same thing from here, so the path we skipped is kept
+	// and reported below: a config file the operator wrote and hpd silently
+	// ignored is indistinguishable from one that does not exist, and the symptom
+	// — a panel that says it has no datastore while a config file plainly sets
+	// one — sends you looking at the database instead of at the path.
 	path := *configPath
+	skipped := ""
 	if path != "" {
 		if _, err := os.Stat(path); err != nil {
-			path = ""
+			skipped, path = path, ""
 		}
 	}
 
@@ -52,6 +58,13 @@ func main() {
 		Level:  logx.ParseLevel(cfg.Log.Level),
 		Format: logx.Format(cfg.Log.Format),
 	})
+
+	if path != "" {
+		log.Info("config loaded", "path", path)
+	} else {
+		log.Info("no config file — running on defaults and HP_* environment variables",
+			"looked_for", skipped, "override_with", "-config <path> or HP_CONFIG")
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

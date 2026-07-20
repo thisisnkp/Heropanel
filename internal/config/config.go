@@ -21,8 +21,25 @@ type Config struct {
 	Redis    Redis    `yaml:"redis"`
 	Broker   Broker   `yaml:"broker"`
 	SSL      SSL      `yaml:"ssl"`
+	Terminal Terminal `yaml:"terminal"`
 	Log      Log      `yaml:"log"`
 	Security Security `yaml:"security"`
+}
+
+// Terminal configures the web terminal and its session recording.
+type Terminal struct {
+	Recording Recording `yaml:"recording"`
+}
+
+// Recording configures session recording. An empty Dir switches it off: the
+// terminal still works, sessions are simply not recorded.
+//
+// Recordings capture keystrokes as well as output, so input typed while the
+// terminal had echo disabled — a password prompt — is redacted before it is
+// written. See internal/terminal/recording.go.
+type Recording struct {
+	Dir           string `yaml:"dir"`
+	RetentionDays int    `yaml:"retention_days"`
 }
 
 // Broker configures the connection to the privileged hp-broker daemon. An empty
@@ -136,7 +153,15 @@ func Default() Config {
 			ConnMaxLifetime: dur(30 * time.Minute),
 		},
 		Redis: Redis{Addr: "", DB: 0}, // empty = disabled (opt-in, like the DB DSN)
-		Log:   Log{Level: "info", Format: "json"},
+		// Terminal sessions are recorded by default. A shell as a site's Linux
+		// user is the most powerful thing the panel hands out, and defaulting the
+		// audit trail to off means it is missing exactly when someone thinks to
+		// look for it. Set terminal.recording.dir to "" to switch it off.
+		Terminal: Terminal{Recording: Recording{
+			Dir:           "/var/lib/heropanel/recordings",
+			RetentionDays: 30,
+		}},
+		Log: Log{Level: "info", Format: "json"},
 		Security: Security{
 			BodyLimitBytes: 10 << 20, // 10 MiB
 			RateLimit:      RateLimit{Enabled: true, RPS: 20, Burst: 40},
@@ -214,6 +239,24 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_SSL_DIRECTORY"); v != "" {
 		c.SSL.Directory = v
+	}
+
+	// The rate limiter, so a test harness or a load run can turn it off without
+	// a config file. It protects a public panel from brute force; a browser
+	// suite driving one instance single-threaded is not that, and being
+	// throttled makes those runs flaky rather than safe.
+	if v := os.Getenv("HP_SECURITY_RATE_LIMIT_ENABLED"); v != "" {
+		c.Security.RateLimit.Enabled = !(v == "0" || strings.EqualFold(v, "false"))
+	}
+
+	// Terminal session recording. The directory is what switches it on.
+	if v := os.Getenv("HP_TERMINAL_RECORDING_DIR"); v != "" {
+		c.Terminal.Recording.Dir = v
+	}
+	if v := os.Getenv("HP_TERMINAL_RECORDING_RETENTION_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Terminal.Recording.RetentionDays = n
+		}
 	}
 }
 

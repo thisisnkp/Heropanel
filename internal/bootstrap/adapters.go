@@ -7,12 +7,14 @@ import (
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/domain"
+	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/internal/terminal"
 	"github.com/thisisnkp/heropanel/internal/ws"
 )
 
@@ -54,6 +56,48 @@ func (a gitSiteAdapter) Resolve(ctx context.Context, siteUID string) (*git.SiteR
 		return nil, err
 	}
 	return &git.SiteRef{
+		ID:         rec.ID,
+		UID:        rec.UID,
+		LinuxUser:  rec.LinuxUser.String,
+		HomeDir:    rec.HomeDir.String,
+		DeployMode: rec.DeployMode,
+	}, nil
+}
+
+// filesSiteAdapter adapts the site repository to files.Sites, resolving the
+// identity and paths a file operation needs (Linux user, home, deploy mode) by
+// site UID. The deploy mode is what the File Manager gates its baremetal-only
+// rule on, so it is carried through here.
+type filesSiteAdapter struct {
+	repo site.Repo
+}
+
+func (a filesSiteAdapter) Resolve(ctx context.Context, siteUID string) (*files.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &files.SiteRef{
+		ID:         rec.ID,
+		UID:        rec.UID,
+		LinuxUser:  rec.LinuxUser.String,
+		HomeDir:    rec.HomeDir.String,
+		DeployMode: rec.DeployMode,
+	}, nil
+}
+
+// terminalSiteAdapter adapts the site repository to terminal.Sites, resolving
+// the Linux user a shell will run as and the home it starts in.
+type terminalSiteAdapter struct {
+	repo site.Repo
+}
+
+func (a terminalSiteAdapter) Resolve(ctx context.Context, siteUID string) (*terminal.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &terminal.SiteRef{
 		ID:         rec.ID,
 		UID:        rec.UID,
 		LinuxUser:  rec.LinuxUser.String,

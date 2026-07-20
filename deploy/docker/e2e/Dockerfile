@@ -65,7 +65,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Composer for the PHP dependency e2e. Installed at the absolute path the broker
 # pins (/usr/local/bin/composer) — the deploy must not pick up whatever
 # `composer` happens to be first on a site user's PATH.
-RUN apt-get update && apt-get install -y --no-install-recommends php8.3-zip unzip \
+RUN apt-get update && apt-get install -y --no-install-recommends php8.3-zip unzip zip \
     && rm -rf /var/lib/apt/lists/* \
     && wget -qO /tmp/composer-setup.php https://getcomposer.org/installer \
     && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer --quiet \

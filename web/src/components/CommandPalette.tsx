@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSites } from "@/features/sites/sites";
+import { useMe } from "@/features/auth/auth";
+import { can } from "@/lib/api";
 import { cn } from "./ui";
 
 interface Command {
@@ -20,6 +22,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: sites } = useSites();
+  const { data: me } = useMe();
 
   // Global ⌘K / Ctrl+K toggle.
   useEffect(() => {
@@ -54,6 +57,10 @@ export function CommandPalette() {
       { id: "dns", label: "Go to DNS", run: go("/dns") },
       { id: "ssl", label: "Go to SSL certificates", run: go("/ssl") },
       { id: "audit", label: "Go to Audit log", run: go("/audit") },
+      // Mirrors the sidebar: offered only to whoever may actually read them.
+      ...(can(me, "terminal.recordings.read")
+        ? [{ id: "recordings", label: "Go to Session recordings", run: go("/recordings") }]
+        : []),
       { id: "modules", label: "Go to Modules", run: go("/modules") },
       { id: "users", label: "Go to Users", run: go("/users") },
       { id: "new-site", label: "Create a website", hint: "action", run: go("/sites?new=1") },
@@ -65,7 +72,7 @@ export function CommandPalette() {
       run: go(`/sites/${s.uid}`),
     }));
     return [...nav, ...siteJumps];
-  }, [navigate, sites]);
+  }, [navigate, sites, me]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
