@@ -51,7 +51,7 @@ type Backup struct {
 }
 
 // Record is the persistence view. DBKey/DBName describe the sealed database
-// dump stored next to the tree archive ('' = the backup carries no dump).
+// dump stored next to the tree archive (” = the backup carries no dump).
 type Record struct {
 	UID       string `db:"uid"`
 	SiteID    int64  `db:"site_id"`

@@ -100,6 +100,16 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins \
       "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
+# The mail stack for the Phase 7 e2e: a REAL Postfix accepting SMTP, a real
+# Dovecot delivering over LMTP into vmail Maildirs and answering IMAP, and a
+# real OpenDKIM signing outbound — driven end to end through the panel's
+# rendered maps. postfix's debconf questions are pre-answered so the install
+# stays non-interactive.
+RUN echo "postfix postfix/main_mailer_type select No configuration" | debconf-set-selections \
+    && apt-get update && apt-get install -y --no-install-recommends \
+      postfix dovecot-core dovecot-imapd dovecot-lmtpd opendkim opendkim-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 # MinIO: a real, independent S3 implementation for the backup e2e. The S3
 # signer is unit-tested against a recomputing fake; this closes the honest gap
 # by driving the same client against a live bucket it did not write. Pinned to

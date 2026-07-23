@@ -25,6 +25,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/mail"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
@@ -78,6 +79,7 @@ type Deps struct {
 	Runtime *runtime.Service // nil when no datastore is configured
 	Cron    *cron.Service    // nil when no datastore is configured
 	Backups *backup.Service  // nil when no datastore is configured
+	Mail    *mail.Service    // nil when no datastore is configured
 	// Monitor samples node health for the dashboard. It needs no datastore or
 	// broker (node metrics come from world-readable /proc), so it is present
 	// whenever hpd is.
@@ -407,6 +409,26 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("system.read")).Get("/system/backups", listPanelBackupsHandler(d))
 					r.With(requirePermission("system.write")).Post("/system/backups", createPanelBackupHandler(d))
 					r.With(requirePermission("system.write")).Delete("/system/backups/{uid}", deletePanelBackupHandler(d))
+				}
+				if d.Mail != nil {
+					// Mail carries its own permission pair: a mail domain is not
+					// a site, and site.write must not reach anyone's mailboxes.
+					r.With(requirePermission("mail.read")).Get("/mail/domains", listMailDomainsHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/domains", createMailDomainHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/domains/{uid}", getMailDomainHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/domains/{uid}/dns", checkMailDNSHandler(d))
+					r.With(requirePermission("mail.write")).Delete("/mail/domains/{uid}", deleteMailDomainHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/domains/{uid}/accounts", createMailAccountHandler(d))
+					r.With(requirePermission("mail.write")).Delete("/mail/domains/{uid}/accounts/{aid}", deleteMailAccountHandler(d))
+					r.With(requirePermission("mail.write")).Put("/mail/accounts/{uid}/password", setMailAccountPasswordHandler(d))
+					r.With(requirePermission("mail.write")).Put("/mail/accounts/{uid}/quota", setMailAccountQuotaHandler(d))
+					r.With(requirePermission("mail.write")).Put("/mail/accounts/{uid}/status", setMailAccountStatusHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/domains/{uid}/aliases", createMailAliasHandler(d))
+					r.With(requirePermission("mail.write")).Delete("/mail/domains/{uid}/aliases/{lid}", deleteMailAliasHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/domains/{uid}/usage", mailDomainUsageHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/queue", mailQueueHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/queue/flush", flushMailQueueHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/queue/delete", deleteMailQueueHandler(d))
 				}
 				if d.Jobs != nil {
 					r.With(requireAuth).Get("/jobs", listJobsHandler(d))

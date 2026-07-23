@@ -28,6 +28,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/mail"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
@@ -194,6 +195,7 @@ func fullRouterDeps(t *testing.T) Deps {
 		Runtime:   &runtime.Service{},
 		Cron:      cron.NewService(nil, nil, nil),
 		Backups:   backup.NewService(nil, nil, nil, nil, nil),
+		Mail:      mail.NewService(nil, nil),
 		Monitor:   monitor.New().WithHistory(stubMetricRepo{}).WithAlertAdmin(stubAlertAdmin{}),
 		Jobs:      &job.Dispatcher{},
 		Registry:  registry.New(),

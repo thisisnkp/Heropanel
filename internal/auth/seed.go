@@ -53,6 +53,10 @@ var basePermissions = []seedPermission{
 	// realtime `monitor:*` channels.
 	{"monitor.read", "monitor", "read", "View live and historical metrics"},
 	{"monitor.write", "monitor", "write", "Configure metric alerts and notification targets"},
+	// Mail is its own resource: a mail domain is not a site, and handing
+	// someone site.write must not hand them everyone's mailboxes.
+	{"mail.read", "mail", "read", "View mail domains, mailboxes and aliases"},
+	{"mail.write", "mail", "write", "Manage mail domains, mailboxes and aliases"},
 }
 
 // seedRole is a role to ensure exists.

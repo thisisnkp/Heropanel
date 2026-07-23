@@ -20,6 +20,7 @@ import { AuditPage } from "@/features/audit/AuditPage";
 import { RecordingsPage } from "@/features/recordings/RecordingsPage";
 import { DockerPage } from "@/features/docker/DockerPage";
 import { AppsPage } from "@/features/apps/AppsPage";
+import { MailPage } from "@/features/mail/MailPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import { ModulesPage } from "@/features/modules/ModulesPage";
 
@@ -89,6 +90,7 @@ export function App() {
           <Route path="/docker" element={<DockerPage />} />
           <Route path="/apps" element={<AppsPage />} />
           <Route path="/monitor" element={<MonitorPage />} />
+          <Route path="/mail" element={<MailPage />} />
           <Route path="/modules" element={<ModulesPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

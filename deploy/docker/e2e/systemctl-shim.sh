@@ -88,6 +88,9 @@ case "$verb" in
         openlitespeed|lshttpd) pgrep -f 'lshttpd|litespeed' >/dev/null 2>&1 ;;
         mariadb|mysql|mysqld)  pgrep -x mariadbd >/dev/null 2>&1 || pgrep -x mysqld >/dev/null 2>&1 ;;
         redis|redis-server)    pgrep -x redis-server >/dev/null 2>&1 ;;
+        postfix)               pgrep -x master >/dev/null 2>&1 ;;
+        dovecot)               pgrep -x dovecot >/dev/null 2>&1 ;;
+        opendkim)              pgrep -x opendkim >/dev/null 2>&1 ;;
         *) false ;;
       esac
       if [ $? -eq 0 ]; then echo active; else echo inactive; rc=3; fi
@@ -98,6 +101,15 @@ case "$verb" in
     case "$unit" in
       heropanel-cron-*) run_oneshot "$unit"; exit $? ;;
       heropanel-app-*) start_app "$unit" ;;
+      opendkim)
+        # The broker restarts the DKIM signer after pushing keys (it has no
+        # reload). Real systemd supervises it in production.
+        pkill -x opendkim 2>/dev/null || true
+        sleep 0.3
+        opendkim -x /etc/opendkim.conf 2>/tmp/opendkim.log || true
+        sleep 0.3 ;;
+      postfix) postfix reload 2>/dev/null || postfix start 2>/dev/null || true ;;
+      dovecot) doveadm reload 2>/dev/null || dovecot 2>/dev/null || true ;;
       php*-fpm)
         # A reload cannot pick up an extension; a restart must be a real one.
         if [ "$verb" = "restart" ]; then fpm_restart "$unit"; else fpm_reload; fi ;;

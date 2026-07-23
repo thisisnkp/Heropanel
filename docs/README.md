@@ -49,6 +49,7 @@ deferred list, and definition of done.
 | 20 | [Monitoring](20-monitoring.md) | Live node/site/container/service metrics **pushed, not polled** — subscription-gated sampling so an unwatched panel costs nothing; /proc read directly, broker only for privileged stats |
 | 21 | [Scheduler](21-scheduler.md) | Cron as **real systemd timers** — site-scoped, never root, overlap-safe oneshots with `Persistent=true` catch-up and journal-free logs |
 | 22 | [Backups](22-backup.md) | Full + incremental (GNU tar snapshots), zstd, **always sealed** (chunked AES-256-GCM) before any target — local or S3 (hand-rolled SigV4) — scheduled, restored **into a new site** |
+| 23 | [Mail](23-mail.md) | Postfix + Dovecot via rendered flat maps (MTAs never read the panel), BLF-CRYPT mailboxes, **sealed DKIM** + SPF/DMARC auto-wired into DNS with a live check, quotas, queue view |
 
 ## Product Principles
 

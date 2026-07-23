@@ -262,6 +262,16 @@ func (a backupDBAdapter) ImportStagePath(gzipped bool) (path, file string) {
 	return a.svc.ImportStagePath(gzipped)
 }
 
+// mailDNSAdapter adapts the DNS module to the mail module's record-wiring
+// contract (fixed 1h TTL for mail records).
+type mailDNSAdapter struct {
+	svc *dns.Service
+}
+
+func (a mailDNSAdapter) EnsureRecord(ctx context.Context, fqdn, typ, value string, priority int, replace bool) (bool, error) {
+	return a.svc.EnsureRecord(ctx, fqdn, typ, value, priority, 3600, replace)
+}
+
 // channelAuthorizer authorizes WebSocket channel subscriptions by family:
 //   - "job:<uid>"   — the owner of that job, or an admin.
 //   - "monitor:*"   — anyone with monitor.read (metrics are host-wide, not scoped

@@ -389,13 +389,30 @@ jobs:
           grep -q 'a wrong key is refused' <<<"$out" || { echo '::error::hpd decrypt accepted a wrong key'; exit 1; }
           grep -q 'run-backup.sh : PASS' <<<"$out" || { echo '::error::run-backup.sh failed'; exit 1; }
 
+      - name: Mail — Postfix/Dovecot/OpenDKIM end to end
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-mail.sh)
+          echo "$out"
+          # THE invariants: the key is sealed at rest, the records resolve from
+          # LIVE DNS, and a real SMTP message lands in the Maildir DKIM-signed.
+          grep -q 'the DKIM key is SEALED at rest' <<<"$out" || { echo '::error::A DKIM PRIVATE KEY WAS STORED PLAINTEXT'; exit 1; }
+          grep -q 'all 4 records (MX, SPF, DKIM, DMARC) FOUND in live DNS' <<<"$out" || { echo '::error::the mail DNS records did not resolve'; exit 1; }
+          grep -q 'IS the public half of the signing key' <<<"$out" || { echo '::error::the DNS DKIM record does not match the signing key'; exit 1; }
+          grep -q 'THE STORED MAIL IS DKIM-SIGNED' <<<"$out" || { echo '::error::outbound mail was not DKIM-signed'; exit 1; }
+          grep -q 'IMAP login + fetch works' <<<"$out" || { echo '::error::IMAP could not read the delivered mail'; exit 1; }
+          grep -q 'mail to the alias landed' <<<"$out" || { echo '::error::the alias did not deliver'; exit 1; }
+          grep -q 'mail STILL DELIVERS while suspended' <<<"$out" || { echo '::error::suspension bounced incoming mail'; exit 1; }
+          grep -q 'IMAP login is refused while suspended' <<<"$out" || { echo '::error::a suspended mailbox logged in'; exit 1; }
+          grep -q 'the queue view shows the deferred message' <<<"$out" || { echo '::error::the queue view missed a deferred message'; exit 1; }
+          grep -q 'run-mail.sh : PASS' <<<"$out" || { echo '::error::run-mail.sh failed'; exit 1; }
+
       - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
         run: |
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-audit.sh)
           echo "$out"
           # The only suite that runs hpd's control-plane store on MariaDB, so it
           # is also the only thing exercising the mysql migrations at all.
-          grep -q 'ok   all 25 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
+          grep -q 'ok   all 26 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
           # The chain must verify against the engine that ships, not just SQLite:
           # MariaDB pads DATETIME(6) to six digits and the hash covers the stored bytes.
           grep -q 'ok   chain intact on MariaDB'   <<<"$out" || { echo '::error::the audit chain does not verify on MariaDB'; exit 1; }

@@ -35,6 +35,44 @@ func TestRenderZoneFile(t *testing.T) {
 	}
 }
 
+// A TXT value beyond 255 bytes (a DKIM public key is the everyday case) must
+// render as multiple quoted character-strings — BIND refuses a single long
+// string, and resolvers concatenate the parts (RFC 1035).
+func TestRenderZoneSplitsLongTXT(t *testing.T) {
+	long := "v=DKIM1; k=rsa; p=" + strings.Repeat("A", 380)
+	z := &dns.ZoneRow{
+		Name: "example.test", PrimaryNS: "ns1.example.test", AdminEmail: "admin@example.test",
+		Serial: 1, Refresh: 3600, Retry: 900, Expire: 1209600, Minimum: 300, TTL: 3600,
+	}
+	out := dns.RenderZoneFile(z, []dns.RecordRow{{Name: "hp1._domainkey", Type: "TXT", Content: long, TTL: 3600}})
+
+	var txtLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "hp1._domainkey") {
+			txtLine = line
+		}
+	}
+	if txtLine == "" {
+		t.Fatalf("no TXT line rendered:\n%s", out)
+	}
+	if strings.Count(txtLine, `"`) < 4 {
+		t.Errorf("long TXT was not split into multiple quoted strings: %s", txtLine)
+	}
+	// Each quoted character-string must be ≤255 bytes (BIND's per-string limit).
+	// Odd indices of a split on `"` are the quoted contents.
+	segs := strings.Split(txtLine, `"`)
+	for i := 1; i < len(segs); i += 2 {
+		if len(segs[i]) > 255 {
+			t.Errorf("a character-string exceeds 255 bytes: %d", len(segs[i]))
+		}
+	}
+	// The full value survives when the parts are concatenated.
+	joined := strings.ReplaceAll(txtLine, `" "`, "")
+	if !strings.Contains(joined, strings.Repeat("A", 380)) {
+		t.Error("the split TXT lost content")
+	}
+}
+
 func TestRenderNamedConf(t *testing.T) {
 	out := dns.RenderNamedConf([]dns.ZoneRow{{Name: "example.test"}, {Name: "foo.test"}})
 	for _, want := range []string{

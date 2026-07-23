@@ -256,12 +256,34 @@ func renderRecord(r *RecordRow) string {
 	switch r.Type {
 	case "TXT":
 		if !strings.HasPrefix(rdata, "\"") {
-			rdata = strconv.Quote(rdata)
+			rdata = quoteTXT(rdata)
 		}
 	case "MX", "SRV":
 		rdata = strconv.Itoa(r.Priority) + " " + rdata
 	}
 	return fmt.Sprintf("%s\t%d\tIN\t%s\t%s\n", r.Name, r.TTL, r.Type, rdata)
+}
+
+// quoteTXT quotes a TXT value for a zone file, splitting into 255-byte
+// character-strings — BIND's per-string limit. A DKIM public key (~400 bytes)
+// is the everyday case that overflows a single string; multiple quoted
+// strings on one record are the RFC 1035 way to carry it, and resolvers
+// concatenate them.
+func quoteTXT(s string) string {
+	const max = 255
+	if len(s) <= max {
+		return strconv.Quote(s)
+	}
+	var parts []string
+	for len(s) > 0 {
+		n := max
+		if len(s) < n {
+			n = len(s)
+		}
+		parts = append(parts, strconv.Quote(s[:n]))
+		s = s[n:]
+	}
+	return strings.Join(parts, " ")
 }
 
 // RenderNamedConf renders the declarative set of zone {} blocks for all active

@@ -42,6 +42,12 @@ const items: NavItem[] = [
     icon: "M3 12h4l3 8 4-16 3 8h4",
     perm: "monitor.read",
   },
+  {
+    to: "/mail",
+    label: "Mail",
+    icon: "M3 6h18v12H3zM3 7l9 6 9-6",
+    perm: "mail.read",
+  },
   { to: "/audit", label: "Audit log", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5" },
   {
     to: "/recordings",

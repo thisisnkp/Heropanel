@@ -437,6 +437,96 @@ var apiDocs = map[string]opMeta{
 		RespDesc: "Removes one snapshot, row and stored object. No chains here — each snapshot stands alone.",
 	},
 
+	// ── mail ──────────────────────────────────────────────────────────────────
+	"GET /api/v1/mail/domains": {
+		Summary: "List mail domains", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "Every mail domain the panel manages. Postfix and Dovecot read rendered flat maps, not this database — mail keeps flowing when the panel is down.",
+	},
+	"POST /api/v1/mail/domains": {
+		Summary: "Add a mail domain", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"domain": prop("string", "The mail domain (lowercased)."),
+		}, "domain"),
+		RespDesc: "Provisions the host on first use (vmail user, LMTP wiring, virtual maps — idempotent) and renders the domain into postfix's virtual_mailbox_domains.",
+	},
+	"GET /api/v1/mail/domains/{uid}": {
+		Summary: "Get a mail domain", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "The domain with its mailboxes and aliases. Password hashes are never returned.",
+	},
+	"GET /api/v1/mail/domains/{uid}/dns": {
+		Summary: "Check a mail domain's DNS", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "The domain's expected records (MX, SPF, DKIM, DMARC) with each one's LIVE resolution result — queried against real DNS, not the panel's own zone data. Records auto-wire into panel-managed zones; on external DNS this is the copy-paste list plus its verification.",
+	},
+	"DELETE /api/v1/mail/domains/{uid}": {
+		Summary: "Delete a mail domain", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Removes the domain, its mailboxes and aliases from the maps. ?purge=true also deletes the stored mail — configuration removal and data destruction are separate acts.",
+	},
+	"POST /api/v1/mail/domains/{uid}/accounts": {
+		Summary: "Create a mailbox", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"local_part": prop("string", "The part before @ (lowercase; a-z 0-9 . _ + -)."),
+			"password":   prop("string", "8–128 characters. Stored as a Dovecot BLF-CRYPT hash; write-only."),
+			"quota_mb":   prop("integer", "Mailbox quota in MB (default 1024, max 102400)."),
+		}, "local_part", "password"),
+		RespDesc: "Creates the mailbox and re-renders the maps. Delivery is Dovecot LMTP into the vmail-owned Maildir; the quota is enforced by Dovecot.",
+	},
+	"DELETE /api/v1/mail/domains/{uid}/accounts/{aid}": {
+		Summary: "Delete a mailbox", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Removes the mailbox from the maps. ?purge=true also deletes its stored mail.",
+	},
+	"PUT /api/v1/mail/accounts/{uid}/password": {
+		Summary: "Set a mailbox password", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"password": prop("string", "8–128 characters."),
+		}, "password"),
+		RespDesc: "Replaces the credential. Write-only both directions — the old hash is never shown, the new one is stored hashed.",
+	},
+	"PUT /api/v1/mail/accounts/{uid}/quota": {
+		Summary: "Set a mailbox quota", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"quota_mb": prop("integer", "1–102400 MB."),
+		}, "quota_mb"),
+		RespDesc: "Changes the Dovecot-enforced quota for this mailbox.",
+	},
+	"PUT /api/v1/mail/accounts/{uid}/status": {
+		Summary: "Suspend or reactivate a mailbox", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"status": prop("string", "active | suspended."),
+		}, "status"),
+		RespDesc: "Suspension removes the account from Dovecot's passwd-file (no more logins) but keeps its mailbox mapping — suspending an account must not bounce its mail.",
+	},
+	"GET /api/v1/mail/domains/{uid}/usage": {
+		Summary: "Mailbox storage usage", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "Each mailbox's used storage against its quota, read live through doveadm. known=false means the mailbox has never received mail — no quota state yet, not an error.",
+	},
+	"GET /api/v1/mail/queue": {
+		Summary: "View the mail queue", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "Every queued message (postqueue) with sender, recipients and the delay reason postfix recorded. running=false means postfix itself is down — an answer, not an error.",
+	},
+	"POST /api/v1/mail/queue/flush": {
+		Summary: "Flush the mail queue", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Asks postfix to attempt delivery of everything deferred, now.",
+	},
+	"POST /api/v1/mail/queue/delete": {
+		Summary: "Delete queued messages", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"ids": arrayOf(prop("string", "Postfix queue IDs (1–100).")),
+		}, "ids"),
+		RespDesc: "Removes the named messages. Explicit IDs only — there is deliberately no delete-all.",
+	},
+	"POST /api/v1/mail/domains/{uid}/aliases": {
+		Summary: "Create an alias or forwarder", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"source":      prop("string", "The alias's local part (before @)."),
+			"destination": prop("string", "Full destination address — internal (alias) or external (forwarder)."),
+		}, "source", "destination"),
+		RespDesc: "One postfix virtual_alias_maps pair; multiple destinations for one source are grouped on render.",
+	},
+	"DELETE /api/v1/mail/domains/{uid}/aliases/{lid}": {
+		Summary: "Delete an alias", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Removes one source→destination pair and re-renders the maps.",
+	},
+
 	// ── git ───────────────────────────────────────────────────────────────────
 	"GET /api/v1/sites/{uid}/git": {
 		Summary: "Get the Git source", Tags: []string{"Git"}, Permission: "git.read",

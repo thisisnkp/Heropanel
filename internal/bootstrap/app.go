@@ -31,6 +31,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
+	mailpkg "github.com/thisisnkp/heropanel/internal/mail"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
@@ -174,6 +175,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var runtimeSvc *runtime.Service
 	var cronSvc *cron.Service
 	var backupSvc *backuppkg.Service
+	var mailSvc *mailpkg.Service
 	var dnsSvc *dns.Service
 	var domainSvc *domain.Service
 	if db != nil {
@@ -271,6 +273,16 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				return rec.UID, true
 			}, log)
 			log.Info("backup scheduler enabled")
+		}
+		// Mail: Postfix + Dovecot driven by rendered flat maps through the
+		// broker. The MTAs never read this database — mail keeps flowing when
+		// the panel is down. DKIM keys are sealed with the panel cipher; DNS
+		// records auto-wire into panel-managed zones when the DNS module runs.
+		mailSvc = mailpkg.NewService(repository.NewMailStore(db), gw).
+			WithSecrets(cipher).
+			WithResolver(cfg.Mail.Resolver)
+		if dnsSvc != nil {
+			mailSvc = mailSvc.WithDNS(mailDNSAdapter{svc: dnsSvc})
 		}
 		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw).
 			WithRestarter(runtimeSvc). // auto-restart a proxy app after each deploy
@@ -564,6 +576,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Runtime:    runtimeSvc,
 		Cron:       cronSvc,
 		Backups:    backupSvc,
+		Mail:       mailSvc,
 		Monitor:    monitorSvc,
 		Jobs:       jobs,
 		Registry:   reg,

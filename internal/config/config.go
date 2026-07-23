@@ -25,6 +25,14 @@ type Config struct {
 	Log      Log      `yaml:"log"`
 	Security Security `yaml:"security"`
 	Backup   Backup   `yaml:"backup"`
+	Mail     Mail     `yaml:"mail"`
+}
+
+// Mail configures the mail module's edges. Resolver pins the DNS server the
+// live record check queries (host:port) — for split-DNS setups and e2e against
+// a local authoritative server; empty uses the system resolver.
+type Mail struct {
+	Resolver string `yaml:"resolver"`
 }
 
 // Backup configures where sealed site backups may be sent besides local disk.
@@ -274,6 +282,9 @@ func (c *Config) applyEnv() {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Backup.Panel.Keep = n
 		}
+	}
+	if v := os.Getenv("HP_MAIL_RESOLVER"); v != "" {
+		c.Mail.Resolver = v
 	}
 	if v := os.Getenv("HP_DATABASE_ADMINER_URL"); v != "" {
 		c.Database.AdminerURL = v

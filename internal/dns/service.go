@@ -214,6 +214,55 @@ func (s *Service) DeleteChallengeTXT(ctx context.Context, fqdn string) error {
 	return s.reapply(ctx, z)
 }
 
+// EnsureRecord upserts a record at fqdn in whichever managed zone contains it.
+// replace=true removes existing records of the same type at the label first —
+// right for MX/DKIM/DMARC, where the panel's value is authoritative.
+// replace=false appends unless an identical value already exists — right for
+// TXT at the apex, where SPF must coexist with verification records the
+// operator added and clobbering them would be destructive.
+//
+// Returns false (and no error) when no managed zone covers fqdn: the caller
+// then surfaces the records for external DNS instead of failing the operation.
+func (s *Service) EnsureRecord(ctx context.Context, fqdn, typ, content string, priority, ttl int, replace bool) (bool, error) {
+	z, label, err := s.zoneFor(ctx, fqdn)
+	if err != nil {
+		if errx.IsKind(err, errx.KindNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := s.requireBroker(); err != nil {
+		return false, err
+	}
+	if ttl <= 0 {
+		ttl = 3600
+	}
+	if replace {
+		if err := s.deleteRecordsAt(ctx, z.ID, label, typ); err != nil {
+			return false, err
+		}
+	} else {
+		rows, err := s.repo.ListRecords(ctx, z.ID)
+		if err != nil {
+			return false, err
+		}
+		for i := range rows {
+			if rows[i].Name == label && rows[i].Type == typ && rows[i].Content == content {
+				return true, nil // already exactly this — no serial bump, no reload
+			}
+		}
+	}
+	if err := s.repo.InsertRecord(ctx, &RecordRow{
+		ZoneID: z.ID, Name: label, Type: typ, Content: content, TTL: ttl, Priority: priority,
+	}); err != nil {
+		return false, err
+	}
+	if err := s.reapply(ctx, z); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // deleteRecordsAt removes every record of a type at a label within a zone.
 func (s *Service) deleteRecordsAt(ctx context.Context, zoneID int64, label, typ string) error {
 	rows, err := s.repo.ListRecords(ctx, zoneID)
