@@ -13,6 +13,8 @@ import { RuntimeTab } from "./tabs/RuntimeTab";
 import { GitTab } from "./tabs/GitTab";
 import { FilesTab } from "./tabs/FilesTab";
 import { TerminalTab } from "./tabs/TerminalTab";
+import { BackupsTab } from "./tabs/BackupsTab";
+import { CronTab } from "./tabs/CronTab";
 import { DockerTab } from "./tabs/DockerTab";
 import { LogsTab } from "./tabs/LogsTab";
 import { AdvancedTab } from "./tabs/AdvancedTab";
@@ -61,6 +63,8 @@ export function SiteDetailPage() {
     ...(showTerminal ? [{ id: "terminal", label: "Terminal" }] : []),
     ...(showDocker ? [{ id: "docker", label: "Docker" }] : []),
     { id: "git", label: "Git" },
+    { id: "cron", label: "Cron" },
+    { id: "backups", label: "Backups" },
     { id: "logs", label: "Logs" },
     { id: "advanced", label: "Advanced" },
   ];
@@ -107,6 +111,8 @@ export function SiteDetailPage() {
       {tab === "terminal" && showTerminal && <TerminalTab uid={uid} systemUser={site.system_user} />}
       {tab === "docker" && showDocker && <DockerTab uid={uid} />}
       {tab === "git" && <GitTab uid={uid} />}
+      {tab === "cron" && <CronTab uid={uid} />}
+      {tab === "backups" && <BackupsTab uid={uid} />}
       {tab === "logs" && <LogsTab uid={uid} />}
       {tab === "advanced" && (
         <AdvancedTab

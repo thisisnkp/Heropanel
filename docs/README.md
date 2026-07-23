@@ -46,6 +46,9 @@ deferred list, and definition of done.
 | 17 | [File Manager](17-file-manager.md) | Baremetal file browser + CodeMirror editor, run-as-site-user, path confinement, chunked I/O |
 | 18 | [Web Terminal](18-web-terminal.md) | xterm.js + broker-hosted PTY as the site user, stream upgrade, audited sessions |
 | 19 | [Docker](19-docker.md) | Containers, volumes, networks, exec, compose, and the one-click **Apps** catalog — via broker capabilities (never the `docker` group), ownership labels, flag-injection defence |
+| 20 | [Monitoring](20-monitoring.md) | Live node/site/container/service metrics **pushed, not polled** — subscription-gated sampling so an unwatched panel costs nothing; /proc read directly, broker only for privileged stats |
+| 21 | [Scheduler](21-scheduler.md) | Cron as **real systemd timers** — site-scoped, never root, overlap-safe oneshots with `Persistent=true` catch-up and journal-free logs |
+| 22 | [Backups](22-backup.md) | Full + incremental (GNU tar snapshots), zstd, **always sealed** (chunked AES-256-GCM) before any target — local or S3 (hand-rolled SigV4) — scheduled, restored **into a new site** |
 
 ## Product Principles
 

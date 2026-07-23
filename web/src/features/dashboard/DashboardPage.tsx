@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { api, type SystemInfo } from "@/lib/api";
-import { Card, Spinner } from "@/components/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiRequestError, can, type SystemInfo } from "@/lib/api";
+import { Button, Card, Spinner } from "@/components/ui";
+import { toast } from "@/stores/toast";
+import { useMe } from "@/features/auth/auth";
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -50,6 +52,8 @@ export function DashboardPage() {
         </div>
       )}
 
+      <PanelBackupsCard />
+
       <Card className="p-6">
         <h2 className="text-sm font-semibold text-fg">Getting started</h2>
         <ul className="mt-3 space-y-2 text-sm text-muted">
@@ -59,5 +63,68 @@ export function DashboardPage() {
         </ul>
       </Card>
     </div>
+  );
+}
+
+interface PanelBackup {
+  uid: string;
+  target: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+interface PanelBackupList {
+  backups: PanelBackup[];
+  available: boolean;
+  policy: { target: string; interval_hours: number; keep: number };
+}
+
+// Panel self-backup: sealed snapshots of the panel's own database. Restore is
+// deliberately out-of-band (`hpd decrypt` + docs) — a panel that needs its
+// database back cannot be trusted to serve that request.
+function PanelBackupsCard() {
+  const { data: me } = useMe();
+  const canRead = can(me, "system.read");
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["panel-backups"],
+    queryFn: () => api.get<PanelBackupList>("/system/backups"),
+    enabled: canRead,
+  });
+  const snap = useMutation({
+    mutationFn: () => api.post<PanelBackup>("/system/backups", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["panel-backups"] }),
+  });
+
+  if (!canRead || !data) return null;
+  const latest = data.backups[0];
+
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+      <div>
+        <h2 className="text-sm font-semibold text-fg">Panel self-backup</h2>
+        <p className="mt-0.5 text-xs text-muted">
+          {data.available
+            ? latest
+              ? `Last sealed snapshot ${new Date(latest.created_at + "Z").toLocaleString()} · every ${data.policy.interval_hours}h, keeping ${data.policy.keep} · restore via hpd decrypt`
+              : `No snapshot yet — the scheduler takes one every ${data.policy.interval_hours}h.`
+            : "Needs the broker and HP_SECRET_KEY — sealed-at-rest is not optional."}
+        </p>
+      </div>
+      {data.available && can(me, "system.write") && (
+        <Button
+          variant="ghost"
+          loading={snap.isPending}
+          onClick={() =>
+            snap.mutate(undefined, {
+              onSuccess: () => toast.success("Panel snapshot sealed and stored"),
+              onError: (e) => toast.error("Snapshot failed", e instanceof ApiRequestError ? e.message : undefined),
+            })
+          }
+        >
+          Snapshot now
+        </Button>
+      )}
+    </Card>
   );
 }

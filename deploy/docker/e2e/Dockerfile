@@ -4,7 +4,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      wget curl ca-certificates gnupg passwd git file \
+      wget curl ca-certificates gnupg passwd git file zstd \
       mariadb-server mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
@@ -99,6 +99,16 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins \
     && wget -qO /usr/local/lib/docker/cli-plugins/docker-compose \
       "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# MinIO: a real, independent S3 implementation for the backup e2e. The S3
+# signer is unit-tested against a recomputing fake; this closes the honest gap
+# by driving the same client against a live bucket it did not write. Pinned to
+# a release (the GitHub asset URL is stable) for reproducible builds.
+ARG MINIO_RELEASE=RELEASE.2025-09-07T16-13-09Z
+RUN wget -qO /usr/local/bin/minio \
+      "https://github.com/minio/minio/releases/download/${MINIO_RELEASE}/minio.linux-amd64.${MINIO_RELEASE}" \
+    && chmod +x /usr/local/bin/minio \
+    && /usr/local/bin/minio --version
 
 # Container shim for systemctl (no systemd here).
 COPY systemctl-shim.sh /usr/bin/systemctl

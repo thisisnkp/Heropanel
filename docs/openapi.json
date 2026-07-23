@@ -6273,6 +6273,592 @@
         ]
       }
     },
+    "/api/v1/monitor/alerts/events": {
+      "get": {
+        "description": "Requires the `monitor.read` permission.",
+        "operationId": "api_v1_monitor_alerts_events_recent_alert_events",
+        "responses": {
+          "200": {
+            "description": "Recent firings and resolutions, newest first. Query: limit (default 100, max 500)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Recent alert events",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.read"
+      }
+    },
+    "/api/v1/monitor/alerts/rules": {
+      "get": {
+        "description": "Requires the `monitor.read` permission.",
+        "operationId": "api_v1_monitor_alerts_rules_list_alert_rules",
+        "responses": {
+          "200": {
+            "description": "The configured threshold rules. Notification targets are **never** returned — they are write-only, and a Telegram token is sealed at rest."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List alert rules",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.read"
+      },
+      "post": {
+        "description": "Requires the `monitor.write` permission.",
+        "operationId": "api_v1_monitor_alerts_rules_create_an_alert_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "for_sec": {
+                    "description": "Seconds the breach must persist before firing (0 = immediate).",
+                    "type": "integer"
+                  },
+                  "metric": {
+                    "description": "cpu | mem | swap | load1 | disk_root.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Rule name.",
+                    "type": "string"
+                  },
+                  "notify_kind": {
+                    "description": "log | webhook | telegram.",
+                    "type": "string"
+                  },
+                  "notify_target": {
+                    "description": "Webhook URL, or Telegram bot token + chat id. Sealed at rest; requires a data key for the non-log kinds.",
+                    "type": "object"
+                  },
+                  "op": {
+                    "description": "gt | lt (default gt).",
+                    "type": "string"
+                  },
+                  "threshold": {
+                    "description": "The value to compare against.",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "name",
+                  "metric",
+                  "threshold"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Creates a rule. It fires only after the breach has persisted for for_sec, so a one-tick spike pages nobody. webhook/telegram targets are sealed with the panel's data key (refused with 503 when none is configured)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create an alert rule",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.write"
+      }
+    },
+    "/api/v1/monitor/alerts/rules/{uid}": {
+      "delete": {
+        "description": "Requires the `monitor.write` permission.",
+        "operationId": "api_v1_monitor_alerts_rules_uid_delete_an_alert_rule",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes a rule. Its past events are kept as history."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete an alert rule",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.write"
+      },
+      "put": {
+        "description": "Requires the `monitor.write` permission.",
+        "operationId": "api_v1_monitor_alerts_rules_uid_enable_or_disable_a_rule",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "description": "Whether the rule is active.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Toggles a rule without deleting it."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Enable or disable a rule",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.write"
+      }
+    },
+    "/api/v1/monitor/history": {
+      "get": {
+        "description": "Requires the `monitor.read` permission.",
+        "operationId": "api_v1_monitor_history_node_metrics_history",
+        "responses": {
+          "200": {
+            "description": "Node CPU / memory / load / disk over a bounded range (query range=1h|6h|24h|7d|30d, default 24h). A raw sample a minute is kept ~48h and folded into hourly averages kept ~30d, so the service returns raw within the window and hourly beyond it. Mounted only when a datastore is present."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Node metrics history",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.read"
+      }
+    },
+    "/api/v1/monitor/node": {
+      "get": {
+        "description": "Requires the `monitor.read` permission.",
+        "operationId": "api_v1_monitor_node_sample_node_health",
+        "responses": {
+          "200": {
+            "description": "One snapshot of the host: CPU %, load, memory/swap, uptime and per-filesystem disk usage. A one-shot read for the initial paint — the live dashboard is pushed over the `monitor:node` WebSocket channel (subscription-gated, so an unwatched panel samples nothing) rather than polling this."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Sample node health",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.read"
+      }
+    },
+    "/api/v1/monitor/services": {
+      "get": {
+        "description": "Requires the `monitor.read` permission.",
+        "operationId": "api_v1_monitor_services_service_health",
+        "responses": {
+          "200": {
+            "description": "Whether the services the host depends on (web server, database, cache) are active, read through the broker's service.status capability. Live view: the `monitor:services` channel."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Service health",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.read"
+      }
+    },
+    "/api/v1/monitor/sites": {
+      "get": {
+        "description": "Requires the `monitor.read` permission.",
+        "operationId": "api_v1_monitor_sites_sample_per_site_usage",
+        "responses": {
+          "200": {
+            "description": "Each site's live memory, CPU % and task count, read from its cgroup v2 accounting (the slice every site runs in, with accounting on since it was created). A site whose slice has no cgroup yet reports `present:false`. Live view: the `monitor:sites` channel."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Sample per-site usage",
+        "tags": [
+          "Monitor"
+        ],
+        "x-required-permission": "monitor.read"
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "operationId": "api_v1_openapi.json_this_openapi_document",
@@ -6830,6 +7416,443 @@
         "x-required-permission": "site.read"
       }
     },
+    "/api/v1/sites/{uid}/backups": {
+      "get": {
+        "description": "Requires the `site.read` permission.",
+        "operationId": "api_v1_sites_uid_backups_list_a_site_s_backups",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The site's backups (newest first), its schedule/retention policy, and which targets are configured. Every archive is zstd-compressed and sealed with chunked AES-256-GCM before it touches any target — a stolen disk or bucket yields ciphertext."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List a site's backups",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "site.read"
+      },
+      "post": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_backups_run_a_backup_now",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "level": {
+                    "description": "full | incr; empty picks automatically (full for a fresh chain, incremental after).",
+                    "type": "string"
+                  },
+                  "target": {
+                    "description": "local | s3 (default local).",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Archives the site (GNU tar --listed-incremental, zstd), seals it, and stores it on the target. Requires a data key (HP_SECRET_KEY) — encrypted-at-rest is not optional. 503 without one."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Run a backup now",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/{uid}/backups/config": {
+      "put": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_backups_config_set_the_backup_policy",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "db_uid": {
+                    "description": "Optional: a panel-managed database whose FULL dump rides along with every backup as a second sealed object (SQL dumps do not do incrementals). Empty = files only.",
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "description": "Whether the scheduler backs this site up.",
+                    "type": "boolean"
+                  },
+                  "interval_hours": {
+                    "description": "How often (1–720).",
+                    "type": "integer"
+                  },
+                  "keep_chains": {
+                    "description": "How many full+incremental chains to retain (1–30).",
+                    "type": "integer"
+                  },
+                  "target": {
+                    "description": "local | s3.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "interval_hours",
+                  "target",
+                  "keep_chains"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The scheduler sweeps hourly and backs up any enabled site whose newest backup is older than its interval; a new full chain retires the oldest beyond keep_chains."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Set the backup policy",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/{uid}/backups/{bid}": {
+      "delete": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_backups_bid_delete_a_backup",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "bid path parameter.",
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes the backup **and every later backup in its chain** — they depend on it, and saying so beats a chain that breaks silently at restore time. The database dump object, when the backup carried one, goes with it. Returns the removed uids."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a backup",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/{uid}/backups/{bid}/restore": {
+      "post": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_backups_bid_restore_restore_into_a_new_site",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "bid path parameter.",
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "db_name": {
+                    "description": "Optional: create a NEW database with this name and import the backup's database dump into it — the original database is never touched, for the same reason the tree goes into a new site.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Name for the restored site.",
+                    "type": "string"
+                  },
+                  "primary_domain": {
+                    "description": "Domain for the restored site.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "primary_domain"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Provisions a fresh site and replays the backup's chain into it (the full, then each incremental in order — deletions included). The original keeps serving untouched, so a mistaken restore destroys nothing; a backup that fails authentication is refused and nothing is written. Returns the new site (plus the new database when one was restored)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Restore into a new site",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
     "/api/v1/sites/{uid}/clone": {
       "post": {
         "description": "Requires the `site.write` permission.",
@@ -6934,6 +7957,488 @@
         "summary": "Clone a site",
         "tags": [
           "Sites"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/{uid}/cron": {
+      "get": {
+        "description": "Requires the `site.read` permission.",
+        "operationId": "api_v1_sites_uid_cron_list_scheduled_jobs",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The site's cron jobs. Each is a real systemd timer triggering a oneshot service that runs as the site's user, in its home, inside its cgroup slice."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List scheduled jobs",
+        "tags": [
+          "Scheduler"
+        ],
+        "x-required-permission": "site.read"
+      },
+      "post": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_cron_schedule_a_job",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "command": {
+                    "description": "The command, one line. Runs as the site user in the site home — never root.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Job name.",
+                    "type": "string"
+                  },
+                  "schedule": {
+                    "description": "systemd OnCalendar expression, e.g. \"daily\", \"*-*-* 02:00:00\", \"Mon *-*-* 00:00:00\".",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "command",
+                  "schedule"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Creates the job and enables its timer. Overlap policy comes free from systemd: a oneshot still running when its timer fires again is not started a second time, so a slow job never stacks. Persistent=true also runs a job missed during downtime once."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Schedule a job",
+        "tags": [
+          "Scheduler"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/{uid}/cron/{jid}": {
+      "delete": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_cron_jid_delete_a_job",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "jid path parameter.",
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disables the timer and removes the job."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a job",
+        "tags": [
+          "Scheduler"
+        ],
+        "x-required-permission": "site.write"
+      },
+      "put": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_cron_jid_enable_or_disable_a_job",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "jid path parameter.",
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "description": "Whether the timer is active.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Disabling removes the systemd timer (the definition is kept); enabling re-applies it."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Enable or disable a job",
+        "tags": [
+          "Scheduler"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/{uid}/cron/{jid}/logs": {
+      "get": {
+        "description": "Requires the `site.read` permission.",
+        "operationId": "api_v1_sites_uid_cron_jid_logs_a_job_s_output",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "jid path parameter.",
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A bounded tail of the job's captured stdout+stderr (the launcher appends to a log in the site's logs directory, so this works without the journal). Force-audited."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "A job's output",
+        "tags": [
+          "Scheduler"
+        ],
+        "x-required-permission": "site.read"
+      }
+    },
+    "/api/v1/sites/{uid}/cron/{jid}/run": {
+      "post": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_cron_jid_run_run_a_job_now",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "jid path parameter.",
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Triggers the job immediately, so it can be tested without waiting for the timer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Run a job now",
+        "tags": [
+          "Scheduler"
         ],
         "x-required-permission": "site.write"
       }
@@ -10672,6 +12177,183 @@
           "SSL"
         ],
         "x-required-permission": "ssl.write"
+      }
+    },
+    "/api/v1/system/backups": {
+      "get": {
+        "description": "Requires the `system.read` permission.",
+        "operationId": "api_v1_system_backups_list_panel_self_backups",
+        "responses": {
+          "200": {
+            "description": "Sealed snapshots of the panel's own database (newest first) plus the active policy. Every snapshot is full and stands alone. Restore is deliberately out-of-band: `hpd decrypt` on the sealed object plus the documented manual steps — a panel that needs its database back cannot be trusted to serve that request."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List panel self-backups",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "system.read"
+      },
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_backups_snapshot_the_panel_now",
+        "responses": {
+          "200": {
+            "description": "Snapshots the panel's database (SQLite VACUUM INTO, or mysqldump via the broker), seals it, and stores it on the policy's target. Requires a data key (HP_SECRET_KEY)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Snapshot the panel now",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/backups/{uid}": {
+      "delete": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_backups_uid_delete_a_panel_self_backup",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes one snapshot, row and stored object. No chains here — each snapshot stands alone."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a panel self-backup",
+        "tags": [
+          "Backups"
+        ],
+        "x-required-permission": "system.write"
       }
     },
     "/api/v1/system/info": {

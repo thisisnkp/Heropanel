@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS backup_configs;
+DROP TABLE IF EXISTS backups;

@@ -70,6 +70,9 @@ jobs:
           # A WebSocket client for the terminal e2e. It is a test tool, not a
           # shipped binary, so it lives under deploy/docker/e2e rather than cmd/.
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hp-termtest ./deploy/docker/e2e/termclient
+          # A hub-protocol WebSocket probe: subscribes to a channel and prints the
+          # first pushed event, so the monitor e2e can prove live delivery.
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/wsprobe ./deploy/docker/e2e/wsprobe
 
       # Enable qemu so the arm64 binaries can be smoke-tested under emulation.
       - name: Set up qemu (for arm64 emulation)
@@ -323,13 +326,76 @@ jobs:
           grep -q 'the app keeps running after unexpose' <<<"$out" || { echo '::error::unexpose stopped the app instead of just its front door'; exit 1; }
           grep -q 'run-docker.sh : PASS' <<<"$out" || { echo '::error::run-docker.sh failed'; exit 1; }
 
+      - name: Monitoring — live node metrics pushed over the realtime hub
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-monitor.sh)
+          echo "$out"
+          # The hub must run without Redis (local push needs none), so a Redis-less
+          # install still gets live dashboards.
+          grep -q 'the realtime hub is up without Redis' <<<"$out" || { echo '::error::the realtime hub did not start without Redis'; exit 1; }
+          grep -q 'memory, load and the root filesystem are reported' <<<"$out" || { echo '::error::the node sample was missing or nonsensical'; exit 1; }
+          grep -q 'an unauthenticated node read is refused' <<<"$out" || { echo '::error::node metrics were readable without auth'; exit 1; }
+          # The exit criterion: a subscriber receives a pushed sample — the server
+          # sampled only because someone subscribed (subscription-gated).
+          grep -q 'a live node sample was pushed to a subscriber' <<<"$out" || { echo '::error::no live metric was pushed over the hub'; exit 1; }
+          # M2: service health through the broker, and its own gated live push.
+          grep -q 'service health reports a state for each service' <<<"$out" || { echo '::error::service health did not report states'; exit 1; }
+          grep -q 'service.status ran through the broker' <<<"$out" || { echo '::error::service status bypassed the broker'; exit 1; }
+          grep -q 'the per-site metrics endpoint responds' <<<"$out" || { echo '::error::the per-site metrics endpoint did not respond'; exit 1; }
+          grep -q 'live service health was pushed to a subscriber' <<<"$out" || { echo '::error::service health was not pushed live'; exit 1; }
+          # M3: the history endpoint responds (persist/rollup logic is unit-tested).
+          grep -q 'the history endpoint responds with the points envelope' <<<"$out" || { echo '::error::the metric history endpoint did not respond'; exit 1; }
+          # M4: a breaching rule fires its webhook and records an event, and the
+          # notification target is never returned by the API.
+          grep -q 'the notification target is write-only' <<<"$out" || { echo '::error::an alert notification target leaked in the API'; exit 1; }
+          grep -q 'the breach fired a webhook to the receiver' <<<"$out" || { echo '::error::an alert breach did not fire its webhook'; exit 1; }
+          grep -q 'the firing was recorded as an alert event' <<<"$out" || { echo '::error::an alert firing was not recorded'; exit 1; }
+          grep -q 'run-monitor.sh : PASS' <<<"$out" || { echo '::error::run-monitor.sh failed'; exit 1; }
+
+      - name: Scheduler — cron jobs as systemd timers, running as the site user
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-cron.sh)
+          echo "$out"
+          grep -q 'the timer and service units exist on disk' <<<"$out" || { echo '::error::cron units were not written'; exit 1; }
+          grep -q 'the service runs as the site user, oneshot' <<<"$out" || { echo '::error::the cron service is not hardened as the site user'; exit 1; }
+          # THE invariant: a scheduled command executes as the unprivileged site
+          # user, never root — observed from the job's own output.
+          grep -q 'THE JOB RAN AS THE SITE USER' <<<"$out" || { echo '::error::A CRON JOB DID NOT RUN AS THE SITE USER'; exit 1; }
+          grep -q 'a shell-shaped schedule is refused' <<<"$out" || { echo '::error::a shell-injection schedule was accepted'; exit 1; }
+          grep -q 'the timer unit is gone after disable' <<<"$out" || { echo '::error::disable did not remove the timer'; exit 1; }
+          grep -q 'run-cron.sh : PASS' <<<"$out" || { echo '::error::run-cron.sh failed'; exit 1; }
+
+      - name: Backups — encrypted full+incremental, restored into a new site
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-backup.sh)
+          echo "$out"
+          # THE invariants: what sits at rest is ciphertext, and the chain
+          # actually reproduces the site — in a NEW site, owned by its user.
+          grep -q 'the at-rest archive is unreadable as tar' <<<"$out" || { echo '::error::A BACKUP WAS STORED UNENCRYPTED'; exit 1; }
+          grep -q 'no plaintext staging archive remains' <<<"$out" || { echo '::error::a plaintext staging archive outlived the call'; exit 1; }
+          grep -q 'the incremental is smaller than the full' <<<"$out" || { echo '::error::the incremental was not incremental'; exit 1; }
+          grep -q 'the edited file restored with its LATEST content' <<<"$out" || { echo '::error::the incremental chain did not replay'; exit 1; }
+          grep -q "restored files belong to the NEW site's user" <<<"$out" || { echo '::error::restored files kept the wrong owner'; exit 1; }
+          grep -q 'the original site is untouched' <<<"$out" || { echo '::error::the restore modified the original site'; exit 1; }
+          grep -q 'deleting the full also removed the incremental' <<<"$out" || { echo '::error::a broken chain was left behind'; exit 1; }
+          # The once-deferred legs, live: a real MinIO bucket, a real MariaDB
+          # dump round-trip into a NEW database, and the panel's own snapshot
+          # opened offline with hpd decrypt.
+          grep -q 'the sealed archive is IN the bucket' <<<"$out" || { echo '::error::the s3 backup never reached the live bucket'; exit 1; }
+          grep -q 'RESTORED FROM THE BUCKET' <<<"$out" || { echo '::error::the s3 restore did not come from the bucket'; exit 1; }
+          grep -q 'THE ROW CAME BACK IN A NEW DATABASE' <<<"$out" || { echo '::error::the database dump did not restore'; exit 1; }
+          grep -q 'the original database is untouched' <<<"$out" || { echo '::error::the db restore modified the original database'; exit 1; }
+          grep -q "THE SNAPSHOT HOLDS THE PANEL'S OWN DATA" <<<"$out" || { echo '::error::the panel self-backup is not a usable snapshot'; exit 1; }
+          grep -q 'a wrong key is refused' <<<"$out" || { echo '::error::hpd decrypt accepted a wrong key'; exit 1; }
+          grep -q 'run-backup.sh : PASS' <<<"$out" || { echo '::error::run-backup.sh failed'; exit 1; }
+
       - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
         run: |
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-audit.sh)
           echo "$out"
           # The only suite that runs hpd's control-plane store on MariaDB, so it
           # is also the only thing exercising the mysql migrations at all.
-          grep -q 'ok   all 15 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
+          grep -q 'ok   all 25 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
           # The chain must verify against the engine that ships, not just SQLite:
           # MariaDB pads DATETIME(6) to six digits and the hash covers the stored bytes.
           grep -q 'ok   chain intact on MariaDB'   <<<"$out" || { echo '::error::the audit chain does not verify on MariaDB'; exit 1; }

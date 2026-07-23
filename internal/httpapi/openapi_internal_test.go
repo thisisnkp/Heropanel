@@ -17,8 +17,10 @@ import (
 	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/backup"
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/cron"
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/docker"
@@ -26,6 +28,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
@@ -84,6 +87,28 @@ func (stubStreamGateway) OpenStream(context.Context, string, any) (brokerclient.
 type stubHealth struct{}
 
 func (stubHealth) Health(context.Context) error { return nil }
+
+// stubMetricRepo satisfies monitor.MetricRepo so the /monitor/history route
+// mounts in the walked spec. It stores nothing.
+type stubMetricRepo struct{}
+
+func (stubMetricRepo) InsertNodeRaw(context.Context, time.Time, monitor.HistPoint) error { return nil }
+func (stubMetricRepo) RangeNode(context.Context, string, time.Time) ([]monitor.HistPoint, error) {
+	return nil, nil
+}
+func (stubMetricRepo) RollupNodeHour(context.Context, time.Time, time.Time) error { return nil }
+func (stubMetricRepo) PruneNode(context.Context, string, time.Time) error         { return nil }
+
+// stubAlertAdmin satisfies monitor.AlertAdmin so the alert routes mount.
+type stubAlertAdmin struct{}
+
+func (stubAlertAdmin) CreateRule(context.Context, monitor.AlertRuleInput) (*monitor.AlertRule, error) {
+	return &monitor.AlertRule{}, nil
+}
+func (stubAlertAdmin) ListRules(context.Context) ([]monitor.AlertRule, error)        { return nil, nil }
+func (stubAlertAdmin) SetRuleEnabled(context.Context, string, bool) error            { return nil }
+func (stubAlertAdmin) DeleteRule(context.Context, string) error                      { return nil }
+func (stubAlertAdmin) ListEvents(context.Context, int) ([]monitor.AlertEvent, error) { return nil, nil }
 
 // stubRecordings is the recordings metadata store the router needs to mount the
 // recording routes.
@@ -167,6 +192,9 @@ func fullRouterDeps(t *testing.T) Deps {
 		Domains:   &domain.Service{},
 		Git:       &git.Service{},
 		Runtime:   &runtime.Service{},
+		Cron:      cron.NewService(nil, nil, nil),
+		Backups:   backup.NewService(nil, nil, nil, nil, nil),
+		Monitor:   monitor.New().WithHistory(stubMetricRepo{}).WithAlertAdmin(stubAlertAdmin{}),
 		Jobs:      &job.Dispatcher{},
 		Registry:  registry.New(),
 		// Apps rides on Docker, so both use the same daemon-present stub — and the

@@ -93,6 +93,20 @@ func (s *SiteStore) GetByUID(ctx context.Context, uid string) (*site.Record, err
 	return &rec, nil
 }
 
+// GetByID returns a site by internal id (used by background sweeps that hold an
+// id from a config row rather than a uid).
+func (s *SiteStore) GetByID(ctx context.Context, id int64) (*site.Record, error) {
+	var rec site.Record
+	err := s.db.GetContext(ctx, &rec, siteSelect+` WHERE s.id = ? AND s.deleted_at IS NULL`, id)
+	if isNoRows(err) {
+		return nil, errx.NotFound("site_not_found", "No such site.")
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &rec, nil
+}
+
 // GetByAppProject implements site.Repo.
 func (s *SiteStore) GetByAppProject(ctx context.Context, project string) (*site.Record, error) {
 	var rec site.Record

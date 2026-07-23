@@ -355,6 +355,88 @@ var apiDocs = map[string]opMeta{
 		Summary: "Restart the app", Tags: []string{"Runtime"}, Permission: "site.write", RespSchema: ref("Runtime"),
 	},
 
+	// ── scheduler ─────────────────────────────────────────────────────────────
+	"GET /api/v1/sites/{uid}/cron": {
+		Summary: "List scheduled jobs", Tags: []string{"Scheduler"}, Permission: "site.read",
+		RespDesc: "The site's cron jobs. Each is a real systemd timer triggering a oneshot service that runs as the site's user, in its home, inside its cgroup slice.",
+	},
+	"POST /api/v1/sites/{uid}/cron": {
+		Summary: "Schedule a job", Tags: []string{"Scheduler"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{
+			"name":     prop("string", "Job name."),
+			"command":  prop("string", "The command, one line. Runs as the site user in the site home — never root."),
+			"schedule": prop("string", "systemd OnCalendar expression, e.g. \"daily\", \"*-*-* 02:00:00\", \"Mon *-*-* 00:00:00\"."),
+		}, "name", "command", "schedule"),
+		RespDesc: "Creates the job and enables its timer. Overlap policy comes free from systemd: a oneshot still running when its timer fires again is not started a second time, so a slow job never stacks. Persistent=true also runs a job missed during downtime once.",
+	},
+	"PUT /api/v1/sites/{uid}/cron/{jid}": {
+		Summary: "Enable or disable a job", Tags: []string{"Scheduler"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{"enabled": prop("boolean", "Whether the timer is active.")}, "enabled"),
+		RespDesc:  "Disabling removes the systemd timer (the definition is kept); enabling re-applies it.",
+	},
+	"POST /api/v1/sites/{uid}/cron/{jid}/run": {
+		Summary: "Run a job now", Tags: []string{"Scheduler"}, Permission: "site.write",
+		RespDesc: "Triggers the job immediately, so it can be tested without waiting for the timer.",
+	},
+	"GET /api/v1/sites/{uid}/cron/{jid}/logs": {
+		Summary: "A job's output", Tags: []string{"Scheduler"}, Permission: "site.read",
+		RespDesc: "A bounded tail of the job's captured stdout+stderr (the launcher appends to a log in the site's logs directory, so this works without the journal). Force-audited.",
+	},
+	"DELETE /api/v1/sites/{uid}/cron/{jid}": {
+		Summary: "Delete a job", Tags: []string{"Scheduler"}, Permission: "site.write",
+		RespDesc: "Disables the timer and removes the job.",
+	},
+
+	// ── backups ───────────────────────────────────────────────────────────────
+	"GET /api/v1/sites/{uid}/backups": {
+		Summary: "List a site's backups", Tags: []string{"Backups"}, Permission: "site.read",
+		RespDesc: "The site's backups (newest first), its schedule/retention policy, and which targets are configured. Every archive is zstd-compressed and sealed with chunked AES-256-GCM before it touches any target — a stolen disk or bucket yields ciphertext.",
+	},
+	"POST /api/v1/sites/{uid}/backups": {
+		Summary: "Run a backup now", Tags: []string{"Backups"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{
+			"level":  prop("string", "full | incr; empty picks automatically (full for a fresh chain, incremental after)."),
+			"target": prop("string", "local | s3 (default local)."),
+		}),
+		RespDesc: "Archives the site (GNU tar --listed-incremental, zstd), seals it, and stores it on the target. Requires a data key (HP_SECRET_KEY) — encrypted-at-rest is not optional. 503 without one.",
+	},
+	"PUT /api/v1/sites/{uid}/backups/config": {
+		Summary: "Set the backup policy", Tags: []string{"Backups"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{
+			"enabled":        prop("boolean", "Whether the scheduler backs this site up."),
+			"interval_hours": prop("integer", "How often (1–720)."),
+			"target":         prop("string", "local | s3."),
+			"keep_chains":    prop("integer", "How many full+incremental chains to retain (1–30)."),
+			"db_uid":         prop("string", "Optional: a panel-managed database whose FULL dump rides along with every backup as a second sealed object (SQL dumps do not do incrementals). Empty = files only."),
+		}, "enabled", "interval_hours", "target", "keep_chains"),
+		RespDesc: "The scheduler sweeps hourly and backs up any enabled site whose newest backup is older than its interval; a new full chain retires the oldest beyond keep_chains.",
+	},
+	"POST /api/v1/sites/{uid}/backups/{bid}/restore": {
+		Summary: "Restore into a new site", Tags: []string{"Backups"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{
+			"name":           prop("string", "Name for the restored site."),
+			"primary_domain": prop("string", "Domain for the restored site."),
+			"db_name":        prop("string", "Optional: create a NEW database with this name and import the backup's database dump into it — the original database is never touched, for the same reason the tree goes into a new site."),
+		}, "name", "primary_domain"),
+		RespDesc: "Provisions a fresh site and replays the backup's chain into it (the full, then each incremental in order — deletions included). The original keeps serving untouched, so a mistaken restore destroys nothing; a backup that fails authentication is refused and nothing is written. Returns the new site (plus the new database when one was restored).",
+	},
+	"DELETE /api/v1/sites/{uid}/backups/{bid}": {
+		Summary: "Delete a backup", Tags: []string{"Backups"}, Permission: "site.write",
+		RespDesc: "Removes the backup **and every later backup in its chain** — they depend on it, and saying so beats a chain that breaks silently at restore time. The database dump object, when the backup carried one, goes with it. Returns the removed uids.",
+	},
+	"GET /api/v1/system/backups": {
+		Summary: "List panel self-backups", Tags: []string{"Backups"}, Permission: "system.read",
+		RespDesc: "Sealed snapshots of the panel's own database (newest first) plus the active policy. Every snapshot is full and stands alone. Restore is deliberately out-of-band: `hpd decrypt` on the sealed object plus the documented manual steps — a panel that needs its database back cannot be trusted to serve that request.",
+	},
+	"POST /api/v1/system/backups": {
+		Summary: "Snapshot the panel now", Tags: []string{"Backups"}, Permission: "system.write",
+		RespDesc: "Snapshots the panel's database (SQLite VACUUM INTO, or mysqldump via the broker), seals it, and stores it on the policy's target. Requires a data key (HP_SECRET_KEY).",
+	},
+	"DELETE /api/v1/system/backups/{uid}": {
+		Summary: "Delete a panel self-backup", Tags: []string{"Backups"}, Permission: "system.write",
+		RespDesc: "Removes one snapshot, row and stored object. No chains here — each snapshot stands alone.",
+	},
+
 	// ── git ───────────────────────────────────────────────────────────────────
 	"GET /api/v1/sites/{uid}/git": {
 		Summary: "Get the Git source", Tags: []string{"Git"}, Permission: "git.read",
@@ -595,6 +677,52 @@ var apiDocs = map[string]opMeta{
 	"DELETE /api/v1/docker/containers/{id}": {
 		Summary: "Remove a container", Tags: []string{"Docker"}, Permission: "docker.write",
 		RespDesc: "Managed containers only. Never removes the container's volumes: deleting a container is routine, deleting its data is a separate and explicit act. Query: force.",
+	},
+	"GET /api/v1/monitor/node": {
+		Summary: "Sample node health", Tags: []string{"Monitor"}, Permission: "monitor.read",
+		RespDesc: "One snapshot of the host: CPU %, load, memory/swap, uptime and per-filesystem disk usage. A one-shot read for the initial paint — the live dashboard is pushed over the `monitor:node` WebSocket channel (subscription-gated, so an unwatched panel samples nothing) rather than polling this.",
+	},
+	"GET /api/v1/monitor/sites": {
+		Summary: "Sample per-site usage", Tags: []string{"Monitor"}, Permission: "monitor.read",
+		RespDesc: "Each site's live memory, CPU % and task count, read from its cgroup v2 accounting (the slice every site runs in, with accounting on since it was created). A site whose slice has no cgroup yet reports `present:false`. Live view: the `monitor:sites` channel.",
+	},
+	"GET /api/v1/monitor/services": {
+		Summary: "Service health", Tags: []string{"Monitor"}, Permission: "monitor.read",
+		RespDesc: "Whether the services the host depends on (web server, database, cache) are active, read through the broker's service.status capability. Live view: the `monitor:services` channel.",
+	},
+	"GET /api/v1/monitor/history": {
+		Summary: "Node metrics history", Tags: []string{"Monitor"}, Permission: "monitor.read",
+		RespDesc: "Node CPU / memory / load / disk over a bounded range (query range=1h|6h|24h|7d|30d, default 24h). A raw sample a minute is kept ~48h and folded into hourly averages kept ~30d, so the service returns raw within the window and hourly beyond it. Mounted only when a datastore is present.",
+	},
+	"GET /api/v1/monitor/alerts/rules": {
+		Summary: "List alert rules", Tags: []string{"Monitor"}, Permission: "monitor.read",
+		RespDesc: "The configured threshold rules. Notification targets are **never** returned — they are write-only, and a Telegram token is sealed at rest.",
+	},
+	"POST /api/v1/monitor/alerts/rules": {
+		Summary: "Create an alert rule", Tags: []string{"Monitor"}, Permission: "monitor.write",
+		ReqSchema: object(map[string]any{
+			"name":          prop("string", "Rule name."),
+			"metric":        prop("string", "cpu | mem | swap | load1 | disk_root."),
+			"op":            prop("string", "gt | lt (default gt)."),
+			"threshold":     prop("number", "The value to compare against."),
+			"for_sec":       prop("integer", "Seconds the breach must persist before firing (0 = immediate)."),
+			"notify_kind":   prop("string", "log | webhook | telegram."),
+			"notify_target": prop("object", "Webhook URL, or Telegram bot token + chat id. Sealed at rest; requires a data key for the non-log kinds."),
+		}, "name", "metric", "threshold"),
+		RespDesc: "Creates a rule. It fires only after the breach has persisted for for_sec, so a one-tick spike pages nobody. webhook/telegram targets are sealed with the panel's data key (refused with 503 when none is configured).",
+	},
+	"PUT /api/v1/monitor/alerts/rules/{uid}": {
+		Summary: "Enable or disable a rule", Tags: []string{"Monitor"}, Permission: "monitor.write",
+		ReqSchema: object(map[string]any{"enabled": prop("boolean", "Whether the rule is active.")}, "enabled"),
+		RespDesc:  "Toggles a rule without deleting it.",
+	},
+	"DELETE /api/v1/monitor/alerts/rules/{uid}": {
+		Summary: "Delete an alert rule", Tags: []string{"Monitor"}, Permission: "monitor.write",
+		RespDesc: "Removes a rule. Its past events are kept as history.",
+	},
+	"GET /api/v1/monitor/alerts/events": {
+		Summary: "Recent alert events", Tags: []string{"Monitor"}, Permission: "monitor.read",
+		RespDesc: "Recent firings and resolutions, newest first. Query: limit (default 100, max 500).",
 	},
 	"GET /api/v1/docker/images": {
 		Summary: "List images", Tags: []string{"Docker"}, Permission: "docker.read",

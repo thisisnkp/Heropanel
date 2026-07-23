@@ -47,6 +47,12 @@ var basePermissions = []seedPermission{
 	{"system.read", "system", "read", "View system status"},
 	{"system.write", "system", "write", "Change system configuration"},
 	{"audit.read", "audit", "read", "View the audit log"},
+	// Monitoring is host-wide, like Docker: viewing live node/site/container
+	// metrics is a read; configuring alert thresholds and notification targets is
+	// a write. Live dashboards are subscription-gated, so this read also gates the
+	// realtime `monitor:*` channels.
+	{"monitor.read", "monitor", "read", "View live and historical metrics"},
+	{"monitor.write", "monitor", "write", "Configure metric alerts and notification targets"},
 }
 
 // seedRole is a role to ensure exists.

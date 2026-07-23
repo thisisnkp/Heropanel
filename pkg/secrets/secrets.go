@@ -100,6 +100,30 @@ func GenerateMasterKey() (string, error) {
 // Configured reports whether c can actually seal and open values.
 func (c *Cipher) Configured() bool { return c != nil && c.aead != nil }
 
+// DeriveKeyBase64 derives a purpose-specific 32-byte subkey from the encoded
+// master key (HKDF with the purpose as info). Different purposes yield unrelated
+// keys, so the backup stream key and the column-sealing key can never be
+// confused for one another. An empty master key returns (nil, nil) — the
+// feature is then unavailable, same contract as FromBase64.
+func DeriveKeyBase64(encoded, purpose string) ([]byte, error) {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return nil, nil
+	}
+	raw, err := decodeBase64(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: master key is not valid base64: %w", err)
+	}
+	if len(raw) != MasterKeyLen {
+		return nil, fmt.Errorf("secrets: master key must be %d bytes, got %d", MasterKeyLen, len(raw))
+	}
+	key, err := hkdf.Key(sha256.New, raw, nil, "heropanel/"+purpose, MasterKeyLen)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: derive key: %w", err)
+	}
+	return key, nil
+}
+
 // Seal encrypts plaintext and returns its stored form. aad must identify the
 // record the value belongs to — build it with AAD.
 func (c *Cipher) Seal(plaintext []byte, aad string) (string, error) {

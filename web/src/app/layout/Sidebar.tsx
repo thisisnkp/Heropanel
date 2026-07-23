@@ -36,6 +36,12 @@ const items: NavItem[] = [
     icon: "M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1z",
     perm: "docker.read",
   },
+  {
+    to: "/monitor",
+    label: "Monitoring",
+    icon: "M3 12h4l3 8 4-16 3 8h4",
+    perm: "monitor.read",
+  },
   { to: "/audit", label: "Audit log", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5" },
   {
     to: "/recordings",

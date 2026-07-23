@@ -18,8 +18,13 @@ const (
 	uptimePath  = "/proc/uptime"
 )
 
-// NodeChannel is the realtime hub channel node samples are pushed on.
-const NodeChannel = "monitor:node"
+// The realtime hub channels the sampler pushes on, each gated independently: a
+// dashboard subscribed only to the node tiles never triggers a per-site sweep.
+const (
+	NodeChannel     = "monitor:node"
+	SitesChannel    = "monitor:sites"
+	ServicesChannel = "monitor:services"
+)
 
 // defaultDiskPaths are the filesystems a dashboard cares about: the root, and
 // the tree every site lives under. Duplicates and unmounted paths are dropped
@@ -43,18 +48,34 @@ type Publisher interface {
 	Publish(channel string, payload []byte)
 }
 
-// Service samples the node's health. It holds the previous CPU reading so each
-// sample is a rate rather than a meaningless cumulative counter.
+// Service samples node, site and service health. It holds the previous CPU
+// readings (node-wide and per-site) so each sample is a rate rather than a
+// meaningless cumulative counter.
 type Service struct {
-	mu      sync.Mutex
-	prevCPU cpuTimes
-	hasPrev bool
+	mu sync.Mutex
+	// Two independent CPU baselines. The live sampler (3s) and the history
+	// persister (60s) each diff against their own previous read; sharing one
+	// baseline would mix a 3s window with a 60s window and corrupt both rates.
+	prevCPU        cpuTimes
+	hasPrev        bool
+	persistPrevCPU cpuTimes
+	persistHasPrev bool
+	prevSite       map[string]siteCPUPrev // per-vhost CPU baseline
 
 	diskPaths []string
 	// readFile and sleep are indirections so a test can feed fixtures and skip the
 	// warm-up delay without touching /proc or the clock.
 	readFile func(string) ([]byte, error)
 	sleep    func(time.Duration)
+
+	// Optional providers, wired at construction. When nil, the corresponding
+	// channel is simply not sampled — a host without sites, or an install that
+	// cannot read service state, degrades to node metrics alone.
+	siteLister    func() []SiteRef
+	serviceReader func(ctx context.Context) []ServiceHealth
+	history       MetricRepo
+	evaluator     *Evaluator
+	alertAdmin    AlertAdmin
 }
 
 // New constructs the Service. Extra disk paths may be supplied; the defaults
@@ -67,10 +88,30 @@ func New(diskPaths ...string) *Service {
 	return &Service{diskPaths: dedup(paths), readFile: os.ReadFile, sleep: time.Sleep}
 }
 
-// Sample gathers one snapshot of node health. It never errors: a metric it
-// cannot read (a file absent on a non-Linux dev host) is left at its zero value
-// rather than failing the whole sample, because a partial dashboard beats none.
-func (s *Service) Sample() NodeSample {
+// WithSites supplies the current site list so per-site metrics can be sampled.
+// The lister is called on each sweep (subscription-gated), so it always reflects
+// the sites that exist right now.
+func (s *Service) WithSites(lister func() []SiteRef) *Service {
+	s.siteLister = lister
+	return s
+}
+
+// WithServices supplies the service-health reader (broker-backed). Without it the
+// services channel is not sampled.
+func (s *Service) WithServices(reader func(ctx context.Context) []ServiceHealth) *Service {
+	s.serviceReader = reader
+	return s
+}
+
+// Sample gathers one snapshot of node health for the LIVE view (its CPU rate is
+// diffed against the live baseline). It never errors: a metric it cannot read (a
+// file absent on a non-Linux dev host) is left at its zero value rather than
+// failing the whole sample, because a partial dashboard beats none.
+func (s *Service) Sample() NodeSample { return s.sampleNode(&s.prevCPU, &s.hasPrev) }
+
+// sampleNode is the shared body; the caller picks which CPU baseline to diff
+// against (live vs. history persister).
+func (s *Service) sampleNode(cpuPrev *cpuTimes, cpuHas *bool) NodeSample {
 	var out NodeSample
 
 	if data, err := s.readFile(loadavgPath); err == nil {
@@ -88,7 +129,7 @@ func (s *Service) Sample() NodeSample {
 		out.SwapTotalKB = m.swapTotalKB
 		out.SwapUsedKB = m.swapTotalKB - m.swapFreeKB
 	}
-	out.CPUPercent = s.sampleCPU()
+	out.CPUPercent = s.cpuDelta(cpuPrev, cpuHas)
 
 	for _, p := range s.diskPaths {
 		if d, ok := diskUsage(p); ok {
@@ -107,19 +148,20 @@ func (s *Service) readCPU() (cpuTimes, bool) {
 	return parseCPUStat(data)
 }
 
-// sampleCPU returns busy percentage since the previous read, taking a second
-// read on the cold path so the first sample is real.
-func (s *Service) sampleCPU() float64 {
+// cpuDelta returns busy percentage since the previous read stored at *prev,
+// taking a second read on the cold path so the first sample is real. The pointer
+// pair lets the live sampler and the history persister keep separate baselines.
+func (s *Service) cpuDelta(prev *cpuTimes, has *bool) float64 {
 	cur, ok := s.readCPU()
 	if !ok {
 		return 0
 	}
 	s.mu.Lock()
-	prev, hasPrev := s.prevCPU, s.hasPrev
-	s.prevCPU, s.hasPrev = cur, true
+	p, h := *prev, *has
+	*prev, *has = cur, true
 	s.mu.Unlock()
-	if hasPrev {
-		return cpuPercent(prev, cur)
+	if h {
+		return cpuPercent(p, cur)
 	}
 	// Cold start: nothing to diff against yet.
 	s.sleep(cpuWarmDelay)
@@ -128,7 +170,7 @@ func (s *Service) sampleCPU() float64 {
 		return 0
 	}
 	s.mu.Lock()
-	s.prevCPU = cur2
+	*prev = cur2
 	s.mu.Unlock()
 	return cpuPercent(cur, cur2)
 }
@@ -151,15 +193,30 @@ func (s *Service) RunSampler(ctx context.Context, pub Publisher, interval time.D
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if !pub.HasSubscribers(NodeChannel) {
-				continue // nobody watching — sample nothing
-			}
-			b, err := json.Marshal(s.Sample())
-			if err != nil {
-				log.Debug("monitor: sample marshal failed", "err", err)
-				continue
-			}
+			s.sweep(ctx, pub, log)
+		}
+	}
+}
+
+// sweep pushes each channel that has a subscriber. The gates are independent, so
+// a dashboard watching only the node tiles never triggers a per-site cgroup sweep
+// or a broker round-trip for service state.
+func (s *Service) sweep(ctx context.Context, pub Publisher, log *slog.Logger) {
+	if pub.HasSubscribers(NodeChannel) {
+		if b, err := json.Marshal(s.Sample()); err == nil {
 			pub.Publish(NodeChannel, b)
+		} else {
+			log.Debug("monitor: node sample marshal failed", "err", err)
+		}
+	}
+	if s.siteLister != nil && pub.HasSubscribers(SitesChannel) {
+		if b, err := json.Marshal(map[string]any{"sites": s.SiteSamples(s.siteLister())}); err == nil {
+			pub.Publish(SitesChannel, b)
+		}
+	}
+	if s.serviceReader != nil && pub.HasSubscribers(ServicesChannel) {
+		if b, err := json.Marshal(map[string]any{"services": s.serviceReader(ctx)}); err == nil {
+			pub.Publish(ServicesChannel, b)
 		}
 	}
 }

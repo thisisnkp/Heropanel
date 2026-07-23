@@ -42,6 +42,7 @@ func Default() Policy {
 	return Policy{
 		Enabled: map[string]bool{
 			"service.restart":      true,
+			"service.status":       true,
 			"system_user.create":   true,
 			"system_user.delete":   true,
 			"site.create_dirs":     true,
@@ -83,6 +84,13 @@ func Default() Policy {
 			"app.unit_apply":       true,
 			"app.unit_control":     true,
 			"app.unit_remove":      true,
+			"cron.apply":           true,
+			"cron.remove":          true,
+			"cron.run":             true,
+			"cron.logs":            true,
+			"backup.create":        true,
+			"backup.restore":       true,
+			"backup.prune":         true,
 			"dns.write_zone":       true,
 			"dns.remove_zone":      true,
 			// Docker. Reachable only through these named operations: the daemon

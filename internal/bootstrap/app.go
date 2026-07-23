@@ -18,9 +18,11 @@ import (
 	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	backuppkg "github.com/thisisnkp/heropanel/internal/backup"
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	icache "github.com/thisisnkp/heropanel/internal/cache"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/cron"
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/docker"
@@ -29,6 +31,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/repository"
@@ -169,6 +172,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var terminalSvc *terminal.Service
 	var recordings *terminal.RecordingStore
 	var runtimeSvc *runtime.Service
+	var cronSvc *cron.Service
+	var backupSvc *backuppkg.Service
 	var dnsSvc *dns.Service
 	var domainSvc *domain.Service
 	if db != nil {
@@ -215,6 +220,58 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			log.Info("database client hand-off enabled", "url", cfg.Database.AdminerURL)
 		}
 		dnsSvc = dns.NewService(repository.NewDNSStore(db), gw)
+		// Scheduled jobs: site-scoped systemd timers. The service resolves a site
+		// to its user/home through the same store the other site facets use.
+		cronSvc = cron.NewService(repository.NewCronStore(db), cronSiteAdapter{repo: siteStore}, gw)
+		// Backups: always sealed before they touch a target. The key is a
+		// purpose-derived subkey of the master key, so backups and column secrets
+		// can never be confused; no key → the module reports unavailable rather
+		// than ever storing a site's data in the clear.
+		backupKey, kerr := secrets.DeriveKeyBase64(cfg.Security.SecretKey, "backup-v1")
+		if kerr != nil {
+			log.Warn("backup key derivation failed — backups disabled", "err", kerr)
+		}
+		var s3Target backuppkg.Target
+		if t := backuppkg.NewS3(backuppkg.S3Config{
+			Endpoint: cfg.Backup.S3.Endpoint, Region: cfg.Backup.S3.Region, Bucket: cfg.Backup.S3.Bucket,
+			AccessKey: cfg.Backup.S3.AccessKey, SecretKey: cfg.Backup.S3.SecretKey,
+		}); t != nil {
+			s3Target = t
+			log.Info("backup s3 target configured", "endpoint", cfg.Backup.S3.Endpoint, "bucket", cfg.Backup.S3.Bucket)
+			// Best-effort: surface a missing bucket (the most common S3
+			// misconfiguration) at boot rather than at the first scheduled backup.
+			if err := t.EnsureBucket(ctx); err != nil {
+				log.Warn("backup s3 bucket check failed", "err", err)
+			}
+		}
+		backupStore := repository.NewBackupStore(db)
+		backupSvc = backuppkg.NewService(backupStore, backupSiteAdapter{repo: siteStore}, gw, backupKey, s3Target)
+		// The database module lets a site's backup carry its database: a full
+		// dump per backup, sealed as a second object on the same target.
+		backupSvc = backupSvc.WithDBs(backupDBAdapter{svc: dbSvc, repo: dbStore})
+		// Panel self-backup: the panel's own database on the same pipeline,
+		// sealed with the same derived key. Restore is out-of-band by design
+		// (`hpd decrypt` + docs/22 §7).
+		if cfg.Backup.Panel.Enabled {
+			backupSvc = backupSvc.WithPanel(backupStore, panelSnapshotter(db, cfg.Database, gw), backuppkg.PanelPolicy{
+				Target: cfg.Backup.Panel.Target, IntervalHours: cfg.Backup.Panel.IntervalHours, Keep: cfg.Backup.Panel.Keep,
+			})
+			if backupSvc.PanelAvailable() {
+				go backupSvc.RunPanelScheduler(ctx, log)
+				log.Info("panel self-backup enabled",
+					"interval_hours", cfg.Backup.Panel.IntervalHours, "target", cfg.Backup.Panel.Target)
+			}
+		}
+		if backupSvc.Available() {
+			go backupSvc.RunScheduler(ctx, func(ctx context.Context, id int64) (string, bool) {
+				rec, err := siteStore.GetByID(ctx, id)
+				if err != nil {
+					return "", false
+				}
+				return rec.UID, true
+			}, log)
+			log.Info("backup scheduler enabled")
+		}
 		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw).
 			WithRestarter(runtimeSvc). // auto-restart a proxy app after each deploy
 			WithSecrets(cipher)        // enables private repos (token / deploy key)
@@ -289,6 +346,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			{"files", []string{"file.browse", "file.edit", "file.upload"}, filesSvc != nil},
 			{"terminal", []string{"terminal.session"}, terminalSvc != nil && terminalSvc.Available()},
 			{"runtime", []string{"runtime.app", "runtime.health"}, runtimeSvc != nil},
+			{"scheduler", []string{"cron.jobs", "cron.logs"}, cronSvc != nil},
 			{"ssl", []string{"ssl.issue", "ssl.dns01"}, sslSvc != nil},
 			{"dns", []string{"dns.zone", "dns.record"}, dnsSvc != nil},
 			{"domains", []string{"domain.alias", "domain.redirect"}, domainSvc != nil},
@@ -313,6 +371,12 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			log.Warn("could not register in-core module", "slug", "docker", "err", err)
 		}
 		log.Info("docker module enabled", "server_version", dockerSvc.Info(ctx).ServerVersion)
+	}
+
+	// Monitoring is always available: node metrics come from world-readable /proc,
+	// so unlike most modules it needs neither a datastore nor a broker.
+	if err := reg.Register(ctx, registry.NewInCore("monitor", "monitor.node")); err != nil {
+		log.Warn("could not register in-core module", "slug", "monitor", "err", err)
 	}
 
 	// Async job queue (requires a datastore and Redis). When absent, site
@@ -408,12 +472,69 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Info("database sign-on sweeper enabled", "ttl", database.SSOTTL.String())
 	}
 
-	// Realtime WebSocket hub: bridges Redis Pub/Sub job events to browsers.
+	// Node metrics. Needs no datastore or broker — /proc is world-readable — so
+	// the monitor exists whenever hpd does. Per-site and service metrics are wired
+	// on top when the pieces they need are present; the live dashboard's sampler
+	// is started with the hub below.
+	monitorSvc := monitor.New()
+	if gw != nil {
+		// Service health goes through the broker's read-only service.status.
+		monitorSvc = monitorSvc.WithServices(monitor.NewServiceReader(gw, monitor.DefaultServices))
+	}
+	if db != nil {
+		// History and rollups: a raw sample a minute, folded hourly, pruned so the
+		// table stays bounded. Persistence is deliberately NOT subscription-gated —
+		// a chart that skipped the hours nobody was watching would lie by omission.
+		monitorSvc = monitorSvc.WithHistory(repository.NewMetricStore(db))
+		// Alert rules: threshold breaches fire notifications and record events. The
+		// store seals notification targets with the panel's data key. Evaluation is
+		// folded into the persister, so it runs on the same tick.
+		alertStore := repository.NewAlertStore(db, cipher)
+		monitorSvc = monitorSvc.
+			WithAlertAdmin(alertStore).
+			WithAlerts(monitor.NewEvaluator(alertStore, monitor.NewHTTPNotifier(log), log))
+		// The persist cadence is a minute in production; the e2e shortens it via
+		// HP_MONITOR_PERSIST_SEC so a firing can be proven without a real minute.
+		persistEvery := time.Duration(0)
+		if v := os.Getenv("HP_MONITOR_PERSIST_SEC"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				persistEvery = time.Duration(n) * time.Second
+			}
+		}
+		go monitorSvc.RunPersister(ctx, persistEvery, log)
+		go monitorSvc.RunRollup(ctx, log)
+	}
+	if siteSvc != nil {
+		// Per-site metrics need the current site list on each (gated) sweep, so it
+		// always reflects the sites that exist right now.
+		monitorSvc = monitorSvc.WithSites(func() []monitor.SiteRef {
+			sites, err := siteSvc.List(ctx, 0, 500, 0)
+			if err != nil {
+				return nil
+			}
+			refs := make([]monitor.SiteRef, 0, len(sites))
+			for _, s := range sites {
+				if s.SystemUser != "" {
+					refs = append(refs, monitor.SiteRef{VhostName: s.SystemUser, SiteUID: s.UID})
+				}
+			}
+			return refs
+		})
+	}
+
+	// Realtime WebSocket hub. Its local Publish needs no Redis (Redis only bridges
+	// cross-process job events), so the hub is created whenever there is a
+	// datastore to authenticate subscribers against — the live monitor dashboard
+	// then works even on an install without Redis. The channel authorizer gates
+	// job channels by ownership and monitor channels by monitor.read; jobs may be
+	// nil, in which case job channels simply deny.
 	var wsHub *ws.Hub
-	if jobs != nil {
-		wsHub = ws.NewHub(cacheWiring.RedisClient, jobChannelAuthorizer(jobs), log)
+	if db != nil {
+		wsHub = ws.NewHub(cacheWiring.RedisClient, channelAuthorizer(jobs), log)
 		go wsHub.Run(ctx)
-		log.Info("realtime hub enabled")
+		// Push node samples to subscribed dashboards, sampling only while watched.
+		go monitorSvc.RunSampler(ctx, wsHub, monitor.DefaultInterval, log)
+		log.Info("realtime hub enabled", "redis_bridge", cacheWiring.RedisClient != nil)
 	}
 
 	handler := httpapi.NewRouter(httpapi.Deps{
@@ -441,6 +562,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Terminal:   terminalSvc,
 		Recordings: recordings,
 		Runtime:    runtimeSvc,
+		Cron:       cronSvc,
+		Backups:    backupSvc,
+		Monitor:    monitorSvc,
 		Jobs:       jobs,
 		Registry:   reg,
 		WS:         wsHub,

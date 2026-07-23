@@ -49,7 +49,7 @@ echo "readyz: $(curl -s http://127.0.0.1:18443/readyz)"
 sec "the mysql migrations actually ran"
 APPLIED=$(mysql --protocol=socket -N -B -e "SELECT COUNT(*) FROM heropanel.schema_migrations;" 2>&1)
 echo "schema_migrations rows: $APPLIED"
-check "all 15 mysql migrations applied" "$APPLIED" "15"
+check "all 25 mysql migrations applied" "$APPLIED" "25"
 TABLES=$(mysql --protocol=socket -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='heropanel';" 2>&1)
 echo "tables in heropanel: $TABLES"
 

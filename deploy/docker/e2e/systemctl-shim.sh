@@ -40,6 +40,20 @@ stop_app(){
   fi
 }
 
+# Run a oneshot unit (a cron job) to completion, as its User in its
+# WorkingDirectory — synchronously, as systemd does for Type=oneshot. Enough for
+# the e2e to prove the command runs as the site user; real timer *firing* is
+# systemd behaviour the unit-rendering tests pin.
+run_oneshot(){
+  local u="$1" f="/etc/systemd/system/$1"
+  [ -f "$f" ] || { echo "shim: no unit $u" >&2; return 1; }
+  local user wd es
+  user=$(sed -n 's/^User=//p' "$f")
+  wd=$(sed -n 's/^WorkingDirectory=//p' "$f")
+  es=$(sed -n 's/^ExecStart=//p' "$f")
+  runuser -u "$user" -- env -C "$wd" HOME="$wd" "$es"
+}
+
 start_app(){
   local u="$1" f="/etc/systemd/system/$1"
   [ -f "$f" ] || { echo "shim: no unit $u" >&2; return 1; }
@@ -63,9 +77,26 @@ start_app(){
 
 case "$verb" in
   daemon-reload|enable) exit 0 ;;
+  is-active)
+    # Report each queried service honestly by probing for its process — enough for
+    # the monitor e2e to prove the service.status pipeline (broker -> systemctl ->
+    # parsed state -> API). Real systemd answers from unit state in production.
+    shift
+    rc=0
+    for u in "$@"; do
+      case "$u" in
+        openlitespeed|lshttpd) pgrep -f 'lshttpd|litespeed' >/dev/null 2>&1 ;;
+        mariadb|mysql|mysqld)  pgrep -x mariadbd >/dev/null 2>&1 || pgrep -x mysqld >/dev/null 2>&1 ;;
+        redis|redis-server)    pgrep -x redis-server >/dev/null 2>&1 ;;
+        *) false ;;
+      esac
+      if [ $? -eq 0 ]; then echo active; else echo inactive; rc=3; fi
+    done
+    exit $rc ;;
   disable|stop) stop_app "$unit"; exit 0 ;;
   start|restart)
     case "$unit" in
+      heropanel-cron-*) run_oneshot "$unit"; exit $? ;;
       heropanel-app-*) start_app "$unit" ;;
       php*-fpm)
         # A reload cannot pick up an extension; a restart must be a real one.

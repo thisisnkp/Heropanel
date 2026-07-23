@@ -7,6 +7,7 @@ import "github.com/thisisnkp/heropanel/broker/capability"
 func All() []capability.Capability {
 	return []capability.Capability{
 		ServiceRestart{},
+		ServiceStatus{},
 		SystemUserCreate{},
 		SystemUserDelete{},
 		SiteCreateDirs{},
@@ -47,6 +48,13 @@ func All() []capability.Capability {
 		AppUnitApply{},
 		AppUnitControl{},
 		AppUnitRemove{},
+		CronApply{},
+		CronRemove{},
+		CronRun{},
+		CronLogs{},
+		BackupCreate{},
+		BackupRestore{},
+		BackupPrune{},
 		DNSWriteZone{},
 		DNSRemoveZone{},
 		DockerInfo{},

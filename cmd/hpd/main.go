@@ -21,6 +21,15 @@ import (
 var version = "0.0.0-dev"
 
 func main() {
+	// `hpd decrypt <in> <out>` is the disaster-recovery path: it opens any
+	// sealed backup object (site archive, database dump, panel snapshot) with
+	// the key derived from HP_SECRET_KEY. It is a subcommand, not a flag, so it
+	// works on a box where nothing else does — no config, no database, no
+	// broker; just the binary and the master key the operator kept safe.
+	if len(os.Args) > 1 && os.Args[1] == "decrypt" {
+		os.Exit(runDecrypt(os.Args[2:]))
+	}
+
 	var (
 		configPath  = flag.String("config", envOr("HP_CONFIG", "/etc/heropanel/config.yaml"), "path to config file")
 		showVersion = flag.Bool("version", false, "print version and exit")

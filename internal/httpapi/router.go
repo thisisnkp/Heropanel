@@ -15,7 +15,9 @@ import (
 	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/backup"
 	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/heropanel/internal/cron"
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/docker"
@@ -23,6 +25,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
@@ -71,8 +74,14 @@ type Deps struct {
 	Docker *docker.Service
 	// Apps is the one-click catalog. It rides on Docker, so it is nil in exactly
 	// the same conditions Docker is.
-	Apps     *apps.Service
-	Runtime  *runtime.Service   // nil when no datastore is configured
+	Apps    *apps.Service
+	Runtime *runtime.Service // nil when no datastore is configured
+	Cron    *cron.Service    // nil when no datastore is configured
+	Backups *backup.Service  // nil when no datastore is configured
+	// Monitor samples node health for the dashboard. It needs no datastore or
+	// broker (node metrics come from world-readable /proc), so it is present
+	// whenever hpd is.
+	Monitor  *monitor.Service
 	Jobs     *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
 	WS       *ws.Hub            // nil when the realtime hub is disabled (no Redis)
 	Registry *registry.Registry // module capability set; never nil (may be empty)
@@ -340,6 +349,27 @@ func NewRouter(d Deps) http.Handler {
 						r.With(requirePermission("site.write")).Delete("/apps/{project}/expose", unexposeAppHandler(d))
 					}
 				}
+				if d.Monitor != nil {
+					// Host-wide metrics, like Docker. One-shot read for the initial
+					// paint; the live dashboard rides the `monitor:*` WS channels,
+					// which the same permission gates.
+					r.With(requirePermission("monitor.read")).Get("/monitor/node", monitorNodeHandler(d))
+					r.With(requirePermission("monitor.read")).Get("/monitor/sites", monitorSitesHandler(d))
+					r.With(requirePermission("monitor.read")).Get("/monitor/services", monitorServicesHandler(d))
+					if d.Monitor.HistoryEnabled() {
+						r.With(requirePermission("monitor.read")).Get("/monitor/history", monitorHistoryHandler(d))
+					}
+					if d.Monitor.AlertsEnabled() {
+						// Reading rules and events is monitor.read; changing them is
+						// monitor.write — configuring what pages an operator is a heavier
+						// grant than watching the graphs.
+						r.With(requirePermission("monitor.read")).Get("/monitor/alerts/rules", listAlertRulesHandler(d))
+						r.With(requirePermission("monitor.read")).Get("/monitor/alerts/events", listAlertEventsHandler(d))
+						r.With(requirePermission("monitor.write")).Post("/monitor/alerts/rules", createAlertRuleHandler(d))
+						r.With(requirePermission("monitor.write")).Put("/monitor/alerts/rules/{uid}", toggleAlertRuleHandler(d))
+						r.With(requirePermission("monitor.write")).Delete("/monitor/alerts/rules/{uid}", deleteAlertRuleHandler(d))
+					}
+				}
 				if d.Domains != nil {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/domains", listDomainsHandler(d))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/domains", addDomainHandler(d))
@@ -353,6 +383,30 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/start", runtimeControlHandler(d, "start"))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/stop", runtimeControlHandler(d, "stop"))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/runtime/restart", runtimeControlHandler(d, "restart"))
+				}
+				if d.Cron != nil {
+					// Scheduled jobs are site-scoped, so they ride on the site
+					// permissions — listing/logs are site.read, mutations site.write.
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/cron", listCronJobsHandler(d))
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/cron/{jid}/logs", cronJobLogsHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/cron", createCronJobHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/cron/{jid}", toggleCronJobHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/cron/{jid}/run", runCronJobHandler(d))
+					r.With(requirePermission("site.write")).Delete("/sites/{uid}/cron/{jid}", deleteCronJobHandler(d))
+				}
+				if d.Backups != nil {
+					// Backups hold everything the site holds, so they ride on the
+					// site permissions; restore provisions a NEW site (site.write).
+					r.With(requirePermission("site.read")).Get("/sites/{uid}/backups", listBackupsHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/backups", createBackupHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/backups/config", setBackupConfigHandler(d))
+					r.With(requirePermission("site.write")).Post("/sites/{uid}/backups/{bid}/restore", restoreBackupHandler(d))
+					r.With(requirePermission("site.write")).Delete("/sites/{uid}/backups/{bid}", deleteBackupHandler(d))
+					// Panel self-backup: the panel's own database, sealed. Restore
+					// is out-of-band by design (`hpd decrypt` + docs/22 §7).
+					r.With(requirePermission("system.read")).Get("/system/backups", listPanelBackupsHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/backups", createPanelBackupHandler(d))
+					r.With(requirePermission("system.write")).Delete("/system/backups/{uid}", deletePanelBackupHandler(d))
 				}
 				if d.Jobs != nil {
 					r.With(requireAuth).Get("/jobs", listJobsHandler(d))

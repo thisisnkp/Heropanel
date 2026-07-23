@@ -67,6 +67,9 @@ export function CommandPalette() {
             { id: "apps", label: "Go to one-click Apps", run: go("/apps") },
           ]
         : []),
+      ...(can(me, "monitor.read")
+        ? [{ id: "monitor", label: "Go to Monitoring", run: go("/monitor") }]
+        : []),
       { id: "modules", label: "Go to Modules", run: go("/modules") },
       { id: "users", label: "Go to Users", run: go("/users") },
       { id: "new-site", label: "Create a website", hint: "action", run: go("/sites?new=1") },

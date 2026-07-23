@@ -24,6 +24,35 @@ type Config struct {
 	Terminal Terminal `yaml:"terminal"`
 	Log      Log      `yaml:"log"`
 	Security Security `yaml:"security"`
+	Backup   Backup   `yaml:"backup"`
+}
+
+// Backup configures where sealed site backups may be sent besides local disk.
+// All-empty means "local only", which always works.
+type Backup struct {
+	S3    BackupS3    `yaml:"s3"`
+	Panel BackupPanel `yaml:"panel"`
+}
+
+// BackupPanel drives the panel's self-backup: a sealed snapshot of the panel's
+// own database on a schedule. Enabled by default (it costs a few MB and is the
+// difference between a bad day and a disaster) — it still only runs when
+// HP_SECRET_KEY is set, because sealed-at-rest is not optional.
+type BackupPanel struct {
+	Enabled       bool   `yaml:"enabled"`
+	IntervalHours int    `yaml:"interval_hours"`
+	Target        string `yaml:"target"` // local | s3
+	Keep          int    `yaml:"keep"`
+}
+
+// BackupS3 is an S3-compatible target (AWS, R2, B2, MinIO). The secret key may
+// come from HP_BACKUP_S3_SECRET_KEY rather than the file.
+type BackupS3 struct {
+	Endpoint  string `yaml:"endpoint"`
+	Region    string `yaml:"region"`
+	Bucket    string `yaml:"bucket"`
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"-"`
 }
 
 // Terminal configures the web terminal and its session recording.
@@ -167,6 +196,9 @@ func Default() Config {
 			RateLimit:      RateLimit{Enabled: true, RPS: 20, Burst: 40},
 			CORS:           CORS{AllowedOrigins: []string{}},
 		},
+		Backup: Backup{
+			Panel: BackupPanel{Enabled: true, IntervalHours: 24, Target: "local", Keep: 7},
+		},
 	}
 }
 
@@ -211,6 +243,37 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_DATABASE_DSN"); v != "" {
 		c.Database.DSN = v
+	}
+	if v := os.Getenv("HP_BACKUP_S3_ENDPOINT"); v != "" {
+		c.Backup.S3.Endpoint = v
+	}
+	if v := os.Getenv("HP_BACKUP_S3_REGION"); v != "" {
+		c.Backup.S3.Region = v
+	}
+	if v := os.Getenv("HP_BACKUP_S3_BUCKET"); v != "" {
+		c.Backup.S3.Bucket = v
+	}
+	if v := os.Getenv("HP_BACKUP_S3_ACCESS_KEY"); v != "" {
+		c.Backup.S3.AccessKey = v
+	}
+	if v := os.Getenv("HP_BACKUP_S3_SECRET_KEY"); v != "" {
+		c.Backup.S3.SecretKey = v
+	}
+	if v := os.Getenv("HP_BACKUP_PANEL_ENABLED"); v != "" {
+		c.Backup.Panel.Enabled = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("HP_BACKUP_PANEL_HOURS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Backup.Panel.IntervalHours = n
+		}
+	}
+	if v := os.Getenv("HP_BACKUP_PANEL_TARGET"); v != "" {
+		c.Backup.Panel.Target = v
+	}
+	if v := os.Getenv("HP_BACKUP_PANEL_KEEP"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Backup.Panel.Keep = n
+		}
 	}
 	if v := os.Getenv("HP_DATABASE_ADMINER_URL"); v != "" {
 		c.Database.AdminerURL = v

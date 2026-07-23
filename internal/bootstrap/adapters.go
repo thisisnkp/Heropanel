@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/thisisnkp/heropanel/internal/auth"
+	backuppkg "github.com/thisisnkp/heropanel/internal/backup"
+	"github.com/thisisnkp/heropanel/internal/cron"
+	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
 	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/files"
@@ -196,9 +199,77 @@ func (a siteRuntimeAdapter) Control(ctx context.Context, siteUID, action string)
 	return err
 }
 
-// jobChannelAuthorizer authorizes WebSocket channel subscriptions. A principal
-// may subscribe to "job:<uid>" only if they own that job (or are an admin).
-func jobChannelAuthorizer(jobs *job.Dispatcher) ws.Authorizer {
+// cronSiteAdapter adapts the site repository to the scheduler's resolver.
+type cronSiteAdapter struct {
+	repo *repository.SiteStore
+}
+
+func (a cronSiteAdapter) Resolve(ctx context.Context, siteUID string) (*cron.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &cron.SiteRef{
+		ID:        rec.ID,
+		UID:       rec.UID,
+		LinuxUser: rec.LinuxUser.String,
+		HomeDir:   rec.HomeDir.String,
+	}, nil
+}
+
+// backupSiteAdapter adapts the site repository to the backup module's resolver.
+type backupSiteAdapter struct {
+	repo *repository.SiteStore
+}
+
+func (a backupSiteAdapter) Resolve(ctx context.Context, siteUID string) (*backuppkg.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &backuppkg.SiteRef{
+		ID:        rec.ID,
+		UID:       rec.UID,
+		LinuxUser: rec.LinuxUser.String,
+		HomeDir:   rec.HomeDir.String,
+	}, nil
+}
+
+// backupDBAdapter adapts the database module to the backup module's DBs
+// contract: resolve a UID to a name, dump a database, name a staging path.
+type backupDBAdapter struct {
+	svc  *database.Service
+	repo *repository.DatabaseStore
+}
+
+func (a backupDBAdapter) Resolve(ctx context.Context, uid string) (string, error) {
+	rec, err := a.repo.GetDatabaseByUID(ctx, uid)
+	if err != nil {
+		return "", err
+	}
+	return rec.Name, nil
+}
+
+func (a backupDBAdapter) Export(ctx context.Context, uid string) (path, name string, err error) {
+	exp, err := a.svc.Export(ctx, uid)
+	if err != nil {
+		return "", "", err
+	}
+	return exp.Path, exp.Name, nil
+}
+
+func (a backupDBAdapter) ImportStagePath(gzipped bool) (path, file string) {
+	return a.svc.ImportStagePath(gzipped)
+}
+
+// channelAuthorizer authorizes WebSocket channel subscriptions by family:
+//   - "job:<uid>"   — the owner of that job, or an admin.
+//   - "monitor:*"   — anyone with monitor.read (metrics are host-wide, not scoped
+//     to one resource, so the permission is the gate).
+//
+// jobs may be nil (no async queue); job channels then simply deny, which is the
+// correct answer when no job could exist. An unknown family is denied.
+func channelAuthorizer(jobs *job.Dispatcher) ws.Authorizer {
 	return ws.AuthorizerFunc(func(ctx context.Context, p *auth.Principal, channel string) bool {
 		if p == nil {
 			return false
@@ -206,7 +277,13 @@ func jobChannelAuthorizer(jobs *job.Dispatcher) ws.Authorizer {
 		if p.Can("*") {
 			return true
 		}
+		if strings.HasPrefix(channel, "monitor:") {
+			return p.Can("monitor.read")
+		}
 		if uid, ok := strings.CutPrefix(channel, "job:"); ok {
+			if jobs == nil {
+				return false
+			}
 			j, err := jobs.Get(ctx, uid)
 			if err != nil {
 				return false

@@ -109,10 +109,10 @@ func cpuPercent(prev, cur cpuTimes) float64 {
 
 // memInfo is the handful of /proc/meminfo fields a dashboard needs.
 type memInfo struct {
-	totalKB, availableKB, freeKB     int64
-	buffersKB, cachedKB              int64
-	swapTotalKB, swapFreeKB          int64
-	hasAvailable                     bool
+	totalKB, availableKB, freeKB int64
+	buffersKB, cachedKB          int64
+	swapTotalKB, swapFreeKB      int64
+	hasAvailable                 bool
 }
 
 // parseMeminfo reads /proc/meminfo. MemAvailable (kernel 3.14+) is the honest
