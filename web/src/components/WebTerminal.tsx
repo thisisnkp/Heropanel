@@ -50,12 +50,33 @@ function buildTheme() {
 export function WebTerminal({
   uid,
   cwd = "",
+  endpoint,
+  wsQuery,
+  readOnly = false,
   onStatus,
   reconnectKey = 0,
   fontSize = 13,
 }: {
   uid: string;
   cwd?: string;
+  /**
+   * API path to upgrade against, when this is not a site terminal. A container
+   * shell speaks the identical wire protocol — the same binary frames and the
+   * same JSON control frames — so it reuses this component rather than growing a
+   * second emulator that would drift in its key handling and resize behaviour.
+   */
+  endpoint?: string;
+  /**
+   * Extra query parameters merged into the upgrade URL. A log follow carries its
+   * `tail` here, kept separate from `endpoint` so the component still owns cols/
+   * rows and there is never a second "?" in the URL.
+   */
+  wsQuery?: Record<string, string>;
+  /**
+   * A one-way stream (a log follow) has nothing to type into. readOnly stops
+   * keystrokes being forwarded, so the pane is a live viewer rather than a shell.
+   */
+  readOnly?: boolean;
   onStatus?: (s: TerminalStatus) => void;
   /** Change this to force a fresh session (the Reconnect button). */
   reconnectKey?: number;
@@ -136,7 +157,9 @@ export function WebTerminal({
       rows: String(t.rows),
     });
     if (cwd) params.set("cwd", cwd);
-    const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/sites/${uid}/terminal?${params}`);
+    for (const [k, v] of Object.entries(wsQuery ?? {})) params.set(k, v);
+    const path = endpoint ?? `/sites/${uid}/terminal`;
+    const ws = new WebSocket(`${proto}//${window.location.host}/api/v1${path}?${params}`);
     ws.binaryType = "arraybuffer";
 
     const encoder = new TextEncoder();
@@ -204,10 +227,13 @@ export function WebTerminal({
       return true;
     });
 
-    // Keystrokes → PTY, as binary.
-    const dataSub = t.onData((d) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(encoder.encode(d));
-    });
+    // Keystrokes → PTY, as binary. A read-only viewer (a log follow) forwards
+    // nothing: there is no process on the other end to receive input.
+    const dataSub = readOnly
+      ? { dispose() {} }
+      : t.onData((d) => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(encoder.encode(d));
+        });
 
     // Window size → PTY, as a JSON control frame. Debounced via rAF so a drag
     // does not flood the socket with one resize per pixel.
@@ -244,7 +270,7 @@ export function WebTerminal({
       refit.current = () => {};
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, cwd, reconnectKey]);
+  }, [uid, cwd, endpoint, readOnly, reconnectKey]);
 
   // Follow the app's light/dark toggle without rebuilding the session.
   useEffect(() => {

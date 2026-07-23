@@ -23,7 +23,7 @@ var _ site.Repo = (*SiteStore)(nil)
 
 const siteSelect = `
 	SELECT s.id, s.uid, s.owner_id, s.name, s.primary_domain, s.type, s.deploy_mode,
-	       s.status, s.webserver, s.document_root, s.created_at,
+	       s.status, s.webserver, s.document_root, s.app_project, s.created_at,
 	       ssu.linux_user AS linux_user, ssu.linux_uid AS linux_uid, ssu.home_dir AS home_dir
 	  FROM sites s
 	  LEFT JOIN site_system_users ssu ON ssu.site_id = s.id`
@@ -34,9 +34,9 @@ func (s *SiteStore) Insert(ctx context.Context, r *site.Record) error {
 		r.UID = idgen.NewULID()
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO sites (uid, owner_id, name, primary_domain, type, deploy_mode, status, webserver, document_root)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.UID, r.OwnerID, r.Name, r.PrimaryDomain, r.Type, r.DeployMode, r.Status, r.Webserver, r.DocumentRoot)
+		`INSERT INTO sites (uid, owner_id, name, primary_domain, type, deploy_mode, status, webserver, document_root, app_project)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.UID, r.OwnerID, r.Name, r.PrimaryDomain, r.Type, r.DeployMode, r.Status, r.Webserver, r.DocumentRoot, r.AppProject)
 	if err != nil {
 		return errx.Wrap(err, errx.KindConflict, "site_create_failed", "Could not create the site (domain may be in use).")
 	}
@@ -86,6 +86,20 @@ func (s *SiteStore) GetByUID(ctx context.Context, uid string) (*site.Record, err
 	err := s.db.GetContext(ctx, &rec, siteSelect+` WHERE s.uid = ? AND s.deleted_at IS NULL`, uid)
 	if isNoRows(err) {
 		return nil, errx.NotFound("site_not_found", "No such site.")
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &rec, nil
+}
+
+// GetByAppProject implements site.Repo.
+func (s *SiteStore) GetByAppProject(ctx context.Context, project string) (*site.Record, error) {
+	var rec site.Record
+	err := s.db.GetContext(ctx, &rec,
+		siteSelect+` WHERE s.app_project = ? AND s.deleted_at IS NULL`, project)
+	if isNoRows(err) {
+		return nil, errx.NotFound("site_not_found", "That app is not exposed to a domain.")
 	}
 	if err != nil {
 		return nil, errx.Internal(err)

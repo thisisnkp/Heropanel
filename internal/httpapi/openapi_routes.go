@@ -426,6 +426,195 @@ var apiDocs = map[string]opMeta{
 		}, "from", "to"),
 		RespDesc: "Path moved.",
 	},
+	"GET /api/v1/docker/info": {
+		Summary: "Docker daemon status", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "Whether a usable daemon is present and its version. An absent daemon is reported as available:false with the daemon's own reason — not an error, because \"no Docker on this host\" is a state the UI renders.",
+	},
+	"GET /api/v1/docker/containers": {
+		Summary: "List containers", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "Every container on the host, running or stopped, each flagged `managed` — whether HeroPanel created it. Unmanaged containers are listed (an admin must be able to see what is consuming the host) but cannot be modified. Query: site.",
+	},
+	"GET /api/v1/docker/containers/{id}": {
+		Summary: "Inspect a container", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "Docker's own inspect payload, passed through unmodelled.",
+	},
+	"GET /api/v1/docker/containers/{id}/logs": {
+		Summary: "Read a container's logs", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "A bounded tail (max 2000 lines), stdout and stderr separately. Force-audited: container logs routinely carry connection strings and customer data. Query: tail, timestamps.",
+	},
+	"GET /api/v1/docker/containers/{id}/stats": {
+		Summary: "Sample a container's resource usage", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "One sample, not a stream — the client polls, so a wedged container can never hold a request open.",
+	},
+	"GET /api/v1/docker/containers/{id}/logs/stream": {
+		Summary: "Follow a container's logs live", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "WebSocket upgrade. Binary frames carry log output as the container writes it; a JSON text frame carries the exit when the follow ends. " +
+			"The one-way, live twin of the polled logs read — same `docker.read` grant, same force-audit, because logs carry secrets. Not ownership-gated: reading any container's logs is allowed. Query: tail, timestamps.",
+	},
+	"POST /api/v1/docker/containers": {
+		Summary: "Create a container", Tags: []string{"Docker"}, Permission: "docker.write",
+		ReqSchema: object(map[string]any{
+			"name":      prop("string", "Container name."),
+			"image":     prop("string", "Image reference."),
+			"site":      prop("string", "Optional site uid to attribute the container to."),
+			"env":       prop("object", "Environment variables. Sent to docker through stdin as an env-file, never as arguments — argv is world-readable via /proc, and this is where a generated password lives."),
+			"ports":     prop("array", "Published ports as {host, container, proto}. Always bound to 127.0.0.1: docker's firewall rules are evaluated before the host's, so publishing on all interfaces would expose the container even on a host whose firewall denies the port."),
+			"volumes":   prop("array", "Mounts as {volume, path, read_only}. **Named volumes only** — a host path is not rejected but unrepresentable, which is what prevents `-v /:/host` and mounting the docker socket."),
+			"restart":   prop("string", "no | on-failure | unless-stopped (default) | always."),
+			"network":   prop("string", "Optional network name."),
+			"memory_mb": prop("integer", "Memory limit in MB (16 … 1048576)."),
+			"command":   prop("array", "Optional command. Everything after the image operand is the container's own argv, so a leading dash here is the program's flag, not docker's."),
+		}, "name", "image"),
+		RespDesc: "The container is created with HeroPanel's managed label and `no-new-privileges`. `--privileged`, `--cap-add`, `--device`, `--userns` and host namespaces have no corresponding field and cannot be produced.",
+	},
+	"POST /api/v1/docker/compose": {
+		Summary: "Bring a compose stack up", Tags: []string{"Docker"}, Permission: "docker.write",
+		ReqSchema: object(map[string]any{
+			"project": prop("string", "Compose project name."),
+			"site":    prop("string", "Optional site uid to attribute the stack to."),
+			"file":    prop("string", "The compose file itself. Passed to docker on stdin, never a path."),
+		}, "project", "file"),
+		RespDesc: "The compose file is user-authored YAML and can request anything docker compose understands, so this is the module's explicit escape hatch: the panel labels and scopes the stack but does not harden arbitrary compose the way it hardens a container it builds. Every container the stack creates carries the managed label, so tear-down and the ownership boundary apply to it.",
+	},
+	"GET /api/v1/docker/compose/{project}": {
+		Summary: "List a stack's services", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "The services in a compose project and their state.",
+	},
+	"GET /api/v1/docker/compose/{project}/logs": {
+		Summary: "Read a stack's logs", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "A bounded tail of the whole stack's output. Force-audited. Query: tail.",
+	},
+	"DELETE /api/v1/docker/compose/{project}": {
+		Summary: "Tear a stack down", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Removes the stack's containers and networks but never its volumes. Refused with 403 for a stack HeroPanel did not create.",
+	},
+	"GET /api/v1/apps/templates": {
+		Summary: "The one-click app catalog", Tags: []string{"Apps"}, Permission: "docker.read",
+		RespDesc: "Every deployable template, each with a memory-feasibility verdict against the host's available memory, so an app the host cannot run is marked before it is chosen.",
+	},
+	"POST /api/v1/apps": {
+		Summary: "Deploy an app", Tags: []string{"Apps"}, Permission: "docker.write",
+		ReqSchema: object(map[string]any{
+			"slug":   prop("string", "Template slug, e.g. ghost."),
+			"name":   prop("string", "The app/stack name."),
+			"site":   prop("string", "Optional site uid to attribute it to."),
+			"values": prop("object", "Operator-supplied field values. Secret fields are ignored here and generated instead."),
+		}, "slug", "name"),
+		RespDesc: "Generates any secret fields (never taken from input), checks memory feasibility, renders the template's compose file and brings it up. Returns the generated secrets **once** — they are not stored in a form the panel can return later, and are deliberately not written to the audit log.",
+	},
+	"GET /api/v1/apps/{project}": {
+		Summary: "An app's status", Tags: []string{"Apps"}, Permission: "docker.read",
+		RespDesc: "The app's running services.",
+	},
+	"GET /api/v1/apps/{project}/logs": {
+		Summary: "An app's logs", Tags: []string{"Apps"}, Permission: "docker.read",
+		RespDesc: "A bounded tail of the app's combined logs. Force-audited: an app's logs carry its secrets and its users' data.",
+	},
+	"DELETE /api/v1/apps/{project}": {
+		Summary: "Remove an app", Tags: []string{"Apps"}, Permission: "docker.write",
+		RespDesc: "Tears the app's stack down. Its volumes survive, so a redeploy reattaches the data.",
+	},
+	"GET /api/v1/apps/{project}/exposure": {
+		Summary: "An app's exposure", Tags: []string{"Apps"}, Permission: "docker.read",
+		RespDesc: "Whether the app is fronted by a domain, and if so which — plus the proxy site's uid and status. `{exposed:false}` when it is only reachable on loopback.",
+	},
+	"POST /api/v1/apps/{project}/expose": {
+		Summary: "Expose an app on a domain", Tags: []string{"Apps"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{
+			"domain": prop("string", "The domain to serve the app on, e.g. blog.example.com."),
+		}, "domain"),
+		RespDesc: "Creates a proxy **site** whose vhost reverse-proxies to the app's live loopback port, resolved at render time so it follows a redeploy. `site.write`, not docker.write: it stands up a real site, with the domain/TLS/suspend controls every site has. The app keeps running on loopback; this is its front door. Refused with 409 if the app is already exposed, 404 if it is not deployed.",
+	},
+	"DELETE /api/v1/apps/{project}/expose": {
+		Summary: "Unexpose an app", Tags: []string{"Apps"}, Permission: "site.write",
+		RespDesc: "Deletes the proxy site fronting the app, dropping its vhost. The app itself is left running on loopback — this takes down the front door, not the app.",
+	},
+	"GET /api/v1/docker/containers/{id}/exec": {
+		Summary: "Open a shell inside a container", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "WebSocket upgrade. Binary frames carry terminal bytes in both directions; JSON text frames carry resize/exit. " +
+			"`docker.write` rather than `docker.read`: a shell inside a container can stop the process, read its secrets and edit its data. " +
+			"Refused with 403 unless the container carries HeroPanel's managed label — a shell in someone else's container would bypass every other refusal in this module. " +
+			"Query: shell (/bin/sh, /bin/bash, /bin/ash), cols, rows.",
+	},
+	"GET /api/v1/docker/volumes": {
+		Summary: "List volumes", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "Every volume on the host, each flagged `managed`.",
+	},
+	"GET /api/v1/docker/volumes/{name}": {
+		Summary: "Inspect a volume", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "The volume's full record plus the containers that mount it — including unmanaged ones, so the destructive remove is an informed decision. Read-only, so not ownership-guarded.",
+	},
+	"POST /api/v1/docker/volumes": {
+		Summary: "Create a volume", Tags: []string{"Docker"}, Permission: "docker.write",
+		ReqSchema: object(map[string]any{
+			"name": prop("string", "Volume name."),
+			"site": prop("string", "Optional site uid to attribute it to."),
+		}, "name"),
+		RespDesc: "Creates a named volume carrying HeroPanel's managed label.",
+	},
+	"DELETE /api/v1/docker/volumes/{name}": {
+		Summary: "Remove a volume", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Deletes the volume **and its contents**. Refused with 403 for volumes HeroPanel did not create — this is the one operation in the module that destroys data, and an unmanaged volume usually belongs to a database.",
+	},
+	"GET /api/v1/docker/networks": {
+		Summary: "List networks", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "Every network on the host, each flagged `managed`.",
+	},
+	"GET /api/v1/docker/networks/{name}": {
+		Summary: "Inspect a network", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "The network's full record, including the containers connected to it (docker's inspect payload carries them). Read-only, so not ownership-guarded.",
+	},
+	"POST /api/v1/docker/networks": {
+		Summary: "Create a network", Tags: []string{"Docker"}, Permission: "docker.write",
+		ReqSchema: object(map[string]any{
+			"name": prop("string", "Network name."),
+			"site": prop("string", "Optional site uid to attribute it to."),
+		}, "name"),
+		RespDesc: "Always a bridge network: a container on the host network shares the host's stack outright, discarding the isolation that made containerising it worthwhile.",
+	},
+	"DELETE /api/v1/docker/networks/{name}": {
+		Summary: "Remove a network", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Managed networks only.",
+	},
+	"GET /api/v1/docker/stats": {
+		Summary: "Sample every container's resource usage", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "One sample for all containers. Same measurement as the per-container route, so the two views cannot disagree.",
+	},
+	"POST /api/v1/docker/containers/{id}/start": {
+		Summary: "Start a container", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Refused with 403 unless the container carries HeroPanel's managed label, enforced in the broker.",
+	},
+	"POST /api/v1/docker/containers/{id}/stop": {
+		Summary: "Stop a container", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Sends SIGTERM with a 30s grace before SIGKILL. Managed containers only.",
+	},
+	"POST /api/v1/docker/containers/{id}/restart": {
+		Summary: "Restart a container", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Managed containers only.",
+	},
+	"DELETE /api/v1/docker/containers/{id}": {
+		Summary: "Remove a container", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Managed containers only. Never removes the container's volumes: deleting a container is routine, deleting its data is a separate and explicit act. Query: force.",
+	},
+	"GET /api/v1/docker/images": {
+		Summary: "List images", Tags: []string{"Docker"}, Permission: "docker.read",
+		RespDesc: "Images present on the host.",
+	},
+	"POST /api/v1/docker/images/pull": {
+		Summary: "Pull an image", Tags: []string{"Docker"}, Permission: "docker.write",
+		ReqSchema: object(map[string]any{
+			"image": prop("string", "Image reference, e.g. ghost:5-alpine."),
+		}, "image"),
+		RespDesc: "Fetches the image. A write, not a read: it places someone else's code on the host and consumes disk. Can take minutes.",
+	},
+	"POST /api/v1/docker/images/prune": {
+		Summary: "Prune unused images", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Reclaims disk from images no container needs. Dangling (untagged) layers only by default; query all=true also removes every image no container uses. Docker's own in-use check still protects anything running or stopped.",
+	},
+	"DELETE /api/v1/docker/images/{ref}": {
+		Summary: "Remove an image", Tags: []string{"Docker"}, Permission: "docker.write",
+		RespDesc: "Deletes an image by id or reference. Images carry no managed label, so ownership is not checked here — instead docker's refusal to remove an image a container still uses is passed straight through. Query: force (detaches extra tags only; does not override the in-use check).",
+	},
 	"GET /api/v1/sites/{uid}/terminal/recordings": {
 		Summary: "List a site's recorded terminal sessions", Tags: []string{"Terminal"},
 		Permission: "terminal.recordings.read",

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
@@ -22,6 +23,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
+	"github.com/thisisnkp/heropanel/internal/docker"
 	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
@@ -115,6 +117,25 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Info("broker gateway configured", "socket", cfg.Broker.Socket)
 	}
 
+	// Docker. Unlike every other module this one needs no datastore — it manages
+	// containers on the host, not rows — but it is useless without the broker,
+	// because the daemon socket is root-equivalent and hpd must never hold it.
+	// A nil gateway therefore switches the module off entirely rather than
+	// leaving a UI that offers containers it cannot reach.
+	dockerSvc := docker.New(gw)
+	if client, ok := gw.(*brokerclient.Client); ok && client != nil && dockerSvc != nil {
+		// Container shells need a *streaming* broker connection, which only the
+		// concrete client provides — the same requirement the site terminal has.
+		dockerSvc = dockerSvc.WithStreams(client)
+	}
+
+	// The one-click app catalog rides on Docker: an app is a labelled compose
+	// stack, so it exists exactly when Docker does and adds no privilege.
+	var appsSvc *apps.Service
+	if dockerSvc != nil {
+		appsSvc = apps.New(dockerSvc)
+	}
+
 	// The master key that seals the *_enc columns (Git credentials today). An
 	// operator who has not set one gets a working panel minus the features that
 	// must store a secret at rest — those report "unavailable" rather than
@@ -175,6 +196,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			PHP:     phpSvc,
 			Runtime: siteRuntimeAdapter{svc: runtimeSvc},
 			Domains: siteDomainsAdapter{svc: domainSvc},
+			// appsSvc resolves a proxy site's upstream when it is backed by a
+			// one-click app. Nil when Docker is absent, in which case an app-backed
+			// site simply renders as a static vhost — the same graceful fallback a
+			// systemd proxy site has before its runtime exists.
+			Apps: appsSvc,
 		})
 		// The runtime re-renders the vhost (as a proxy) after a runtime change;
 		// the domain service re-renders it after an alias/redirect/force-HTTPS change.
@@ -275,6 +301,18 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				log.Warn("could not register in-core module", "slug", m.slug, "err", err)
 			}
 		}
+	}
+
+	// Docker registers outside the datastore block because it is the one module
+	// that manages the host rather than rows. It advertises itself only when a
+	// daemon actually answers, so the UI greys the feature out on a host without
+	// Docker instead of offering buttons that cannot work.
+	if dockerSvc != nil && dockerSvc.Available(ctx) {
+		if err := reg.Register(ctx, registry.NewInCore("docker",
+			"docker.containers", "docker.images", "docker.logs", "docker.stats")); err != nil {
+			log.Warn("could not register in-core module", "slug", "docker", "err", err)
+		}
+		log.Info("docker module enabled", "server_version", dockerSvc.Info(ctx).ServerVersion)
 	}
 
 	// Async job queue (requires a datastore and Redis). When absent, site
@@ -397,6 +435,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		DNS:        dnsSvc,
 		Domains:    domainSvc,
 		Git:        gitSvc,
+		Docker:     dockerSvc,
+		Apps:       appsSvc,
 		Files:      filesSvc,
 		Terminal:   terminalSvc,
 		Recordings: recordings,

@@ -13,6 +13,7 @@ import { RuntimeTab } from "./tabs/RuntimeTab";
 import { GitTab } from "./tabs/GitTab";
 import { FilesTab } from "./tabs/FilesTab";
 import { TerminalTab } from "./tabs/TerminalTab";
+import { DockerTab } from "./tabs/DockerTab";
 import { LogsTab } from "./tabs/LogsTab";
 import { AdvancedTab } from "./tabs/AdvancedTab";
 
@@ -45,6 +46,11 @@ export function SiteDetailPage() {
   // A terminal needs a real Linux account to attach to, and its own permission —
   // running arbitrary commands is a much larger grant than editing a file.
   const showTerminal = !!site.system_user && can(me, "terminal.use");
+  // Containers are host-level, so this tab needs only docker.read rather than
+  // the site permissions. Without it a site deployed in docker mode had no view
+  // of its own workload at all, even though the API had always supported the
+  // site filter.
+  const showDocker = can(me, "docker.read");
 
   const tabs = [
     { id: "overview", label: "Overview" },
@@ -53,6 +59,7 @@ export function SiteDetailPage() {
     ...(isProxy ? [{ id: "runtime", label: "Runtime" }] : []),
     ...(showFiles ? [{ id: "files", label: "Files" }] : []),
     ...(showTerminal ? [{ id: "terminal", label: "Terminal" }] : []),
+    ...(showDocker ? [{ id: "docker", label: "Docker" }] : []),
     { id: "git", label: "Git" },
     { id: "logs", label: "Logs" },
     { id: "advanced", label: "Advanced" },
@@ -98,6 +105,7 @@ export function SiteDetailPage() {
       {tab === "runtime" && <RuntimeTab uid={uid} />}
       {tab === "files" && showFiles && <FilesTab uid={uid} />}
       {tab === "terminal" && showTerminal && <TerminalTab uid={uid} systemUser={site.system_user} />}
+      {tab === "docker" && showDocker && <DockerTab uid={uid} />}
       {tab === "git" && <GitTab uid={uid} />}
       {tab === "logs" && <LogsTab uid={uid} />}
       {tab === "advanced" && (

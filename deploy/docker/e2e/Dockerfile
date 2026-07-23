@@ -81,6 +81,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && : > /etc/bind/named.conf.heropanel \
     && printf '\ninclude "/etc/bind/named.conf.heropanel";\n' >> /etc/bind/named.conf.local
 
+# The Docker *client* only — the e2e talks to a daemon mounted in at run time
+# (the CI runner's own). No daemon runs inside this image: the module's job is
+# to drive a real dockerd, and running one here would be testing docker-in-docker
+# rather than HeroPanel. The broker execs /usr/bin/docker, which is where the
+# distro package puts it.
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -x /usr/bin/docker
+
+# The compose plugin as a CLI-plugin binary. The distro's docker.io package ships
+# only the engine client, not `docker compose`, and the Apps module deploys via
+# compose — so the plugin is fetched here (amd64; the e2e runs on amd64) into the
+# standard cli-plugins path where `docker compose` finds it.
+ARG COMPOSE_VERSION=v2.29.7
+RUN mkdir -p /usr/local/lib/docker/cli-plugins \
+    && wget -qO /usr/local/lib/docker/cli-plugins/docker-compose \
+      "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
 # Container shim for systemctl (no systemd here).
 COPY systemctl-shim.sh /usr/bin/systemctl
 RUN chmod +x /usr/bin/systemctl

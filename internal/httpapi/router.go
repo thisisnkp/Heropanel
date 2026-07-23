@@ -12,11 +12,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
+	"github.com/thisisnkp/heropanel/internal/docker"
 	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
@@ -63,10 +65,17 @@ type Deps struct {
 	// Enabled() reports false when no recordings directory is configured — a
 	// terminal still works, it is simply not recorded.
 	Recordings *terminal.RecordingStore
-	Runtime    *runtime.Service   // nil when no datastore is configured
-	Jobs       *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
-	WS         *ws.Hub            // nil when the realtime hub is disabled (no Redis)
-	Registry   *registry.Registry // module capability set; never nil (may be empty)
+	// Docker manages containers on the host. It is nil when the broker is not
+	// configured — every operation is a privileged capability, so without a
+	// broker there is nothing this module could do.
+	Docker *docker.Service
+	// Apps is the one-click catalog. It rides on Docker, so it is nil in exactly
+	// the same conditions Docker is.
+	Apps     *apps.Service
+	Runtime  *runtime.Service   // nil when no datastore is configured
+	Jobs     *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
+	WS       *ws.Hub            // nil when the realtime hub is disabled (no Redis)
+	Registry *registry.Registry // module capability set; never nil (may be empty)
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -261,6 +270,75 @@ func NewRouter(d Deps) http.Handler {
 						Get("/terminal/recordings/{rid}/cast", downloadRecordingHandler(d))
 					r.With(requirePermission("terminal.recordings.delete")).
 						Delete("/terminal/recordings/{rid}", deleteRecordingHandler(d))
+				}
+				if d.Docker != nil {
+					// Docker is host-wide, not site-scoped, so it gets its own two
+					// permissions rather than riding on site.*: stopping the container
+					// that serves a site is a different act from editing the site, and
+					// the listing covers containers no site owns.
+					//
+					// Ownership is enforced in the broker, which refuses any container
+					// the panel did not create — deliberately not re-checked here, so a
+					// future route cannot forget it.
+					r.With(requirePermission("docker.read")).Get("/docker/info", dockerInfoHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/containers", listContainersHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/containers/{id}", inspectContainerHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/containers/{id}/logs", containerLogsHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/containers/{id}/stats", containerStatsHandler(d))
+					// Host-wide sample. Same handler: with no {id} in the route the
+					// param is empty, which the service reads as "every container" —
+					// so the two views cannot drift in what they measure.
+					r.With(requirePermission("docker.read")).Get("/docker/stats", containerStatsHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/containers/{id}/start", containerActionHandler(d, "start"))
+					r.With(requirePermission("docker.write")).Post("/docker/containers/{id}/stop", containerActionHandler(d, "stop"))
+					r.With(requirePermission("docker.write")).Post("/docker/containers/{id}/restart", containerActionHandler(d, "restart"))
+					r.With(requirePermission("docker.write")).Delete("/docker/containers/{id}", containerActionHandler(d, "remove"))
+					r.With(requirePermission("docker.read")).Get("/docker/images", listImagesHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/images/pull", pullImageHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/images/prune", pruneImagesHandler(d))
+					r.With(requirePermission("docker.write")).Delete("/docker/images/{ref}", removeImageHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/containers", createContainerHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/volumes", listVolumesHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/volumes/{name}", inspectVolumeHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/volumes", createVolumeHandler(d))
+					r.With(requirePermission("docker.write")).Delete("/docker/volumes/{name}", removeVolumeHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/networks", listNetworksHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/networks/{name}", inspectNetworkHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/networks", createNetworkHandler(d))
+					if d.Docker.ExecEnabled() {
+						// A shell inside a container. Mounted only when the broker can
+						// stream, so the UI never offers a button that cannot work.
+						r.With(requirePermission("docker.write")).Get("/docker/containers/{id}/exec", containerExecHandler(d))
+					}
+					if d.Docker.LogStreamEnabled() {
+						// Live log follow. Same streaming precondition as exec, but a
+						// read: gated by docker.read, force-audited in the handler.
+						r.With(requirePermission("docker.read")).Get("/docker/containers/{id}/logs/stream", containerLogsStreamHandler(d))
+					}
+					// Compose stacks. Same permissions as single containers: a stack
+					// is containers.
+					r.With(requirePermission("docker.read")).Get("/docker/compose/{project}", composeStatusHandler(d))
+					r.With(requirePermission("docker.read")).Get("/docker/compose/{project}/logs", composeLogsHandler(d))
+					r.With(requirePermission("docker.write")).Post("/docker/compose", composeUpHandler(d))
+					r.With(requirePermission("docker.write")).Delete("/docker/compose/{project}", composeDownHandler(d))
+					r.With(requirePermission("docker.write")).Delete("/docker/networks/{name}", removeNetworkHandler(d))
+
+					// One-click apps. Same permissions as the containers they deploy:
+					// browsing and status are docker.read; deploying and removing are
+					// docker.write. No separate "apps" permission — an app is a
+					// container stack, not a new kind of privilege.
+					if d.Apps != nil {
+						r.With(requirePermission("docker.read")).Get("/apps/templates", listAppTemplatesHandler(d))
+						r.With(requirePermission("docker.write")).Post("/apps", deployAppHandler(d))
+						r.With(requirePermission("docker.read")).Get("/apps/{project}", appStatusHandler(d))
+						r.With(requirePermission("docker.read")).Get("/apps/{project}/logs", appLogsHandler(d))
+						r.With(requirePermission("docker.write")).Delete("/apps/{project}", removeAppHandler(d))
+						// Exposing an app to a domain creates a real proxy site, so it is a
+						// site.write operation, and reading its exposure is docker.read.
+						r.With(requirePermission("docker.read")).Get("/apps/{project}/exposure", appExposureHandler(d))
+						r.With(requirePermission("site.write")).Post("/apps/{project}/expose", exposeAppHandler(d))
+						r.With(requirePermission("site.write")).Delete("/apps/{project}/expose", unexposeAppHandler(d))
+					}
 				}
 				if d.Domains != nil {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/domains", listDomainsHandler(d))

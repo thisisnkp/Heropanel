@@ -22,7 +22,11 @@ type Record struct {
 	LinuxUser     sql.NullString `db:"linux_user"`
 	LinuxUID      sql.NullInt64  `db:"linux_uid"`
 	HomeDir       sql.NullString `db:"home_dir"`
-	CreatedAt     string         `db:"created_at"`
+	// AppProject links a proxy site to the one-click Docker app that serves it.
+	// When set, the vhost's upstream is resolved live from the app's published
+	// loopback port rather than from a systemd runtime. NULL for ordinary sites.
+	AppProject sql.NullString `db:"app_project"`
+	CreatedAt  string         `db:"created_at"`
 }
 
 // ProvisionData carries the derived identity/paths written when a site is
@@ -51,6 +55,10 @@ type Repo interface {
 	UpdateStatus(ctx context.Context, id int64, status string) error
 	// GetByUID returns a site (joined with its system user).
 	GetByUID(ctx context.Context, uid string) (*Record, error)
+	// GetByAppProject returns the proxy site backed by the named Docker app, or a
+	// not-found error when no site is exposing that app. It is how the panel finds
+	// "is this app already exposed, and at which domain?".
+	GetByAppProject(ctx context.Context, project string) (*Record, error)
 	// List returns sites ordered by id. ownerID 0 lists all.
 	List(ctx context.Context, ownerID int64, limit, offset int) ([]Record, error)
 	// SoftDelete marks a site deleted.

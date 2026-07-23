@@ -52,6 +52,108 @@ func (m *mockGateway) Invoke(_ context.Context, capability string, input any) (m
 
 func (m *mockGateway) Health(context.Context) error { return nil }
 
+// fakeAppProxy stands in for the apps service's live upstream lookup.
+type fakeAppProxy struct {
+	upstream string
+	ok       bool
+}
+
+func (f fakeAppProxy) Upstream(context.Context, string) (string, bool) { return f.upstream, f.ok }
+
+// vhostFor finds an applied vhost by its primary domain.
+func vhostFor(applied []webserver.Site, domain string) *webserver.Site {
+	for i := range applied {
+		if applied[i].PrimaryDomain == domain {
+			return &applied[i]
+		}
+	}
+	return nil
+}
+
+// Exposing an app creates a proxy site whose vhost points at the app's live
+// upstream — resolved through the AppProxy, ahead of any systemd runtime.
+func TestExposeAppRendersLiveUpstream(t *testing.T) {
+	store, _ := newStore(t)
+	web := &fakeApplier{}
+	svc := site.NewService(site.Deps{
+		Repo: store, Broker: &mockGateway{}, Web: web,
+		Apps: fakeAppProxy{upstream: "127.0.0.1:39007", ok: true},
+	})
+	s, err := svc.ExposeApp(context.Background(), 1, "blog", "blog.example.com")
+	if err != nil {
+		t.Fatalf("expose: %v", err)
+	}
+	if s.Type != site.TypeProxy || s.AppProject != "blog" {
+		t.Fatalf("expected an app-backed proxy site, got %+v", s)
+	}
+	v := vhostFor(web.calls[len(web.calls)-1], "blog.example.com")
+	if v == nil || v.ProxyTarget != "127.0.0.1:39007" {
+		t.Fatalf("app-backed vhost did not carry the live upstream: %+v", web.calls)
+	}
+}
+
+// When the app is not currently published (down, or torn down), the proxy site
+// renders as a plain static vhost rather than proxying to a dead port.
+func TestExposeAppFallsBackWhenAppIsDown(t *testing.T) {
+	store, _ := newStore(t)
+	web := &fakeApplier{}
+	svc := site.NewService(site.Deps{
+		Repo: store, Broker: &mockGateway{}, Web: web,
+		Apps: fakeAppProxy{ok: false},
+	})
+	if _, err := svc.ExposeApp(context.Background(), 1, "blog", "blog.example.com"); err != nil {
+		t.Fatalf("expose: %v", err)
+	}
+	v := vhostFor(web.calls[len(web.calls)-1], "blog.example.com")
+	if v == nil || v.ProxyTarget != "" {
+		t.Fatalf("a down app should render a static vhost, got target %q", v.ProxyTarget)
+	}
+}
+
+// Unexpose finds the proxy site by its app link and removes it, against the real
+// store — the same round trip the e2e drives.
+func TestUnexposeRemovesTheProxySite(t *testing.T) {
+	store, _ := newStore(t)
+	svc := site.NewService(site.Deps{
+		Repo: store, Broker: &mockGateway{}, Web: &fakeApplier{},
+		Apps: fakeAppProxy{upstream: "127.0.0.1:39000", ok: true},
+	})
+	ctx := context.Background()
+	if _, err := svc.ExposeApp(ctx, 1, "blog", "blog.example.com"); err != nil {
+		t.Fatalf("expose: %v", err)
+	}
+	ex, err := svc.AppExposure(ctx, "blog")
+	if err != nil || ex == nil {
+		t.Fatalf("exposure after expose = %+v, err=%v; want the site", ex, err)
+	}
+	if err := svc.UnexposeApp(ctx, "blog"); err != nil {
+		t.Fatalf("unexpose: %v", err)
+	}
+	ex2, err := svc.AppExposure(ctx, "blog")
+	if err != nil {
+		t.Fatalf("exposure after unexpose: %v", err)
+	}
+	if ex2 != nil {
+		t.Fatalf("still exposed after unexpose: %+v", ex2)
+	}
+}
+
+// One app, one front door: a second expose is refused.
+func TestExposingAnAppTwiceIsRefused(t *testing.T) {
+	store, _ := newStore(t)
+	svc := site.NewService(site.Deps{
+		Repo: store, Broker: &mockGateway{}, Web: &fakeApplier{},
+		Apps: fakeAppProxy{upstream: "127.0.0.1:39007", ok: true},
+	})
+	if _, err := svc.ExposeApp(context.Background(), 1, "blog", "blog.example.com"); err != nil {
+		t.Fatalf("first expose: %v", err)
+	}
+	_, err := svc.ExposeApp(context.Background(), 1, "blog", "other.example.com")
+	if errx.KindOf(err) != errx.KindConflict {
+		t.Errorf("second expose kind = %v, want Conflict", errx.KindOf(err))
+	}
+}
+
 func newStore(t *testing.T) (*repository.SiteStore, *repository.DB) {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "sites.db")

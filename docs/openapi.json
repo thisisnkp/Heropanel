@@ -1183,6 +1183,567 @@
         ]
       }
     },
+    "/api/v1/apps": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_apps_deploy_an_app",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "description": "The app/stack name.",
+                    "type": "string"
+                  },
+                  "site": {
+                    "description": "Optional site uid to attribute it to.",
+                    "type": "string"
+                  },
+                  "slug": {
+                    "description": "Template slug, e.g. ghost.",
+                    "type": "string"
+                  },
+                  "values": {
+                    "description": "Operator-supplied field values. Secret fields are ignored here and generated instead.",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "slug",
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Generates any secret fields (never taken from input), checks memory feasibility, renders the template's compose file and brings it up. Returns the generated secrets **once** — they are not stored in a form the panel can return later, and are deliberately not written to the audit log."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Deploy an app",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/apps/templates": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_apps_templates_the_one_click_app_catalog",
+        "responses": {
+          "200": {
+            "description": "Every deployable template, each with a memory-feasibility verdict against the host's available memory, so an app the host cannot run is marked before it is chosen."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "The one-click app catalog",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/apps/{project}": {
+      "delete": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_apps_project_remove_an_app",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tears the app's stack down. Its volumes survive, so a redeploy reattaches the data."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove an app",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "docker.write"
+      },
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_apps_project_an_app_s_status",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The app's running services."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "An app's status",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/apps/{project}/expose": {
+      "delete": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_apps_project_expose_unexpose_an_app",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletes the proxy site fronting the app, dropping its vhost. The app itself is left running on loopback — this takes down the front door, not the app."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Unexpose an app",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "site.write"
+      },
+      "post": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_apps_project_expose_expose_an_app_on_a_domain",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "domain": {
+                    "description": "The domain to serve the app on, e.g. blog.example.com.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "domain"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Creates a proxy **site** whose vhost reverse-proxies to the app's live loopback port, resolved at render time so it follows a redeploy. `site.write`, not docker.write: it stands up a real site, with the domain/TLS/suspend controls every site has. The app keeps running on loopback; this is its front door. Refused with 409 if the app is already exposed, 404 if it is not deployed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Expose an app on a domain",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/apps/{project}/exposure": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_apps_project_exposure_an_app_s_exposure",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether the app is fronted by a domain, and if so which — plus the proxy site's uid and status. `{exposed:false}` when it is only reachable on loopback."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "An app's exposure",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/apps/{project}/logs": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_apps_project_logs_an_app_s_logs",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A bounded tail of the app's combined logs. Force-audited: an app's logs carry its secrets and its users' data."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "An app's logs",
+        "tags": [
+          "Apps"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
     "/api/v1/audit": {
       "get": {
         "description": "Requires the `audit.read` permission.",
@@ -3561,6 +4122,1952 @@
           "DNS"
         ],
         "x-required-permission": "dns.write"
+      }
+    },
+    "/api/v1/docker/compose": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_compose_bring_a_compose_stack_up",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "description": "The compose file itself. Passed to docker on stdin, never a path.",
+                    "type": "string"
+                  },
+                  "project": {
+                    "description": "Compose project name.",
+                    "type": "string"
+                  },
+                  "site": {
+                    "description": "Optional site uid to attribute the stack to.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The compose file is user-authored YAML and can request anything docker compose understands, so this is the module's explicit escape hatch: the panel labels and scopes the stack but does not harden arbitrary compose the way it hardens a container it builds. Every container the stack creates carries the managed label, so tear-down and the ownership boundary apply to it."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Bring a compose stack up",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/compose/{project}": {
+      "delete": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_compose_project_tear_a_stack_down",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes the stack's containers and networks but never its volumes. Refused with 403 for a stack HeroPanel did not create."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Tear a stack down",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      },
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_compose_project_list_a_stack_s_services",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The services in a compose project and their state."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List a stack's services",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/compose/{project}/logs": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_compose_project_logs_read_a_stack_s_logs",
+        "parameters": [
+          {
+            "description": "project path parameter.",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A bounded tail of the whole stack's output. Force-audited. Query: tail."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Read a stack's logs",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/containers": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_containers_list_containers",
+        "responses": {
+          "200": {
+            "description": "Every container on the host, running or stopped, each flagged `managed` — whether HeroPanel created it. Unmanaged containers are listed (an admin must be able to see what is consuming the host) but cannot be modified. Query: site."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List containers",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      },
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_containers_create_a_container",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "command": {
+                    "description": "Optional command. Everything after the image operand is the container's own argv, so a leading dash here is the program's flag, not docker's.",
+                    "type": "array"
+                  },
+                  "env": {
+                    "description": "Environment variables. Sent to docker through stdin as an env-file, never as arguments — argv is world-readable via /proc, and this is where a generated password lives.",
+                    "type": "object"
+                  },
+                  "image": {
+                    "description": "Image reference.",
+                    "type": "string"
+                  },
+                  "memory_mb": {
+                    "description": "Memory limit in MB (16 … 1048576).",
+                    "type": "integer"
+                  },
+                  "name": {
+                    "description": "Container name.",
+                    "type": "string"
+                  },
+                  "network": {
+                    "description": "Optional network name.",
+                    "type": "string"
+                  },
+                  "ports": {
+                    "description": "Published ports as {host, container, proto}. Always bound to 127.0.0.1: docker's firewall rules are evaluated before the host's, so publishing on all interfaces would expose the container even on a host whose firewall denies the port.",
+                    "type": "array"
+                  },
+                  "restart": {
+                    "description": "no | on-failure | unless-stopped (default) | always.",
+                    "type": "string"
+                  },
+                  "site": {
+                    "description": "Optional site uid to attribute the container to.",
+                    "type": "string"
+                  },
+                  "volumes": {
+                    "description": "Mounts as {volume, path, read_only}. **Named volumes only** — a host path is not rejected but unrepresentable, which is what prevents `-v /:/host` and mounting the docker socket.",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "name",
+                  "image"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The container is created with HeroPanel's managed label and `no-new-privileges`. `--privileged`, `--cap-add`, `--device`, `--userns` and host namespaces have no corresponding field and cannot be produced."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/containers/{id}": {
+      "delete": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_containers_id_remove_a_container",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Managed containers only. Never removes the container's volumes: deleting a container is routine, deleting its data is a separate and explicit act. Query: force."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      },
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_containers_id_inspect_a_container",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Docker's own inspect payload, passed through unmodelled."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Inspect a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/containers/{id}/exec": {
+      "get": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_containers_id_exec_open_a_shell_inside_a_container",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade. Binary frames carry terminal bytes in both directions; JSON text frames carry resize/exit. `docker.write` rather than `docker.read`: a shell inside a container can stop the process, read its secrets and edit its data. Refused with 403 unless the container carries HeroPanel's managed label — a shell in someone else's container would bypass every other refusal in this module. Query: shell (/bin/sh, /bin/bash, /bin/ash), cols, rows."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Open a shell inside a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/containers/{id}/logs": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_containers_id_logs_read_a_container_s_logs",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A bounded tail (max 2000 lines), stdout and stderr separately. Force-audited: container logs routinely carry connection strings and customer data. Query: tail, timestamps."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Read a container's logs",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/containers/{id}/logs/stream": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_containers_id_logs_stream_follow_a_container_s_logs_live",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebSocket upgrade. Binary frames carry log output as the container writes it; a JSON text frame carries the exit when the follow ends. The one-way, live twin of the polled logs read — same `docker.read` grant, same force-audit, because logs carry secrets. Not ownership-gated: reading any container's logs is allowed. Query: tail, timestamps."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Follow a container's logs live",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/containers/{id}/restart": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_containers_id_restart_restart_a_container",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Managed containers only."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Restart a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/containers/{id}/start": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_containers_id_start_start_a_container",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refused with 403 unless the container carries HeroPanel's managed label, enforced in the broker."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Start a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/containers/{id}/stats": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_containers_id_stats_sample_a_container_s_resource_usage",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One sample, not a stream — the client polls, so a wedged container can never hold a request open."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Sample a container's resource usage",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/containers/{id}/stop": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_containers_id_stop_stop_a_container",
+        "parameters": [
+          {
+            "description": "Job ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sends SIGTERM with a 30s grace before SIGKILL. Managed containers only."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Stop a container",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/images": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_images_list_images",
+        "responses": {
+          "200": {
+            "description": "Images present on the host."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List images",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/images/prune": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_images_prune_prune_unused_images",
+        "responses": {
+          "200": {
+            "description": "Reclaims disk from images no container needs. Dangling (untagged) layers only by default; query all=true also removes every image no container uses. Docker's own in-use check still protects anything running or stopped."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Prune unused images",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/images/pull": {
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_images_pull_pull_an_image",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "image": {
+                    "description": "Image reference, e.g. ghost:5-alpine.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "image"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Fetches the image. A write, not a read: it places someone else's code on the host and consumes disk. Can take minutes."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Pull an image",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/images/{ref}": {
+      "delete": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_images_ref_remove_an_image",
+        "parameters": [
+          {
+            "description": "ref path parameter.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletes an image by id or reference. Images carry no managed label, so ownership is not checked here — instead docker's refusal to remove an image a container still uses is passed straight through. Query: force (detaches extra tags only; does not override the in-use check)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove an image",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/info": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_info_docker_daemon_status",
+        "responses": {
+          "200": {
+            "description": "Whether a usable daemon is present and its version. An absent daemon is reported as available:false with the daemon's own reason — not an error, because \"no Docker on this host\" is a state the UI renders."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Docker daemon status",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/networks": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_networks_list_networks",
+        "responses": {
+          "200": {
+            "description": "Every network on the host, each flagged `managed`."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List networks",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      },
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_networks_create_a_network",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "description": "Network name.",
+                    "type": "string"
+                  },
+                  "site": {
+                    "description": "Optional site uid to attribute it to.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Always a bridge network: a container on the host network shares the host's stack outright, discarding the isolation that made containerising it worthwhile."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create a network",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/networks/{name}": {
+      "delete": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_networks_name_remove_a_network",
+        "parameters": [
+          {
+            "description": "name path parameter.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Managed networks only."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove a network",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      },
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_networks_name_inspect_a_network",
+        "parameters": [
+          {
+            "description": "name path parameter.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The network's full record, including the containers connected to it (docker's inspect payload carries them). Read-only, so not ownership-guarded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Inspect a network",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/stats": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_stats_sample_every_container_s_resource_usage",
+        "responses": {
+          "200": {
+            "description": "One sample for all containers. Same measurement as the per-container route, so the two views cannot disagree."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Sample every container's resource usage",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/docker/volumes": {
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_volumes_list_volumes",
+        "responses": {
+          "200": {
+            "description": "Every volume on the host, each flagged `managed`."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List volumes",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
+      },
+      "post": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_volumes_create_a_volume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "description": "Volume name.",
+                    "type": "string"
+                  },
+                  "site": {
+                    "description": "Optional site uid to attribute it to.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Creates a named volume carrying HeroPanel's managed label."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create a volume",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      }
+    },
+    "/api/v1/docker/volumes/{name}": {
+      "delete": {
+        "description": "Requires the `docker.write` permission.",
+        "operationId": "api_v1_docker_volumes_name_remove_a_volume",
+        "parameters": [
+          {
+            "description": "name path parameter.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletes the volume **and its contents**. Refused with 403 for volumes HeroPanel did not create — this is the one operation in the module that destroys data, and an unmanaged volume usually belongs to a database."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove a volume",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.write"
+      },
+      "get": {
+        "description": "Requires the `docker.read` permission.",
+        "operationId": "api_v1_docker_volumes_name_inspect_a_volume",
+        "parameters": [
+          {
+            "description": "name path parameter.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The volume's full record plus the containers that mount it — including unmanaged ones, so the destructive remove is an informed decision. Read-only, so not ownership-guarded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Inspect a volume",
+        "tags": [
+          "Docker"
+        ],
+        "x-required-permission": "docker.read"
       }
     },
     "/api/v1/jobs": {

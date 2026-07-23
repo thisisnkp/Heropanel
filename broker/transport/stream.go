@@ -10,6 +10,7 @@ import (
 
 	"github.com/thisisnkp/heropanel/broker"
 	"github.com/thisisnkp/heropanel/broker/capability"
+	"github.com/thisisnkp/heropanel/broker/pty"
 	"github.com/thisisnkp/heropanel/pkg/brokerwire"
 )
 
@@ -67,7 +68,160 @@ func (s *Server) handleTerminal(ctx context.Context, conn net.Conn, req brokerwi
 		return
 	}
 	defer func() { _ = sess.Close() }()
+	s.runPTYStream(ctx, conn, req, sess)
+}
 
+// execInput is the client's docker.container.exec payload.
+type execInput struct {
+	Container string `json:"container"`
+	Shell     string `json:"shell"`
+	Cols      uint16 `json:"cols"`
+	Rows      uint16 `json:"rows"`
+}
+
+// handleContainerExec upgrades conn to a shell *inside a container*.
+//
+// It differs from handleTerminal only in what it puts behind the pseudo-terminal
+// and what it checks first — the wire, the framing and the pump are literally
+// the same code below. A second streaming protocol for the same shape of thing
+// would have meant a second place for the stream handling to be subtly wrong.
+func (s *Server) handleContainerExec(ctx context.Context, conn net.Conn, req brokerwire.Request) {
+	var in execInput
+	if len(req.Input) > 0 {
+		if err := json.Unmarshal(req.Input, &in); err != nil {
+			_ = brokerwire.WriteFrame(conn, brokerwire.Response{
+				ID: req.ID, OK: false,
+				Error: &brokerwire.WireError{Kind: "validation", Code: "bad_input", Message: "Invalid exec input."},
+			})
+			return
+		}
+	}
+
+	sess, err := s.broker.OpenContainerExec(ctx, broker.ExecRequest{
+		Container: in.Container,
+		Shell:     in.Shell,
+		Cols:      in.Cols,
+		Rows:      in.Rows,
+		Actor: capability.Actor{
+			UserID:        req.Actor.UserID,
+			IP:            req.Actor.IP,
+			CorrelationID: req.Actor.CorrelationID,
+		},
+	})
+	if err != nil {
+		// Still a plain Response, never a stream: a client handed a stream to a
+		// session that was never opened would never see the refusal.
+		_ = brokerwire.WriteFrame(conn, brokerwire.Response{ID: req.ID, OK: false, Error: toWireError(err)})
+		return
+	}
+	defer func() { _ = sess.Close() }()
+	s.runPTYStream(ctx, conn, req, sess)
+}
+
+// logFollowInput is the client's docker.container.logs.follow payload.
+type logFollowInput struct {
+	Container  string `json:"container"`
+	Tail       int    `json:"tail"`
+	Timestamps bool   `json:"timestamps"`
+}
+
+// handleContainerLogs upgrades conn to a live `docker logs --follow`.
+//
+// It is the one-way sibling of handleContainerExec: same upgrade on the wire,
+// but the payload only ever flows broker → client, so it uses runOutputStream
+// rather than the bidirectional PTY pump. There is no PTY, no resize and no
+// input — a log follow produces output and nothing else.
+func (s *Server) handleContainerLogs(ctx context.Context, conn net.Conn, req brokerwire.Request) {
+	var in logFollowInput
+	if len(req.Input) > 0 {
+		if err := json.Unmarshal(req.Input, &in); err != nil {
+			_ = brokerwire.WriteFrame(conn, brokerwire.Response{
+				ID: req.ID, OK: false,
+				Error: &brokerwire.WireError{Kind: "validation", Code: "bad_input", Message: "Invalid logs input."},
+			})
+			return
+		}
+	}
+
+	stream, err := s.broker.OpenContainerLogs(ctx, broker.LogFollowRequest{
+		Container:  in.Container,
+		Tail:       in.Tail,
+		Timestamps: in.Timestamps,
+		Actor: capability.Actor{
+			UserID:        req.Actor.UserID,
+			IP:            req.Actor.IP,
+			CorrelationID: req.Actor.CorrelationID,
+		},
+	})
+	if err != nil {
+		_ = brokerwire.WriteFrame(conn, brokerwire.Response{ID: req.ID, OK: false, Error: toWireError(err)})
+		return
+	}
+	defer func() { _ = stream.Close() }()
+	s.runOutputStream(ctx, conn, req, stream)
+}
+
+// runOutputStream pumps a one-way output stream (a log follow) to the client. It
+// mirrors runPTYStream's output half, but reads client frames only to notice a
+// hang-up — there is nothing to write back into a log follow.
+func (s *Server) runOutputStream(ctx context.Context, conn net.Conn, req brokerwire.Request, stream *broker.LogStream) {
+	if err := brokerwire.WriteFrame(conn, brokerwire.Response{ID: req.ID, OK: true, Stream: true}); err != nil {
+		return
+	}
+
+	var wmu sync.Mutex
+	write := func(f brokerwire.StreamFrame) error {
+		wmu.Lock()
+		defer wmu.Unlock()
+		return brokerwire.WriteFrame(conn, f)
+	}
+
+	done := make(chan struct{})
+
+	// Stream output → client.
+	go func() {
+		defer close(done)
+		buf := make([]byte, ptyReadChunk)
+		for {
+			n, rerr := stream.Read(buf)
+			if n > 0 {
+				if werr := write(brokerwire.StreamFrame{Kind: brokerwire.StreamOut, Data: buf[:n]}); werr != nil {
+					return
+				}
+			}
+			if rerr != nil {
+				_ = write(brokerwire.StreamFrame{Kind: brokerwire.StreamExit, ExitCode: stream.Wait()})
+				return
+			}
+		}
+	}()
+
+	// Client hang-up (or shutdown) → stop the follow.
+	go func() {
+		<-ctx.Done()
+		_ = stream.Close()
+	}()
+
+	// Read from the client only to detect disconnect; a log follow takes no input.
+	for {
+		var f brokerwire.StreamFrame
+		if err := brokerwire.ReadFrame(conn, &f); err != nil {
+			if !errors.Is(err, io.EOF) {
+				s.log.Debug("logs: client stream ended", "err", err)
+			}
+			return // client gone → deferred Close stops the follow
+		}
+		select {
+		case <-done:
+			return // the follow ended (container stopped) while we were reading
+		default:
+		}
+	}
+}
+
+// runPTYStream is the shared body: the upgrade frame and the bidirectional pump,
+// used by both an interactive site terminal and a container shell.
+func (s *Server) runPTYStream(ctx context.Context, conn net.Conn, req brokerwire.Request, sess *pty.Session) {
 	// From this frame on, the connection carries StreamFrames only.
 	if err := brokerwire.WriteFrame(conn, brokerwire.Response{ID: req.ID, OK: true, Stream: true}); err != nil {
 		return

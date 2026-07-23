@@ -2,6 +2,7 @@ package site
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -33,6 +34,19 @@ type Deps struct {
 	PHP     php.Manager
 	Runtime Runtime
 	Domains Domains
+	Apps    AppProxy
+}
+
+// AppProxy resolves the reverse-proxy upstream for a site backed by a one-click
+// Docker app. Implemented by an adapter over internal/apps. Optional: when nil,
+// an app-backed proxy site renders as a plain vhost until the app is reachable —
+// the same graceful fallback a systemd proxy site has before its runtime exists.
+//
+// The upstream is resolved *live* rather than stored, so it can never point at a
+// port the app no longer publishes: an app redeployed on a new port is followed
+// automatically, and an app that has been torn down simply stops resolving.
+type AppProxy interface {
+	Upstream(ctx context.Context, project string) (string, bool)
 }
 
 // DomainInfo is one domain attached to a site, as the renderer needs it.
@@ -75,12 +89,13 @@ type Service struct {
 	php     php.Manager
 	runtime Runtime
 	domains Domains
+	apps    AppProxy
 }
 
 // NewService constructs the site Service from its dependencies.
 func NewService(d Deps) *Service {
 	return &Service{repo: d.Repo, broker: d.Broker, web: d.Web, php: d.PHP,
-		runtime: d.Runtime, domains: d.Domains}
+		runtime: d.Runtime, domains: d.Domains, apps: d.Apps}
 }
 
 // ValidateInput validates a create request without side effects. It is used by
@@ -117,6 +132,9 @@ func (s *Service) RunCreate(ctx context.Context, in CreateInput, p job.Progress)
 		DeployMode:    string(in.DeployMode),
 		Status:        string(StatusProvisioning),
 		Webserver:     "openlitespeed",
+	}
+	if in.AppProject != "" {
+		rec.AppProject = sql.NullString{String: in.AppProject, Valid: true}
 	}
 	if err := s.repo.Insert(ctx, rec); err != nil {
 		return nil, err
@@ -240,12 +258,22 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 			fpmSocket = php.SocketPath(r.LinuxUser.String)
 			phpBin = php.FpmBinary(s.phpVersion(ctx, r.ID))
 		}
-		// A proxy site forwards to its app runtime's port, once one is configured;
-		// until then it renders as a plain static vhost so the config stays valid.
+		// A proxy site forwards to whatever backs it, resolved live so the vhost is
+		// always pointed at a port that is actually published. Two backings, in
+		// order: a one-click Docker app (its published loopback port), or a systemd
+		// app runtime. Until either is reachable it renders as a plain static vhost
+		// so the config stays valid rather than proxying to a dead port.
 		proxyTarget := ""
-		if r.Type == string(TypeProxy) && s.runtime != nil {
-			if port, ok := s.runtime.ProxyPort(ctx, r.ID); ok {
-				proxyTarget = "127.0.0.1:" + strconv.Itoa(port)
+		if r.Type == string(TypeProxy) {
+			if r.AppProject.Valid && s.apps != nil {
+				if up, ok := s.apps.Upstream(ctx, r.AppProject.String); ok {
+					proxyTarget = up
+				}
+			}
+			if proxyTarget == "" && s.runtime != nil {
+				if port, ok := s.runtime.ProxyPort(ctx, r.ID); ok {
+					proxyTarget = "127.0.0.1:" + strconv.Itoa(port)
+				}
 			}
 		}
 		domains, forceHTTPS, redirects := s.domainsFor(ctx, r.ID, r.PrimaryDomain)
@@ -539,6 +567,17 @@ func (s *Service) RunDelete(ctx context.Context, uid string, p job.Progress) err
 	if err != nil {
 		return err
 	}
+	// Remove the app's systemd unit (if any) *before* the soft-delete, not after.
+	// The runtime resolves the site by uid to find its Linux user, and a
+	// soft-deleted row is hidden by that lookup — so doing this after the
+	// soft-delete resolved to a not-found and failed the whole delete. Doing it
+	// first also means a unit that will not stop aborts the delete before the row
+	// is marked gone, rather than leaving a soft-deleted site with a live unit.
+	if s.runtime != nil {
+		if err := s.runtime.RemoveForSite(ctx, uid); err != nil {
+			return fmt.Errorf("remove app runtime: %w", err)
+		}
+	}
 	if err := s.repo.SoftDelete(ctx, uid); err != nil {
 		return err
 	}
@@ -560,14 +599,9 @@ func (s *Service) deprovision(ctx context.Context, rec *Record, p job.Progress) 
 	if s.broker == nil {
 		return nil
 	}
-	// Stop and remove the app unit (if any) before deleting its user.
-	if s.runtime != nil {
-		if err := s.runtime.RemoveForSite(ctx, rec.UID); err != nil {
-			return fmt.Errorf("remove app runtime: %w", err)
-		}
-	}
-	// Tear the slice down after the unit inside it is gone, so nothing is left
-	// pointing at a cgroup that no longer exists.
+	// The app unit was already removed in RunDelete, before the soft-delete, so it
+	// is gone by now. Tear the slice down next, so nothing is left pointing at a
+	// cgroup that no longer exists.
 	if rec.LinuxUser.Valid {
 		p.Report(60, "removing resource slice")
 		if _, err := s.broker.Invoke(ctx, "site.remove_slice", map[string]any{
@@ -606,8 +640,50 @@ func toView(r *Record) *Site {
 		Webserver:     r.Webserver,
 		DocumentRoot:  r.DocumentRoot,
 		SystemUser:    r.LinuxUser.String,
+		AppProject:    r.AppProject.String,
 		CreatedAt:     r.CreatedAt,
 	}
+}
+
+// ExposeApp fronts a one-click Docker app with a domain by creating a proxy
+// site whose vhost reverse-proxies to the app's live loopback port. The app must
+// already be deployed; nothing here starts it. Refuses a second domain for an
+// app that is already exposed — one app, one front door.
+func (s *Service) ExposeApp(ctx context.Context, ownerID int64, project, domain string) (*Site, error) {
+	if existing, err := s.repo.GetByAppProject(ctx, project); err == nil {
+		return nil, errx.New(errx.KindConflict, "app_already_exposed",
+			"That app is already exposed at "+existing.PrimaryDomain+".")
+	}
+	return s.Create(ctx, CreateInput{
+		OwnerID:       ownerID,
+		Name:          project,
+		PrimaryDomain: domain,
+		Type:          TypeProxy,
+		AppProject:    project,
+	})
+}
+
+// UnexposeApp removes the proxy site fronting an app, dropping its vhost. The app
+// itself is left running on loopback — unexposing takes down the front door, not
+// the app behind it.
+func (s *Service) UnexposeApp(ctx context.Context, project string) error {
+	rec, err := s.repo.GetByAppProject(ctx, project)
+	if err != nil {
+		return err
+	}
+	return s.Delete(ctx, rec.UID)
+}
+
+// AppExposure returns the site exposing an app, or nil when it is not exposed.
+func (s *Service) AppExposure(ctx context.Context, project string) (*Site, error) {
+	rec, err := s.repo.GetByAppProject(ctx, project)
+	if err != nil {
+		if errx.KindOf(err) == errx.KindNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return toView(rec), nil
 }
 
 func validateCreate(in *CreateInput) error {

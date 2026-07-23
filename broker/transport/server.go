@@ -103,6 +103,18 @@ func (s *Server) ServeConn(ctx context.Context, conn net.Conn) {
 			s.handleTerminal(ctx, conn, req)
 			return
 		}
+		// A shell inside a container is the same shape: a PTY on a connection
+		// that never returns to this loop.
+		if req.Capability == broker.CapContainerExec {
+			s.handleContainerExec(ctx, conn, req)
+			return
+		}
+		// Following a container's logs is a one-way stream on a connection that
+		// likewise never returns to this loop.
+		if req.Capability == broker.CapContainerLogsFollow {
+			s.handleContainerLogs(ctx, conn, req)
+			return
+		}
 		resp := s.dispatch(ctx, req)
 		if err := brokerwire.WriteFrame(conn, resp); err != nil {
 			return

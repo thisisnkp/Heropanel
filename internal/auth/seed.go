@@ -39,6 +39,11 @@ var basePermissions = []seedPermission{
 	// scrutiny would want — so it is grantable separately.
 	{"terminal.recordings.read", "terminal", "recordings.read", "View and replay recorded terminal sessions"},
 	{"terminal.recordings.delete", "terminal", "recordings.delete", "Delete recorded terminal sessions"},
+	// Docker is host-wide rather than site-scoped, and stopping the container
+	// serving a site is a different act from editing that site — so it carries
+	// its own read/write pair instead of riding on site.*.
+	{"docker.read", "docker", "read", "View containers, images, logs and stats"},
+	{"docker.write", "docker", "write", "Start, stop, restart and remove containers; pull images"},
 	{"system.read", "system", "read", "View system status"},
 	{"system.write", "system", "write", "Change system configuration"},
 	{"audit.read", "audit", "read", "View the audit log"},

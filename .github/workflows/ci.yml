@@ -271,6 +271,58 @@ jobs:
           grep -q 'the downloaded transcript also holds no password' <<<"$out" || { echo '::error::the password came back through the API'; exit 1; }
           grep -q 'run-terminal.sh : PASS' <<<"$out" || { echo '::error::run-terminal.sh failed'; exit 1; }
 
+      # Docker module, against the runner's own daemon. The socket is mounted in,
+      # which is root-equivalent for that container — acceptable for a throwaway
+      # CI runner and the only way to test against a real dockerd, but stated
+      # plainly rather than left as an unexplained flag.
+      - name: Docker module (ownership boundary against a real daemon)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" -v /var/run/docker.sock:/var/run/docker.sock heropanel-e2e bash /e2e/run-docker.sh)
+          echo "$out"
+          # THE invariant: the panel must never touch a container it did not
+          # create. Without it, a stop button is a remote off-switch for every
+          # container on the host.
+          grep -q 'the unmanaged container is STILL RUNNING after four refused operations' <<<"$out" || { echo '::error::THE PANEL MODIFIED A CONTAINER IT DOES NOT MANAGE'; exit 1; }
+          grep -q 'the foreign container is flagged unmanaged' <<<"$out" || { echo '::error::a foreign container was reported as panel-managed'; exit 1; }
+          # ...but it must still be visible, or the panel lies about the host.
+          grep -q 'a container the panel did not create is still listed' <<<"$out" || { echo '::error::unmanaged containers were hidden from the listing'; exit 1; }
+          grep -q "the panel's container is flagged managed" <<<"$out" || { echo '::error::the panel did not recognise its own container'; exit 1; }
+          # A working lifecycle action must not report as a failure because the
+          # stop grace ate the HTTP write budget.
+          grep -q 'lifecycle calls answer inside the HTTP write budget' <<<"$out" || { echo '::error::a lifecycle call exceeded the request budget'; exit 1; }
+          grep -q 'a flag-shaped container name is refused' <<<"$out" || { echo '::error::a value that docker parses as a flag was accepted'; exit 1; }
+          grep -q 'docker.container.stop recorded by the broker' <<<"$out" || { echo '::error::a privileged docker action was not audited'; exit 1; }
+          # Container creation and its hardening: no host bind mounts, loopback-only.
+          grep -q 'the container has no host bind mounts' <<<"$out" || { echo '::error::a created container had a host bind mount'; exit 1; }
+          grep -q 'the published port is bound to loopback only' <<<"$out" || { echo '::error::a created container published on all interfaces'; exit 1; }
+          grep -q 'no container was created by any of the escape attempts' <<<"$out" || { echo '::error::a host-path volume was accepted through the API'; exit 1; }
+          grep -q 'the environment value is not in the broker log' <<<"$out" || { echo '::error::a container env secret leaked to the broker log'; exit 1; }
+          # A shell inside a container obeys the ownership boundary.
+          grep -q 'a shell in an unmanaged container is refused with 403' <<<"$out" || { echo '::error::a shell was opened in a container the panel does not manage'; exit 1; }
+          # One-click apps: the phase exit criteria (deploy, run, tear down cleanly).
+          grep -q 'an app was deployed' <<<"$out" || { echo '::error::a one-click app failed to deploy'; exit 1; }
+          grep -q 'the app is published to loopback only' <<<"$out" || { echo '::error::a deployed app published on all interfaces'; exit 1; }
+          grep -q 'no app container remains after tear-down' <<<"$out" || { echo '::error::an app was not torn down cleanly'; exit 1; }
+          grep -q 'the generated secret is not in the broker log' <<<"$out" || { echo '::error::A GENERATED APP SECRET LEAKED TO THE BROKER LOG'; exit 1; }
+          # Image management: docker's in-use refusal is the ownership boundary for
+          # images, and prune must not touch an image a container still needs.
+          grep -q 'an in-use image is refused removal' <<<"$out" || { echo '::error::an in-use image was removed out from under a container'; exit 1; }
+          grep -q 'prune kept the image a container still uses' <<<"$out" || { echo '::error::prune removed an image still in use'; exit 1; }
+          # Volumes/networks first-class: inspect reports consumers, and reads are
+          # not ownership-gated.
+          grep -q 'volume inspect lists the container that mounts it' <<<"$out" || { echo '::error::volume inspect did not report its consumers'; exit 1; }
+          grep -q 'an unmanaged network can be inspected' <<<"$out" || { echo '::error::inspecting an unmanaged object was gated like a mutation'; exit 1; }
+          # Live log streaming: the follow upgrades and lands on the audit chain.
+          grep -q 'a live log follow upgrades to a WebSocket' <<<"$out" || { echo '::error::a live log follow did not upgrade'; exit 1; }
+          grep -q 'the log follow is on the broker.s audit chain' <<<"$out" || { echo '::error::a live log follow was not audited'; exit 1; }
+          # Reverse-proxy auto-wiring: exposing an app stands up a linked proxy site,
+          # and unexpose removes the front door without stopping the app.
+          grep -q 'exposing an app creates a proxy site' <<<"$out" || { echo '::error::exposing an app did not create a proxy site'; exit 1; }
+          grep -q 'the proxy site is linked to the app it fronts' <<<"$out" || { echo '::error::the exposed app is not linked to its proxy site'; exit 1; }
+          grep -q 'unexpose removes the proxy site' <<<"$out" || { echo '::error::unexpose did not remove the proxy site'; exit 1; }
+          grep -q 'the app keeps running after unexpose' <<<"$out" || { echo '::error::unexpose stopped the app instead of just its front door'; exit 1; }
+          grep -q 'run-docker.sh : PASS' <<<"$out" || { echo '::error::run-docker.sh failed'; exit 1; }
+
       - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
         run: |
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-audit.sh)

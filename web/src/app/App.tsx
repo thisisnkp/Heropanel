@@ -18,6 +18,8 @@ import { DNSPage } from "@/features/dns/DNSPage";
 import { SSLPage } from "@/features/ssl/SSLPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { RecordingsPage } from "@/features/recordings/RecordingsPage";
+import { DockerPage } from "@/features/docker/DockerPage";
+import { AppsPage } from "@/features/apps/AppsPage";
 import { ModulesPage } from "@/features/modules/ModulesPage";
 
 function FullscreenSpinner() {
@@ -83,6 +85,8 @@ export function App() {
           <Route path="/ssl" element={<SSLPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/recordings" element={<RecordingsPage />} />
+          <Route path="/docker" element={<DockerPage />} />
+          <Route path="/apps" element={<AppsPage />} />
           <Route path="/modules" element={<ModulesPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

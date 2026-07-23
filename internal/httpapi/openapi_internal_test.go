@@ -14,12 +14,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/database"
 	"github.com/thisisnkp/heropanel/internal/dns"
+	"github.com/thisisnkp/heropanel/internal/docker"
 	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
@@ -53,6 +55,18 @@ func (stubFileSites) Resolve(context.Context, string) (*files.SiteRef, error) { 
 type stubFileBroker struct{}
 
 func (stubFileBroker) Invoke(context.Context, string, any) (map[string]any, error) { return nil, nil }
+
+// stubDockerBroker reports a daemon that is present, so the Docker routes mount
+// and appear in the generated spec. The service refuses every operation when no
+// daemon answers, which would take its whole route group out of the walk.
+type stubDockerBroker struct{}
+
+func (stubDockerBroker) Invoke(_ context.Context, capability string, _ any) (map[string]any, error) {
+	if capability == "docker.info" {
+		return map[string]any{"available": true}, nil
+	}
+	return map[string]any{}, nil
+}
 
 type stubTerminalSites struct{}
 
@@ -135,6 +149,7 @@ func fullRouterDeps(t *testing.T) Deps {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Security.RateLimit.Enabled = false
+	dockerStub := docker.New(stubDockerBroker{}).WithStreams(stubStreamGateway{})
 	return Deps{
 		Ctx:       context.Background(),
 		Config:    cfg,
@@ -154,8 +169,13 @@ func fullRouterDeps(t *testing.T) Deps {
 		Runtime:   &runtime.Service{},
 		Jobs:      &job.Dispatcher{},
 		Registry:  registry.New(),
-		Files:     files.NewService(stubFileSites{}, stubFileBroker{}),
-		Terminal:  terminal.NewService(stubTerminalSites{}, stubStreamGateway{}),
+		// Apps rides on Docker, so both use the same daemon-present stub — and the
+		// Apps route group only mounts when Apps is non-nil, so it must be here or
+		// the whole one-click API vanishes from the walked spec.
+		Docker:   dockerStub,
+		Apps:     apps.New(dockerStub),
+		Files:    files.NewService(stubFileSites{}, stubFileBroker{}),
+		Terminal: terminal.NewService(stubTerminalSites{}, stubStreamGateway{}),
 		Recordings: terminal.NewRecordingStore(
 			t.TempDir(), stubRecordings{}, terminal.DefaultRetention),
 		WS:     &ws.Hub{},

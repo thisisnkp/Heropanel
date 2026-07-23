@@ -56,7 +56,10 @@ type Site struct {
 	Webserver     string     `json:"webserver"`
 	DocumentRoot  string     `json:"document_root"`
 	SystemUser    string     `json:"system_user"`
-	CreatedAt     string     `json:"created_at"`
+	// AppProject is the one-click Docker app this proxy site fronts, if any. Empty
+	// for ordinary sites.
+	AppProject string `json:"app_project,omitempty"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // CreateInput is the request to create a site.
@@ -66,4 +69,8 @@ type CreateInput struct {
 	Type          Type
 	DeployMode    DeployMode
 	OwnerID       int64
+	// AppProject, when set, makes this a proxy site backed by a one-click Docker
+	// app: the vhost reverse-proxies to the app's published loopback port,
+	// resolved live at render time. It forces Type to proxy.
+	AppProject string
 }

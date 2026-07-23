@@ -120,6 +120,15 @@ func (h *Hub) Publish(channel string, payload []byte) {
 	}
 }
 
+// HasSubscribers reports whether any client is currently subscribed to a
+// channel. The monitor's sampler calls it to gate its work: with nobody
+// watching, there is nothing to compute and nothing to push.
+func (h *Hub) HasSubscribers(channel string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.channels[channel]) > 0
+}
+
 func (h *Hub) addClient(c *Client) {
 	h.mu.Lock()
 	h.clients[c] = struct{}{}

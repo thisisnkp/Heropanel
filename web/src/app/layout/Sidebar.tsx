@@ -24,6 +24,18 @@ const items: NavItem[] = [
   { to: "/databases", label: "Databases", icon: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" },
   { to: "/dns", label: "DNS", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M12 2a10 10 0 010 20" },
   { to: "/ssl", label: "SSL", icon: "M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6zM9 12l2 2 4-4" },
+  {
+    to: "/docker",
+    label: "Docker",
+    icon: "M4 12h16v5a3 3 0 01-3 3H7a3 3 0 01-3-3zM7 12V9h3v3M12 12V9h3v3M12 9V6h3v3",
+    perm: "docker.read",
+  },
+  {
+    to: "/apps",
+    label: "Apps",
+    icon: "M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1z",
+    perm: "docker.read",
+  },
   { to: "/audit", label: "Audit log", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5" },
   {
     to: "/recordings",
