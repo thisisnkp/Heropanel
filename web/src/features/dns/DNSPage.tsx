@@ -2,7 +2,18 @@ import { useState } from "react";
 import { ApiRequestError } from "@/lib/api";
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { toast } from "@/stores/toast";
-import { useAddRecord, useCreateZone, useDeleteRecord, useDeleteZone, useZoneRecords, useZones } from "./dns";
+import {
+  exportZone,
+  useAddRecord,
+  useCreateZone,
+  useDeleteRecord,
+  useDeleteZone,
+  useDNSSEC,
+  useImportZone,
+  useSetDNSSEC,
+  useZoneRecords,
+  useZones,
+} from "./dns";
 
 const TYPES = ["A", "AAAA", "CNAME", "MX", "TXT", "NS", "SRV"];
 
@@ -81,6 +92,7 @@ function ZoneRecords({ zoneUid, zoneName, onDeleteZone }: { zoneUid: string; zon
   const records = useZoneRecords(zoneUid);
   const del = useDeleteRecord(zoneUid);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   return (
     <Card className="overflow-hidden">
@@ -89,6 +101,18 @@ function ZoneRecords({ zoneUid, zoneName, onDeleteZone }: { zoneUid: string; zon
         <div className="flex gap-2">
           <Button variant="ghost" className="h-8 px-2 text-danger" onClick={onDeleteZone}>
             Delete zone
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-8 px-3"
+            onClick={() =>
+              exportZone(zoneUid, zoneName).catch(() => toast.error("Export failed"))
+            }
+          >
+            Export
+          </Button>
+          <Button variant="ghost" className="h-8 px-3" onClick={() => setImporting(true)}>
+            Import
           </Button>
           <Button className="h-8 px-3" onClick={() => setAdding(true)}>
             Add record
@@ -137,7 +161,120 @@ function ZoneRecords({ zoneUid, zoneName, onDeleteZone }: { zoneUid: string; zon
       )}
 
       {adding && <AddRecordModal zoneUid={zoneUid} onClose={() => setAdding(false)} />}
+      {importing && <ImportZoneModal zoneUid={zoneUid} onClose={() => setImporting(false)} />}
+      <DNSSECPanel zoneUid={zoneUid} />
     </Card>
+  );
+}
+
+// DNSSECPanel toggles inline signing and, once BIND has signed the zone, shows
+// the DS record to hand the registrar. Enabling starts an async signing job in
+// BIND, so the status polls until the DS appears.
+function DNSSECPanel({ zoneUid }: { zoneUid: string }) {
+  const status = useDNSSEC(zoneUid);
+  const set = useSetDNSSEC(zoneUid);
+  const d = status.data;
+
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-fg">DNSSEC</span>
+            {d?.enabled ? (
+              d.signed ? <Badge>signed</Badge> : <Badge>signing…</Badge>
+            ) : (
+              <Badge>off</Badge>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-muted">
+            BIND inline-signs the zone and manages key rollover. After enabling, give the DS record below to your
+            registrar to complete the chain of trust.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          className="h-8 px-3"
+          loading={set.isPending}
+          onClick={() =>
+            set.mutate(!d?.enabled, {
+              onSuccess: () => toast.success(d?.enabled ? "DNSSEC disabled" : "DNSSEC enabled — BIND is signing the zone"),
+              onError: (e) => toast.error(e instanceof ApiRequestError ? e.message : "Failed"),
+            })
+          }
+        >
+          {d?.enabled ? "Disable" : "Enable"}
+        </Button>
+      </div>
+      {d?.enabled && d.ds.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <div className="text-xs text-muted">DS records (for the registrar):</div>
+          {d.ds.map((ds, i) => (
+            <code key={i} className="block break-all rounded bg-surface px-2 py-1.5 text-xs text-fg">
+              {ds}
+            </code>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImportZoneModal({ zoneUid, onClose }: { zoneUid: string; onClose: () => void }) {
+  const imp = useImportZone(zoneUid);
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<{ imported: number; skipped: string[] } | null>(null);
+  return (
+    <Modal title="Import records" onClose={onClose}>
+      {result ? (
+        <div className="space-y-4">
+          <Alert>
+            Imported <strong>{result.imported}</strong> record{result.imported === 1 ? "" : "s"}.
+            {result.skipped.length > 0 && ` Skipped ${result.skipped.length} line(s) (unsupported or invalid).`}
+          </Alert>
+          {result.skipped.length > 0 && (
+            <pre className="max-h-40 overflow-auto rounded bg-surface p-2 text-xs text-muted">{result.skipped.join("\n")}</pre>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </div>
+      ) : (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            imp.mutate(text, {
+              onSuccess: (r) => {
+                setResult(r);
+                toast.success(`Imported ${r.imported} record(s)`);
+              },
+              onError: (err) => toast.error(err instanceof ApiRequestError ? err.message : "Import failed"),
+            });
+          }}
+        >
+          <p className="text-sm text-muted">
+            Paste an RFC 1035 master file (a BIND zone file or a provider export). Records are <strong>added</strong> to
+            this zone; the SOA and apex NS are managed by the panel and ignored.
+          </p>
+          <textarea
+            className="h-56 w-full rounded border border-border bg-panel p-2 font-mono text-xs text-fg"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"www\tIN\tA\t203.0.113.20\n@\tIN\tMX\t10 mail.example.com."}
+            required
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={imp.isPending}>
+              Import
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 

@@ -277,6 +277,94 @@ func mailDomainUsageHandler(d Deps) http.HandlerFunc {
 	}
 }
 
+// mailTLSStatusHandler reports the mail TLS posture: the configured hostname
+// and the submission/imaps/smtps ports real clients use. Gated by "mail.read".
+func mailTLSStatusHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, r, http.StatusOK, d.Mail.TLSStatus())
+	}
+}
+
+// enableMailTLSHandler ensures the mail host's certificate is installed and
+// wires it into Postfix + Dovecot (opening 587/993/465). Gated by "mail.write".
+func enableMailTLSHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, err := d.Mail.EnableTLS(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.AddDetail(r.Context(), "mail_hostname", st.Hostname)
+		writeJSON(w, r, http.StatusOK, st)
+	}
+}
+
+// mailInboundStatusHandler reports the inbound verification policy. Gated by
+// "mail.read".
+func mailInboundStatusHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, err := d.Mail.InboundStatus(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, st)
+	}
+}
+
+// setMailInboundHandler applies the inbound verification policy (off | standard
+// | strict). Gated by "mail.write".
+func setMailInboundHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Level string `json:"level"`
+		}
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		audit.AddDetail(r.Context(), "inbound_level", in.Level)
+		st, err := d.Mail.SetInboundPolicy(r.Context(), in.Level)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, st)
+	}
+}
+
+// mailAuthVerifyStatusHandler reports the SPF/DMARC verification posture. Gated
+// by "mail.read".
+func mailAuthVerifyStatusHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, err := d.Mail.AuthVerifyStatus(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, st)
+	}
+}
+
+// setMailAuthVerifyHandler applies the SPF/DMARC verification posture (off |
+// monitor | enforce). Gated by "mail.write".
+func setMailAuthVerifyHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Mode string `json:"mode"`
+		}
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		audit.AddDetail(r.Context(), "authverify_mode", in.Mode)
+		st, err := d.Mail.SetAuthVerify(r.Context(), in.Mode)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, st)
+	}
+}
+
 // deleteMailAliasHandler removes one alias pair. Gated by "mail.write".
 func deleteMailAliasHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

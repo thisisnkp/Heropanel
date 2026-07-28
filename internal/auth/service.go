@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thisisnkp/heropanel/internal/auth/webauthn"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
 	"github.com/thisisnkp/heropanel/pkg/errx"
@@ -35,7 +36,9 @@ type Service struct {
 	users     *repository.UserRepository
 	sessions  *repository.SessionRepository
 	rbac      *repository.RBACRepository
-	apiKeys   *repository.APIKeyRepository // optional (set via WithAPIKeys)
+	apiKeys   *repository.APIKeyRepository   // optional (set via WithAPIKeys)
+	passkeys  *repository.WebAuthnRepository // optional (set via WithWebAuthn)
+	webauthn  *webauthn.Verifier             // optional (set via WithWebAuthn)
 	cache     pcache.Cache
 	cfg       Config
 	now       func() time.Time

@@ -50,6 +50,12 @@ var capabilityTimeouts = map[string]time.Duration{
 	// cp -a 10m + chown -R 5m. A clone copies an entire document root; on a
 	// site with a real WordPress tree that is minutes, not seconds.
 	"site.copy_tree": 20 * time.Minute,
+	// A rootkit/system audit walks the whole host: rkhunter's propupd + check
+	// and lynis's audit are minutes, not seconds.
+	"audit.scan": 15 * time.Minute,
+	// AIDE hashes the watched tree; init/check are minutes on a real host.
+	"fim.init":  10 * time.Minute,
+	"fim.check": 10 * time.Minute,
 }
 
 // TimeoutFor returns how long the client will wait for a capability.

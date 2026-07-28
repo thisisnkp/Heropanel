@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/thisisnkp/heropanel/internal/config"
 	"github.com/thisisnkp/heropanel/internal/repository"
@@ -25,8 +26,8 @@ func newTestDB(t *testing.T) *repository.DB {
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if applied != 26 {
-		t.Fatalf("applied %d migrations, want 26", applied)
+	if applied != 36 {
+		t.Fatalf("applied %d migrations, want 36", applied)
 	}
 	return db
 }
@@ -121,5 +122,78 @@ func TestUniqueEmailConflict(t *testing.T) {
 	u2 := &repository.User{Email: "dup@example.com", Username: "u2"}
 	if err := repo.Create(ctx, u2); err == nil {
 		t.Fatal("expected a conflict on duplicate email")
+	}
+}
+
+// Session management: a user sees only their own active sessions, can revoke
+// one by UID, "sign out everywhere else" keeps only the current one, and no
+// user can revoke another user's session.
+func TestSessionManagement(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	users := repository.NewUserRepository(db)
+	sessions := repository.NewSessionRepository(db)
+	now := time.Now()
+
+	u1 := &repository.User{Email: "u1@h.io", Username: "u1", DisplayName: "u1", Status: "active"}
+	u2 := &repository.User{Email: "u2@h.io", Username: "u2", DisplayName: "u2", Status: "active"}
+	if err := users.Create(ctx, u1); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Create(ctx, u2); err != nil {
+		t.Fatal(err)
+	}
+
+	mk := func(uid string, userID int64, hash string) {
+		if err := sessions.Create(ctx, &repository.Session{
+			UID: uid, UserID: userID, TokenHash: hash, IP: "203.0.113.1",
+			UserAgent: "test", ExpiresAt: now.Add(time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("s1a", u1.ID, "h1a") // u1 current
+	mk("s1b", u1.ID, "h1b")
+	mk("s1c", u1.ID, "h1c")
+	mk("s2a", u2.ID, "h2a") // another user's
+
+	// List returns only u1's three sessions.
+	got, err := sessions.ListActiveByUser(ctx, u1.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("u1 has %d sessions, want 3", len(got))
+	}
+
+	// u1 cannot revoke u2's session (scoped by user_id -> not found).
+	if err := sessions.RevokeByUIDForUser(ctx, u1.ID, "s2a", now); err == nil {
+		t.Error("u1 revoked another user's session")
+	}
+
+	// u1 revokes one of their own.
+	if err := sessions.RevokeByUIDForUser(ctx, u1.ID, "s1b", now); err != nil {
+		t.Fatalf("revoke own: %v", err)
+	}
+	got, _ = sessions.ListActiveByUser(ctx, u1.ID, now)
+	if len(got) != 2 {
+		t.Fatalf("after revoke, u1 has %d, want 2", len(got))
+	}
+
+	// Sign out everywhere else keeps only the current (h1a).
+	n, err := sessions.RevokeAllForUserExcept(ctx, u1.ID, "h1a", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 { // only s1c remained active besides the current
+		t.Fatalf("revoke-others revoked %d, want 1", n)
+	}
+	got, _ = sessions.ListActiveByUser(ctx, u1.ID, now)
+	if len(got) != 1 || got[0].UID != "s1a" {
+		t.Fatalf("only the current session should remain: %+v", got)
+	}
+	// u2 is untouched.
+	if g2, _ := sessions.ListActiveByUser(ctx, u2.ID, now); len(g2) != 1 {
+		t.Errorf("u2's session was affected: %d", len(g2))
 	}
 }

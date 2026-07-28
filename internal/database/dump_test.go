@@ -14,11 +14,11 @@ import (
 func seed(t *testing.T, svc *database.Service) (dbUID, userUID string) {
 	t.Helper()
 	ctx := context.Background()
-	dbi, err := svc.CreateDatabase(ctx, 1, "acme_db")
+	dbi, err := svc.CreateDatabase(ctx, 1, "acme_db", "")
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}
-	usr, err := svc.CreateUser(ctx, 1, "acme", "localhost", "password123")
+	usr, err := svc.CreateUser(ctx, 1, "acme", "localhost", "password123", "")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}

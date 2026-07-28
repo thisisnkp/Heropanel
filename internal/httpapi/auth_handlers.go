@@ -3,6 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
@@ -225,4 +228,46 @@ func logoutHandler(d Deps) http.HandlerFunc {
 func meHandler(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.FromContext(r.Context())
 	writeJSON(w, r, http.StatusOK, p)
+}
+
+// listSessionsHandler lists the caller's own active sessions, marking the
+// current one. Any authenticated user manages their own sessions.
+func listSessionsHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		out, err := d.Auth.ListSessions(r.Context(), p.UserID, sessionToken(r))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"sessions": out})
+	}
+}
+
+// revokeSessionHandler revokes one of the caller's sessions by UID.
+func revokeSessionHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		uid := chi.URLParam(r, "uid")
+		audit.AddDetail(r.Context(), "session", uid)
+		if err := d.Auth.RevokeSession(r.Context(), p.UserID, uid); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
+// revokeOtherSessionsHandler signs the caller out of every other session.
+func revokeOtherSessionsHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		n, err := d.Auth.RevokeOtherSessions(r.Context(), p.UserID, sessionToken(r))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.AddDetail(r.Context(), "revoked", strconv.FormatInt(n, 10))
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "revoked": n})
+	}
 }

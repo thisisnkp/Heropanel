@@ -89,6 +89,12 @@ func (r *fakeRepo) SetSerial(_ context.Context, zoneID, serial int64) error {
 	}
 	return nil
 }
+func (r *fakeRepo) SetDNSSEC(_ context.Context, zoneID int64, enabled bool) error {
+	if z, ok := r.byID[zoneID]; ok {
+		z.DNSSECEnabled = enabled
+	}
+	return nil
+}
 func (r *fakeRepo) InsertRecord(_ context.Context, rec *dns.RecordRow) error {
 	r.seq++
 	rec.ID = r.seq

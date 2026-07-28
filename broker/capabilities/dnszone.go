@@ -2,6 +2,7 @@ package capabilities
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/thisisnkp/heropanel/broker/capability"
@@ -13,10 +14,13 @@ import (
 //
 //	include "/etc/bind/named.conf.heropanel";
 const (
-	bindZonesDir   = "/etc/bind/zones"
-	bindNamedConf  = "/etc/bind/named.conf.heropanel"
-	namedCheckzone = "/usr/bin/named-checkzone"
-	rndcPath       = "/usr/sbin/rndc"
+	bindZonesDir    = "/etc/bind/zones"
+	bindKeysDir     = "/etc/bind/keys"
+	bindNamedConf   = "/etc/bind/named.conf.heropanel"
+	namedCheckzone  = "/usr/bin/named-checkzone"
+	rndcPath        = "/usr/sbin/rndc"
+	dnssecDsFromKey = "/usr/bin/dnssec-dsfromkey"
+	bindUser        = "bind"
 )
 
 func bindZoneFile(zone string) string { return bindZonesDir + "/db." + zone }
@@ -52,6 +56,17 @@ func (DNSWriteZone) Execute(c capability.Context, raw json.RawMessage) (capabili
 
 	if err := c.FS.MkdirAll(bindZonesDir, 0o755); err != nil {
 		return capability.Result{}, errx.Upstream(err, "zonedir_failed", "Could not create the zones directory.")
+	}
+	// When any zone in this include is DNSSEC-signed, BIND needs a key-directory
+	// it can write to. Ensure it exists and belongs to bind — only when signing is
+	// actually configured, so ordinary zones do not trigger a chown on every edit.
+	if strings.Contains(in.NamedConf, "key-directory") {
+		if err := c.FS.MkdirAll(bindKeysDir, 0o750); err != nil {
+			return capability.Result{}, errx.Upstream(err, "keydir_failed", "Could not create the DNSSEC key directory.")
+		}
+		_, _ = c.Runner.Run(c.Ctx, exec.Command{
+			Path: chownPath, Args: []string{"-R", bindUser + ":" + bindUser, bindKeysDir}, Timeout: 10 * time.Second,
+		})
 	}
 	if err := c.FS.WriteFile(zonePath, []byte(in.ZoneFile), 0o644); err != nil {
 		return capability.Result{}, errx.Upstream(err, "zone_write_failed", "Could not write the zone file.")
@@ -106,6 +121,102 @@ func (DNSRemoveZone) Execute(c capability.Context, raw json.RawMessage) (capabil
 		return capability.Result{}, err
 	}
 	return capability.Result{Data: map[string]any{"zone": in.Zone, "removed": true}}, nil
+}
+
+// ── dns.dnssec_status ─────────────────────────────────────────────────────────
+
+// DNSSECStatus reports a signed zone's DNSKEY and the DS records the operator
+// must hand the registrar. With dnssec-policy the keys live in the key-directory
+// as K<zone>.+alg+id.key files; the KSK/CSK ones (flags 257) are what a DS is
+// derived from, via dnssec-dsfromkey. A zone with no key files yet (named has
+// not finished generating them) reports signed=false rather than erroring — the
+// caller polls.
+type DNSSECStatus struct{}
+
+func (DNSSECStatus) Name() string { return "dns.dnssec_status" }
+
+type dnssecStatusInput struct {
+	Zone string `json:"zone"`
+}
+
+func (DNSSECStatus) Execute(c capability.Context, raw json.RawMessage) (capability.Result, error) {
+	var in dnssecStatusInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return capability.Result{}, errx.Validation("bad_input", "Invalid input for dns.dnssec_status.")
+	}
+	if err := capability.ValidateFQDN(in.Zone); err != nil {
+		return capability.Result{}, err
+	}
+
+	res, err := c.Runner.Run(c.Ctx, exec.Command{
+		Path: lsPath, Args: []string{"-1", "--", bindKeysDir}, Timeout: 10 * time.Second,
+	})
+	if err != nil || res.ExitCode != 0 {
+		return capability.Result{Data: map[string]any{"signed": false, "ds": []string{}, "dnskey": []string{}}}, nil
+	}
+
+	prefix := "K" + in.Zone + "."
+	var ds, dnskey []string
+	for _, name := range strings.Split(string(res.Stdout), "\n") {
+		name = strings.TrimSpace(name)
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".key") {
+			continue
+		}
+		path := bindKeysDir + "/" + name
+		body, err := c.FS.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		// A key-signing key carries flags 257 in its DNSKEY rdata; a zone-signing
+		// key is 256. Only KSK/CSK material yields the DS a parent delegates to.
+		if !dnskeyIsKSK(string(body)) {
+			continue
+		}
+		dnskey = append(dnskey, dnskeyRdata(string(body)))
+		out, err := c.Runner.Run(c.Ctx, exec.Command{
+			Path: dnssecDsFromKey, Args: []string{"-2", path}, Timeout: 15 * time.Second,
+		})
+		if err == nil && out.ExitCode == 0 {
+			for _, line := range strings.Split(string(out.Stdout), "\n") {
+				if line = strings.TrimSpace(line); line != "" {
+					ds = append(ds, line)
+				}
+			}
+		}
+	}
+	return capability.Result{Data: map[string]any{
+		"signed": len(ds) > 0,
+		"ds":     ds,
+		"dnskey": dnskey,
+	}}, nil
+}
+
+// dnskeyIsKSK reports whether a .key file's DNSKEY record has the SEP flag (257).
+func dnskeyIsKSK(body string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if i := strings.Index(line, "DNSKEY"); i >= 0 {
+			fields := strings.Fields(line[i+len("DNSKEY"):])
+			if len(fields) >= 1 && fields[0] == "257" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// dnskeyRdata returns the DNSKEY record line (without the leading comments).
+func dnskeyRdata(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, ";") {
+			return line
+		}
+	}
+	return ""
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

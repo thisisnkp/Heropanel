@@ -158,6 +158,124 @@ export function useDeleteMailAlias(domainUid: string) {
   });
 }
 
+export type MailTLS = {
+  hostname: string;
+  ready: boolean;
+  enabled: boolean;
+  submission_port: number;
+  imaps_port: number;
+  smtps_port: number;
+};
+
+export function useMailTLS() {
+  return useQuery({
+    queryKey: ["mail", "tls"],
+    queryFn: () => api.get<MailTLS>("/mail/tls"),
+  });
+}
+
+export function useEnableMailTLS() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<MailTLS>("/mail/tls", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mail", "tls"] }),
+  });
+}
+
+export type MailInbound = { level: string; sender_restrictions: string };
+
+export function useMailInbound() {
+  return useQuery({
+    queryKey: ["mail", "inbound"],
+    queryFn: () => api.get<MailInbound>("/mail/inbound"),
+  });
+}
+
+export function useSetMailInbound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (level: string) => api.post<MailInbound>("/mail/inbound", { level }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mail", "inbound"] }),
+  });
+}
+
+export type WebmailHandoff = { url: string; user: string; pass: string; expires_at: string };
+
+// useWebmailSSO mints a one-time Dovecot master credential for a mailbox. The
+// caller submits the returned hand-off at Roundcube's login form (see
+// submitWebmailHandoff) so the user lands signed in without a password.
+export function useWebmailSSO() {
+  return useMutation({
+    mutationFn: (accountUID: string) =>
+      api.post<WebmailHandoff>(`/mail/accounts/${accountUID}/webmail-sso`, {}),
+  });
+}
+
+// submitWebmailHandoff POSTs the one-time credential at Roundcube's login form in
+// a new tab. It builds a throwaway form rather than putting the password in a URL
+// (which would leak into history/referers). The credential is single-use and
+// expires in minutes, so it is safe in a POST body.
+export function submitWebmailHandoff(ho: WebmailHandoff) {
+  const win = window.open("about:blank", "_blank");
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = `${ho.url}?_task=login&_action=login`;
+  form.target = win ? "hp_webmail" : "_blank";
+  if (win) win.name = "hp_webmail";
+  for (const [name, value] of [
+    ["_user", ho.user],
+    ["_pass", ho.pass],
+  ]) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+}
+
+export type MailAuthVerify = { mode: string };
+
+export function useMailAuthVerify() {
+  return useQuery({
+    queryKey: ["mail", "authverify"],
+    queryFn: () => api.get<MailAuthVerify>("/mail/authverify"),
+  });
+}
+
+export function useSetMailAuthVerify() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: string) => api.post<MailAuthVerify>("/mail/authverify", { mode }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mail", "authverify"] }),
+  });
+}
+
+export type WebmailStatus = {
+  enabled: boolean;
+  installed: boolean;
+  hostname: string;
+  url?: string;
+};
+
+export function useWebmail() {
+  return useQuery({
+    queryKey: ["mail", "webmail"],
+    queryFn: () => api.get<WebmailStatus>("/webmail"),
+  });
+}
+
+export function useInstallWebmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<WebmailStatus>("/webmail/install", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mail", "webmail"] }),
+  });
+}
+
 export function useMailQueue() {
   return useQuery({
     queryKey: ["mail", "queue"],

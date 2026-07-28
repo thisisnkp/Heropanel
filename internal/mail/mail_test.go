@@ -93,6 +93,18 @@ func (m *memRepo) GetAccountByUID(_ context.Context, uid string) (*AccountRecord
 	}
 	return nil, errors.New("no such account")
 }
+func (m *memRepo) AccountAddress(_ context.Context, uid string) (string, error) {
+	for i := range m.accounts {
+		if m.accounts[i].UID == uid {
+			for j := range m.domains {
+				if m.domains[j].ID == m.accounts[i].DomainID {
+					return m.accounts[i].LocalPart + "@" + m.domains[j].Domain, nil
+				}
+			}
+		}
+	}
+	return "", errors.New("no such account")
+}
 func (m *memRepo) UpdateAccountPassword(_ context.Context, id int64, hash string) error {
 	for i := range m.accounts {
 		if m.accounts[i].ID == id {
@@ -201,6 +213,75 @@ func newTestService() (*Service, *memRepo, *fakeGW) {
 	// bcrypt is deliberately slow; tests only need a stable marker.
 	svc.hash = func(p string) (string, error) { return "{BLF-CRYPT}hashed:" + p, nil }
 	return svc, repo, gw
+}
+
+// fakeCertProvider records the hostname it was asked to ensure a cert for.
+type fakeCertProvider struct {
+	ensured []string
+	fail    bool
+}
+
+func (f *fakeCertProvider) EnsureCert(_ context.Context, hostname string) error {
+	f.ensured = append(f.ensured, hostname)
+	if f.fail {
+		return errors.New("cert failed")
+	}
+	return nil
+}
+
+// EnableTLS ensures the mail host's cert, then wires it through the broker.
+func TestEnableTLSEnsuresCertThenWires(t *testing.T) {
+	svc, _, gw := newTestService()
+	cp := &fakeCertProvider{}
+	svc.WithTLS("Mail.Example.com", cp)
+
+	st, err := svc.EnableTLS(t.Context())
+	if err != nil {
+		t.Fatalf("enable tls: %v", err)
+	}
+	if st.Hostname != "mail.example.com" || !st.Enabled {
+		t.Errorf("status = %+v", st)
+	}
+	if st.Submission != 587 || st.IMAPS != 993 || st.SMTPS != 465 {
+		t.Errorf("ports = %+v", st)
+	}
+	if len(cp.ensured) != 1 || cp.ensured[0] != "mail.example.com" {
+		t.Errorf("cert not ensured for the host: %v", cp.ensured)
+	}
+	if gw.calls[len(gw.calls)-1] != "mail.tls" {
+		t.Errorf("mail.tls was not invoked: %v", gw.calls)
+	}
+	last := gw.inputs[len(gw.inputs)-1]
+	if last["hostname"] != "mail.example.com" {
+		t.Errorf("mail.tls hostname = %v", last["hostname"])
+	}
+}
+
+// A cert failure fails the enable loudly — TLS that points at a missing cert is
+// broken, not degraded, so the broker is never asked to wire it.
+func TestEnableTLSFailsWhenCertFails(t *testing.T) {
+	svc, _, gw := newTestService()
+	svc.WithTLS("mail.example.com", &fakeCertProvider{fail: true})
+
+	if _, err := svc.EnableTLS(t.Context()); err == nil {
+		t.Fatal("enable tls succeeded despite a cert failure")
+	}
+	for _, c := range gw.calls {
+		if c == "mail.tls" {
+			t.Error("mail.tls was invoked after the cert failed")
+		}
+	}
+}
+
+// With no hostname configured, TLS stays off and enabling is a validation error.
+func TestEnableTLSRequiresHostname(t *testing.T) {
+	svc, _, _ := newTestService()
+	if svc.TLSConfigured() {
+		t.Error("TLS reported configured with no hostname")
+	}
+	if _, err := svc.EnableTLS(t.Context()); err == nil {
+		t.Fatal("enable tls succeeded with no hostname")
+	}
 }
 
 // Creating a domain provisions the host first, then applies the rendered maps.

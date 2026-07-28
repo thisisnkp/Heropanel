@@ -1,14 +1,14 @@
-// A .gitignore matcher covering the patterns that actually appear in a web
-// project's ignore file: comments, blank lines, negation (`!`), directory-only
-// (trailing `/`), anchoring (leading `/`), the `*` / `**` / `?` wildcards, and
-// nested ignore files with git's precedence (a deeper .gitignore overrides a
-// shallower one).
+// A .gitignore matcher covering git's ignore rules as they apply to a working
+// tree: comments, blank lines, negation (`!`), directory-only (trailing `/`),
+// anchoring (leading `/`), the `*` / `**` / `?` wildcards, **character classes**
+// (`[abc]`, `[a-z]`, `[!abc]`), nested ignore files with git's precedence (a
+// deeper .gitignore overrides a shallower one), and the two lower-precedence
+// sources git also consults: **`.git/info/exclude`** and the **global
+// excludesfile** (`core.excludesfile`).
 //
-// It is deliberately *not* a full reimplementation of git's ignore rules — no
-// character classes, no `.git/info/exclude`, no global excludesfile. It exists
-// so the file browser can grey out build output and vendor folders, which is a
-// display hint, never a security or correctness boundary. Anything it gets wrong
-// shows a file that git would hide; nothing more.
+// It remains a display hint for the file browser — greying out build output and
+// vendor folders — never a security or correctness boundary. What it now matches,
+// though, is what git itself would hide, character classes and all.
 
 export interface IgnoreRule {
   re: RegExp;
@@ -43,6 +43,17 @@ function patternToRegExp(pattern: string): RegExp {
       }
     } else if (c === "?") {
       out += "[^/]";
+    } else if (c === "[") {
+      // A character class, fnmatch-style: [abc], [a-z], [!abc] (negation). It
+      // never matches a "/". Scan to the closing "]" (a "]" right after the
+      // opening bracket or its negation is a literal member).
+      const cls = scanCharClass(p, i);
+      if (cls) {
+        out += cls.regex;
+        i = cls.end;
+      } else {
+        out += "\\["; // unterminated — treat the bracket as a literal
+      }
     } else {
       out += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
     }
@@ -51,6 +62,49 @@ function patternToRegExp(pattern: string): RegExp {
   const prefix = anchored ? "^" : "^(?:.*/)?";
   // Matching a directory also matches everything beneath it.
   return new RegExp(`${prefix}${out}(?:/.*)?$`);
+}
+
+// scanCharClass compiles a fnmatch character class starting at p[start] === "[".
+// Returns the JS regex fragment (which never matches "/") and the index of the
+// closing "]", or null when the class is unterminated.
+function scanCharClass(p: string, start: number): { regex: string; end: number } | null {
+  let i = start + 1;
+  let negate = false;
+  if (p[i] === "!" || p[i] === "^") {
+    negate = true;
+    i++;
+  }
+  let body = "";
+  // A "]" as the very first member is a literal, not the terminator.
+  if (p[i] === "]") {
+    body += "\\]";
+    i++;
+  }
+  for (; i < p.length; i++) {
+    const ch = p[i];
+    if (ch === "]") {
+      // git never matches "/" with a class: drop it from a positive class (so
+      // "[/]" matches nothing) and keep the "^/" guard on a negated one.
+      if (negate) {
+        return { regex: `[^/${body}]`, end: i };
+      }
+      if (body === "") {
+        return { regex: "(?!)", end: i } // an empty positive class matches nothing
+      }
+      return { regex: `[${body}]`, end: i };
+    }
+    if (ch === "/") {
+      continue; // a slash is never a class member in git
+    }
+    if (ch === "\\") {
+      body += "\\\\";
+    } else if (ch === "^" || ch === "]") {
+      body += "\\" + ch;
+    } else {
+      body += ch; // ranges like a-z pass through unchanged
+    }
+  }
+  return null;
 }
 
 // parseGitignore compiles an ignore file's contents into ordered rules.
@@ -112,9 +166,24 @@ export interface IgnoreFile {
 // wins. A `!node_modules/keep-me` in a subdirectory therefore beats a
 // `node_modules/` at the root, which is exactly what git does and what an
 // operator staring at a greyed-out file expects.
-export function isIgnoredNested(files: IgnoreFile[], path: string, isDir: boolean): boolean {
+export function isIgnoredNested(
+  files: IgnoreFile[],
+  path: string,
+  isDir: boolean,
+  extra?: ExtraExcludes,
+): boolean {
   let ignored = false;
-  // Shallowest first, so each deeper file's answer overwrites the one above it.
+  // Lowest precedence first: the global excludesfile, then .git/info/exclude,
+  // then the .gitignore chain (shallow → deep). Each later source that has an
+  // opinion overwrites the one before it — exactly git's ordering.
+  if (extra?.global) {
+    const v = decide(extra.global, path, isDir);
+    if (v !== null) ignored = v;
+  }
+  if (extra?.infoExclude) {
+    const v = decide(extra.infoExclude, path, isDir);
+    if (v !== null) ignored = v;
+  }
   const ordered = [...files].sort((a, b) => depth(a.dir) - depth(b.dir));
   for (const f of ordered) {
     const rel = relativeToDir(f.dir, path);
@@ -123,6 +192,14 @@ export function isIgnoredNested(files: IgnoreFile[], path: string, isDir: boolea
     if (verdict !== null) ignored = verdict;
   }
   return ignored;
+}
+
+// ExtraExcludes carries the two lower-precedence ignore sources git also honors,
+// both matched relative to the repository root: `.git/info/exclude` and the
+// global excludesfile (core.excludesfile). Either may be omitted.
+export interface ExtraExcludes {
+  infoExclude?: IgnoreRule[];
+  global?: IgnoreRule[];
 }
 
 // depth counts a directory's nesting level. The site root is 0 — splitting ""

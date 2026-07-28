@@ -94,6 +94,24 @@ api -X POST "$base/api/v1/sites/$uid/files/extract" -H 'Content-Type: applicatio
 if [ -f "$site/assets/a.txt" ] && [ -f "$site/assets/sub/b.txt" ]; then pass "archive extracted (nested entries too)"; else fail "extract did not produce the files"; fi
 echo -n "extracted file owner: "; stat -c '%U' "$site/assets/a.txt"
 
+sec "ARCHIVED UPLOAD (one request → many files, staged archive auto-removed)"
+python3 - <<'PY'
+import tarfile, io, os
+buf = io.BytesIO()
+t = tarfile.open(fileobj=buf, mode='w:gz')
+for name, data in [('one.txt', b'bundle-one\n'), ('nested/two.txt', b'bundle-two\n')]:
+    ti = tarfile.TarInfo(name); ti.size = len(data)
+    t.addfile(ti, io.BytesIO(data))
+t.close()
+open('/tmp/bundle.tar.gz', 'wb').write(buf.getvalue())
+PY
+api -X POST "$base/api/v1/sites/$uid/files/upload-archive?path=bundled&filename=bundle.tar.gz" \
+  --data-binary @/tmp/bundle.tar.gz -H 'Content-Encoding: identity'; echo
+if [ -f "$site/bundled/one.txt" ] && [ -f "$site/bundled/nested/two.txt" ]; then pass "archived upload extracted the whole tree in one request"; else fail "archived upload did not produce the files"; fi
+# The staged archive must not linger in the tree.
+if ls "$site/bundled/".hp-upload-* >/dev/null 2>&1; then fail "the staged upload archive was left behind"; else pass "staged archive auto-removed"; fi
+echo -n "uploaded file owner: "; stat -c '%U' "$site/bundled/one.txt"
+
 sec "RENAME"
 api -X POST "$base/api/v1/sites/$uid/files/rename" -H 'Content-Type: application/json' \
   -d '{"from":"public/index.php","to":"public/home.php"}'; echo

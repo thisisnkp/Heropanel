@@ -127,6 +127,27 @@ func (s *MailStore) GetAccountByUID(ctx context.Context, uid string) (*mail.Acco
 	return &rec, nil
 }
 
+// AccountAddress resolves an account UID to its full mailbox address. Selecting
+// the two columns and joining them in Go keeps the query dialect-neutral (SQLite
+// and MariaDB disagree on the `||` concatenation operator).
+func (s *MailStore) AccountAddress(ctx context.Context, uid string) (string, error) {
+	var row struct {
+		LocalPart string `db:"local_part"`
+		Domain    string `db:"domain"`
+	}
+	err := s.db.GetContext(ctx, &row,
+		`SELECT a.local_part AS local_part, d.domain AS domain
+		   FROM mail_accounts a JOIN mail_domains d ON d.id = a.domain_id
+		  WHERE a.uid = ?`, uid)
+	if isNoRows(err) {
+		return "", errx.NotFound("account_not_found", "No such mailbox.")
+	}
+	if err != nil {
+		return "", errx.Internal(err)
+	}
+	return row.LocalPart + "@" + row.Domain, nil
+}
+
 // UpdateAccountPassword replaces a mailbox credential.
 func (s *MailStore) UpdateAccountPassword(ctx context.Context, id int64, hash string) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE mail_accounts SET password_hash = ? WHERE id = ?`, hash, id); err != nil {

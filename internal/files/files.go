@@ -427,6 +427,62 @@ func (s *Service) Extract(ctx context.Context, siteUID, archive, dest string) er
 	return err
 }
 
+// UploadAndExtract streams one uploaded archive into the site and unpacks it into
+// dir, then removes the archive — a **multi-file upload as a single archived
+// transfer**: instead of one HTTP request per file, the client sends one archive
+// and the whole tree lands in a single operation. The archive is staged under an
+// unpredictable temp name so two concurrent uploads cannot collide, and it is
+// deleted whether the extract succeeds or fails, so the tree never accumulates
+// upload leftovers. filename is used only to pick zip vs tar.gz.
+func (s *Service) UploadAndExtract(ctx context.Context, siteUID, dir, filename string, r io.Reader) error {
+	if _, err := s.resolveEditable(ctx, siteUID); err != nil {
+		return err
+	}
+	ext := archiveExt(filename)
+	if ext == "" {
+		return errx.Validation("unsupported_archive",
+			"Uploads to extract must be a .zip, .tar.gz, or .tgz archive.")
+	}
+	// Ensure the destination exists — both to stage the archive inside it and to
+	// give extract somewhere to unpack. Idempotent; the site root always exists.
+	if dir != "" {
+		if err := s.Mkdir(ctx, siteUID, dir); err != nil {
+			return err
+		}
+	}
+	suffix := make([]byte, 8)
+	if _, err := rand.Read(suffix); err != nil {
+		return errx.Wrap(err, errx.KindInternal, "upload_failed", "Could not prepare the upload.")
+	}
+	archive := joinRel(dir, ".hp-upload-"+hex.EncodeToString(suffix)+ext)
+	// Always remove the staged archive, even if the extract fails or the context
+	// is already cancelled (a fresh context carries the cleanup).
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		_ = s.Remove(cleanup, siteUID, archive)
+	}()
+	if _, err := s.Upload(ctx, siteUID, archive, r); err != nil {
+		return err
+	}
+	return s.Extract(ctx, siteUID, archive, dir)
+}
+
+// archiveExt returns the archive extension of filename (".zip", ".tar.gz",
+// ".tgz"), or "" when it is not an extractable archive.
+func archiveExt(filename string) string {
+	l := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(l, ".tar.gz"):
+		return ".tar.gz"
+	case strings.HasSuffix(l, ".tgz"):
+		return ".tgz"
+	case strings.HasSuffix(l, ".zip"):
+		return ".zip"
+	}
+	return ""
+}
+
 // Compress creates an archive from site-relative entries that share one parent
 // folder. It is what makes "download this folder" possible: HTTP hands back one
 // file, not a tree.

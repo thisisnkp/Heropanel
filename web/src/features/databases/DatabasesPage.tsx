@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ApiRequestError, type Database, type DatabaseUser } from "@/lib/api";
-import { Alert, Button, Card, EmptyState, Field, Input, Modal, Spinner } from "@/components/ui";
+import { Alert, Button, Card, EmptyState, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { toast } from "@/stores/toast";
 import {
   databaseExportURL,
@@ -170,13 +170,14 @@ export function DatabasesPage() {
 function CreateDBModal({ onClose }: { onClose: () => void }) {
   const create = useCreateDatabase();
   const [name, setName] = useState("");
+  const [engine, setEngine] = useState("mariadb");
   return (
     <Modal title="New database" onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate(
-            { name },
+            { name, engine },
             {
               onSuccess: () => {
                 toast.success("Database created");
@@ -189,6 +190,12 @@ function CreateDBModal({ onClose }: { onClose: () => void }) {
       >
         <Field label="Name">
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="acme_app" />
+        </Field>
+        <Field label="Engine">
+          <Select value={engine} onChange={(e) => setEngine(e.target.value)}>
+            <option value="mariadb">MariaDB</option>
+            <option value="postgres">PostgreSQL</option>
+          </Select>
         </Field>
         {create.error instanceof ApiRequestError && <Alert>{create.error.message}</Alert>}
         <div className="flex justify-end gap-2">
@@ -206,7 +213,7 @@ function CreateDBModal({ onClose }: { onClose: () => void }) {
 
 function CreateUserModal({ onClose }: { onClose: () => void }) {
   const create = useCreateDBUser();
-  const [form, setForm] = useState({ username: "", host: "localhost", password: "" });
+  const [form, setForm] = useState({ username: "", host: "localhost", password: "", engine: "mariadb" });
   return (
     <Modal title="New database user" onClose={onClose}>
       <form
@@ -224,9 +231,17 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
         <Field label="Username">
           <Input autoFocus value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         </Field>
+        <Field label="Engine">
+          <Select value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })}>
+            <option value="mariadb">MariaDB</option>
+            <option value="postgres">PostgreSQL</option>
+          </Select>
+        </Field>
+        {form.engine === "mariadb" && (
         <Field label="Host" hint="localhost, %, or a specific address">
           <Input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
         </Field>
+        )}
         <Field label="Password">
           <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </Field>

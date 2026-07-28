@@ -59,6 +59,8 @@ type Site struct {
 	// AppProject is the one-click Docker app this proxy site fronts, if any. Empty
 	// for ordinary sites.
 	AppProject string `json:"app_project,omitempty"`
+	// WAFEnabled reports whether the ModSecurity + OWASP CRS firewall is on.
+	WAFEnabled bool   `json:"waf_enabled"`
 	CreatedAt  string `json:"created_at"`
 }
 

@@ -30,6 +30,7 @@ func listBackupsHandler(d Deps) http.HandlerFunc {
 		writeJSON(w, r, http.StatusOK, map[string]any{
 			"backups": backups, "config": cfg,
 			"available": d.Backups.Available(), "s3": d.Backups.HasS3(),
+			"sftp": d.Backups.HasTarget("sftp"), "rclone": d.Backups.HasTarget("rclone"),
 		})
 	}
 }
@@ -146,7 +147,7 @@ func restoreBackupHandler(d Deps) http.HandlerFunc {
 		// 4. The database, into a NEW database. Import consumes the staged file.
 		var dbInst *database.Instance
 		if stagedFile != "" {
-			dbInst, err = d.Databases.CreateDatabase(r.Context(), p.UserID, in.DBName)
+			dbInst, err = d.Databases.CreateDatabase(r.Context(), p.UserID, in.DBName, "")
 			if err != nil {
 				discardStaged()
 				writeError(w, r, err)

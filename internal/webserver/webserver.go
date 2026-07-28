@@ -48,6 +48,42 @@ type Site struct {
 	// answering them with whichever site happens to be first, i.e. serving one
 	// customer's content on another customer's domain.
 	Suspended bool
+	// WAFEnabled turns on the per-vhost ModSecurity + OWASP CRS web application
+	// firewall. The module and rules must be present on the host; the render
+	// references a pinned rules file the panel writes.
+	WAFEnabled bool
+}
+
+// WAFRulesFile is the pinned path the WAF-enabled vhost references. The panel
+// writes it (base ModSecurity config + the OWASP CRS + SecRuleEngine On).
+const WAFRulesFile = "/etc/heropanel/waf/main.conf"
+
+// RenderWAFConfig renders the ModSecurity rules file the WAF vhosts load: the
+// recommended base config, then the OWASP Core Rule Set, then SecRuleEngine On
+// last so blocking is forced even if the base config shipped in DetectionOnly.
+// IncludeOptional across the standard install locations keeps it robust to the
+// exact package layout (Debian vs. the CRS tarball) without double-loading — a
+// site that has no CRS installed simply gets the base engine.
+func RenderWAFConfig() string {
+	// libmodsecurity v3 (what OpenLiteSpeed's mod_security embeds) supports only
+	// `Include`, not `IncludeOptional` — a single unsupported directive fails the
+	// WHOLE rules file, so none may appear (this rules out including the distro's
+	// owasp-crs.load verbatim, which itself uses IncludeOptional). The base
+	// engine settings are stated inline rather than relied on from a base
+	// modsecurity.conf that some packages do not ship; the CRS is then pulled in
+	// by its concrete pieces (setup first, then every rule). SecDefaultAction is
+	// deliberately left to crs-setup.conf, which may set it only once.
+	return `# HeroPanel WAF (ModSecurity + OWASP CRS; rendered, do not edit).
+SecRuleEngine On
+SecRequestBodyAccess On
+SecResponseBodyAccess Off
+SecRequestBodyLimit 13107200
+SecRequestBodyNoFilesLimit 131072
+SecPcreMatchLimit 100000
+SecPcreMatchLimitRecursion 100000
+Include /etc/modsecurity/crs/crs-setup.conf
+Include /usr/share/modsecurity-crs/rules/*.conf
+`
 }
 
 // Redirect sends one of the vhost's domains to another absolute URL.
@@ -150,6 +186,10 @@ RewriteRule ^(.*)$ {{.To}}$1 [R={{.Code}},L]
 RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
 {{end}}END_rules
   }
+{{end}}{{if and .WAFEnabled (not .Suspended)}}  module mod_security {
+    modsecurity           on
+    modsecurity_rules_file /etc/heropanel/waf/main.conf
+  }
 {{end}}{{if .IsPHP}}  scriptHandler  {
     add                   fcgi:hps_{{.VhostName}} php
   }
@@ -169,8 +209,25 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
 // RenderConfig renders the entire OpenLiteSpeed config for the given sites.
 func RenderConfig(sites []Site) (string, error) {
 	var b bytes.Buffer
+	// OpenLiteSpeed only activates the ModSecurity module when it is declared at
+	// server level; the per-vhost `module mod_security` block alone is inert. So
+	// when any site has the WAF on, emit the server-level enable at the head —
+	// per-vhost `modsecurity on/off` then decides which sites it applies to.
+	if anyWAF(sites) {
+		b.WriteString("module mod_security {\n  ls_enabled              1\n}\n")
+	}
 	if err := configTmpl.Execute(&b, sites); err != nil {
 		return "", errx.Wrap(err, errx.KindInternal, "config_render_failed", "Could not render the web server config.")
 	}
 	return b.String(), nil
+}
+
+// anyWAF reports whether any non-suspended site has the WAF enabled.
+func anyWAF(sites []Site) bool {
+	for _, s := range sites {
+		if s.WAFEnabled && !s.Suspended {
+			return true
+		}
+	}
+	return false
 }

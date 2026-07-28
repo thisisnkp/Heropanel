@@ -371,8 +371,8 @@ func containerExecHandler(d Deps) http.HandlerFunc {
 		// retention and permissions, and a container shell has no site to hang
 		// that on — inventing one here would put transcripts somewhere nothing
 		// sweeps. Noted as deferred in docs/19.
-		go pumpBrokerToWS(ctx, cancel, conn, stream, nil)
-		pumpWSToBroker(ctx, conn, stream, nil)
+		go pumpBrokerToWS(ctx, cancel, conn, stream, nil, nil)
+		pumpWSToBroker(ctx, conn, stream, nil, nil)
 	}
 }
 
@@ -411,8 +411,8 @@ func containerLogsStreamHandler(d Deps) http.HandlerFunc {
 		ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 		defer cancel()
 
-		go pumpBrokerToWS(ctx, cancel, conn, stream, nil)
-		pumpWSToBroker(ctx, conn, stream, nil)
+		go pumpBrokerToWS(ctx, cancel, conn, stream, nil, nil)
+		pumpWSToBroker(ctx, conn, stream, nil, nil)
 	}
 }
 

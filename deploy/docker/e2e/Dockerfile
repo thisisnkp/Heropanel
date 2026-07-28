@@ -25,6 +25,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       php8.3-fpm php8.3-mysql php8.3-cli \
     && rm -rf /var/lib/apt/lists/*
 
+# OpenLiteSpeed's ModSecurity (WAF) module + the OWASP Core Rule Set, so the
+# per-site WAF can be proven live: a real attack request is blocked while a
+# normal one passes. Both come from the LiteSpeed repo / Ubuntu universe.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ols-modsecurity modsecurity-crs \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -f /usr/local/lsws/modules/mod_security.so
+
 # Node.js + npm for the app-runtime e2e (a reverse-proxied Node app, and a real
 # Next.js build).
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
@@ -81,6 +89,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && : > /etc/bind/named.conf.heropanel \
     && printf '\ninclude "/etc/bind/named.conf.heropanel";\n' >> /etc/bind/named.conf.local
 
+# PostgreSQL — the second managed database engine. The broker runs psql/pg_dump
+# as the postgres OS user (peer auth), so run-postgres.sh starts the cluster and
+# exercises create/role/grant + an export→import round trip.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      postgresql postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # The Docker *client* only — the e2e talks to a daemon mounted in at run time
 # (the CI runner's own). No daemon runs inside this image: the module's job is
 # to drive a real dockerd, and running one here would be testing docker-in-docker
@@ -110,6 +125,30 @@ RUN echo "postfix postfix/main_mailer_type select No configuration" | debconf-se
       postfix dovecot-core dovecot-imapd dovecot-lmtpd opendkim opendkim-tools \
     && rm -rf /var/lib/apt/lists/*
 
+# Full inbound SPF/DMARC verification: policyd-spf (postfix policy service) and
+# OpenDMARC (milter). Proven live in run-mail.sh — the panel wires both into
+# postfix and a forged/misaligned sender is rejected in enforce mode.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      postfix-policyd-spf-python opendmarc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Roundcube webmail, served by the panel's own OLS/PHP against the local mail.
+# The application files are placed at the path the webmail module pins; the
+# module (broker webmail.install) then creates the user, FPM pool, config and
+# sqlite schema at run time. The extra php8.3 extensions are what Roundcube
+# needs (intl/mbstring/dom/pdo_sqlite/gd/curl); the "complete" tarball bundles
+# its own vendor/ so no Composer step is needed.
+ARG ROUNDCUBE_VERSION=1.6.9
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      php8.3-intl php8.3-mbstring php8.3-xml php8.3-sqlite3 php8.3-gd php8.3-curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/share/heropanel \
+    && wget -qO /tmp/rc.tgz "https://github.com/roundcube/roundcubemail/releases/download/${ROUNDCUBE_VERSION}/roundcubemail-${ROUNDCUBE_VERSION}-complete.tar.gz" \
+    && tar -C /usr/share/heropanel -xzf /tmp/rc.tgz \
+    && mv "/usr/share/heropanel/roundcubemail-${ROUNDCUBE_VERSION}" /usr/share/heropanel/roundcube \
+    && rm -f /tmp/rc.tgz \
+    && test -f /usr/share/heropanel/roundcube/index.php
+
 # MinIO: a real, independent S3 implementation for the backup e2e. The S3
 # signer is unit-tested against a recomputing fake; this closes the honest gap
 # by driving the same client against a live bucket it did not write. Pinned to
@@ -120,9 +159,40 @@ RUN wget -qO /usr/local/bin/minio \
     && chmod +x /usr/local/bin/minio \
     && /usr/local/bin/minio --version
 
+# ClamAV (clamscan only, no daemon/freshclam) for the malware e2e. The suite
+# ships a one-line custom signature DB for the EICAR test file, so no ~200 MB
+# virus-database download is needed at build or run time.
+RUN apt-get update && apt-get install -y --no-install-recommends clamav \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -x /usr/bin/clamscan
+
+# AIDE for the file-integrity-monitoring e2e: a real baseline is built and a
+# tampered file is detected on the next check.
+RUN apt-get update && apt-get install -y --no-install-recommends aide \
+    && rm -rf /var/lib/apt/lists/* \
+    && (test -x /usr/bin/aide || ln -sf "$(command -v aide)" /usr/bin/aide) \
+    && /usr/bin/aide --version 2>&1 | head -1
+
+# rkhunter + lynis for the host-audit-scanner e2e: a real rootkit scan and a
+# real system audit are run and their findings parsed.
+RUN apt-get update && apt-get install -y --no-install-recommends rkhunter lynis \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -x /usr/bin/rkhunter && test -x /usr/sbin/lynis
+
+# rclone for the rclone-backed backup-target e2e: a sealed backup is streamed to
+# an rclone remote (a local backend in the test) and pulled back.
+RUN apt-get update && apt-get install -y --no-install-recommends rclone \
+    && rm -rf /var/lib/apt/lists/* \
+    && rclone version | head -1
+
 # Container shim for systemctl (no systemd here).
 COPY systemctl-shim.sh /usr/bin/systemctl
 RUN chmod +x /usr/bin/systemctl
+
+# Container shim for nft (real kernel nftables would disturb container
+# networking; the shim proves HeroPanel's snapshot/apply/revert logic).
+COPY nft-shim.sh /usr/sbin/nft
+RUN chmod +x /usr/sbin/nft
 
 # Wire HeroPanel's generated web-server config into OLS's main config. OLS runs
 # as its default unprivileged user (nobody); the test script makes the demo site

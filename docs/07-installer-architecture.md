@@ -24,14 +24,18 @@ Goal: a **single command** that turns a fresh Linux box into a running HeroPanel
 > **Integrity:** the binaries step verifies every artifact against a `SHA256SUMS`
 > manifest before anything lands in place — a mismatch fails the step and rolls
 > back (`run-installer.sh` asserts "binaries verified against SHA256SUMS"; the
-> tamper-rejection path is unit-tested). **arm64** is a first-class target:
+> tamper-rejection path is unit-tested). When a release key is pinned, the
+> manifest itself is first checked against an **ed25519 signature**
+> (`SHA256SUMS.sig`), so the checksums are anchored to a key held offline rather
+> than merely internally consistent (§6; `run-installer.sh` signs a real manifest,
+> refuses a tampered one, and asserts "SHA256SUMS signature verified against the
+> release key"). **arm64** is a first-class target:
 > `run-arch-smoke.sh` runs the cross-compiled binaries under qemu on aarch64
 > (both distro families) — detection, the SQLite driver + every migration, and
 > the broker self-check.
 >
 > *Deferred:* backup/restore of pre-existing web/db/firewall configs before
-> touching them; a **cryptographic signature** over the manifest (checksum
-> verification is done; artifact *signing* is not, §6); `hpctl`; the uninstall
+> touching them; `hpctl`; the uninstall
 > subcommand; coexistence handling for a pre-existing Apache/Nginx/MySQL/Docker;
 > the OLS panel reverse-proxy vhost (the panel is served by `hpd` directly for
 > now, and the Docker verification runs `--no-webserver`); and package-level

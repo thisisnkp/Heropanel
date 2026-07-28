@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui";
 import { useTheme } from "@/stores/theme";
 import { useMe, useLogout } from "@/features/auth/auth";
@@ -64,10 +65,10 @@ export function Topbar() {
         >
           <SunMoon dark={theme === "dark"} />
         </button>
-        <div className="hidden text-right sm:block">
+        <Link to="/account" className="hidden rounded-lg px-2 py-1 text-right hover:bg-border/40 sm:block" title="Account & sessions">
           <div className="text-sm font-medium text-fg">{me?.display_name ?? me?.username}</div>
           <div className="text-xs text-muted">{me?.email}</div>
-        </div>
+        </Link>
         <Button variant="ghost" className="h-9 px-3" loading={logout.isPending} onClick={() => logout.mutate()}>
           Sign out
         </Button>

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/thisisnkp/heropanel/internal/terminal"
@@ -103,6 +104,53 @@ func (s *RecordingStore) List(ctx context.Context, siteID int64, limit, offset i
 		query = recordingSelectJoined + ` ORDER BY r.id DESC LIMIT ? OFFSET ?`
 		args = []any{limit, offset}
 	}
+	if err := s.db.SelectContext(ctx, &out, query, args...); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return out, nil
+}
+
+// Search filters across all recorded history. A blank query returns everything
+// (newest first), so it degrades to List; a query is matched case-insensitively
+// as a substring of the actor email, system user, actor IP, or site name — what
+// an auditor searches by. Date bounds and a site scope narrow it further. This
+// is the answer to "the page only shows the newest 200": a search that finds
+// nothing means there is no such session, not that it fell off the page.
+func (s *RecordingStore) Search(ctx context.Context, f terminal.RecordingFilter) ([]terminal.Recording, error) {
+	limit := f.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var (
+		where []string
+		args  []any
+	)
+	if f.SiteID > 0 {
+		where = append(where, "r.site_id = ?")
+		args = append(args, f.SiteID)
+	}
+	if q := strings.TrimSpace(f.Query); q != "" {
+		like := "%" + strings.ToLower(q) + "%"
+		where = append(where,
+			"(LOWER(r.actor_email) LIKE ? OR LOWER(r.system_user) LIKE ? OR LOWER(r.actor_ip) LIKE ? OR LOWER(COALESCE(s.name,'')) LIKE ?)")
+		args = append(args, like, like, like, like)
+	}
+	if f.After != "" {
+		where = append(where, "r.started_at >= ?")
+		args = append(args, f.After)
+	}
+	if f.Before != "" {
+		where = append(where, "r.started_at <= ?")
+		args = append(args, f.Before)
+	}
+	query := recordingSelectJoined
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY r.id DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, f.Offset)
+
+	var out []terminal.Recording
 	if err := s.db.SelectContext(ctx, &out, query, args...); err != nil {
 		return nil, errx.Internal(err)
 	}

@@ -153,10 +153,47 @@ leg** — a sealed snapshot taken via the API, opened offline with `hpd
 decrypt`, and yielding a tarball whose `panel.db` actually contains the
 panel's data.
 
-Honest gaps: SFTP and OAuth-drive targets stay deferred (each pulls a
-dependency or an OAuth flow; the S3 surface covers the common cases); the
-panel-restore procedure is documented and its decrypt half proven, but the
-"stop hpd, swap the database, start hpd" walk-through is manual by design.
+## SFTP target
+
+An **SFTP (SSH) target** gives an off-cloud copy for the 3-2-1 rule. Rather than
+pull a third-party SFTP dependency, it is a **hand-rolled minimal SFTP-v3
+client** (`internal/backup/sftp.go`) over `x/crypto/ssh` — the transport the git
+deploy keys already use — implementing just what a backup target needs
+(create+write, open+read, remove), the same lean-deps posture as the hand-rolled
+SigV4 signer and WebAuthn verifier. Credentials (password or private key) come
+from the **secret env**, never the yaml file; the server's **host key is pinned**
+(an `authorized_keys` line), and when pinned the client also forces that key's
+algorithm so a host offering another key type cannot slip past the fixed-key
+check. Sealed blobs are opaque bytes to it; encryption stays in the caller.
+
+Live proof (`run-backup.sh`, against a **real openssh** SFTP server in e2e): a
+sealed backup is **written over SFTP** to the server and is **not** on local
+disk; the object at rest is blobcrypt ciphertext (unreadable as tar); restore
+**fetches it back over SFTP** and replays it into a new site; delete removes it
+from the server (SFTP remove).
+
+## rclone target (cloud drives)
+
+An **rclone-backed target** reaches rclone's 70+ cloud backends — Google Drive,
+Dropbox, OneDrive, Backblaze and the rest — **without the panel implementing any
+provider API or OAuth flow**. The operator configures the remote once with
+`rclone config`; the panel streams its already-sealed blobs to it. rclone is a
+local CLI hpd execs directly (like local/S3/SFTP — no broker; there is no
+privilege to cross, only the operator's rclone config and the network): `rclone
+rcat` to upload, `rclone cat` to fetch, `rclone deletefile` to remove, with a
+missing object tolerated on delete. Configured via `HP_BACKUP_RCLONE_REMOTE`
+(e.g. `gdrive:heropanel-backups`) + optional `HP_BACKUP_RCLONE_CONFIG`.
+
+Live proof (`run-backup.sh`, against an rclone `:local:` backend in e2e): a
+sealed backup is **streamed to the remote via rclone** and is **not** on hpd's
+local disk; the object at rest is blobcrypt ciphertext; restore **fetches it
+back via rclone** and replays it into a new site; delete removes it.
+
+This is the lean answer to "OAuth drive targets": one external tool, no OAuth
+code or provider SDKs in hpd. Native in-panel OAuth per provider stays out of
+scope by design. The panel-restore procedure is documented and its decrypt half
+proven, but the "stop hpd, swap the database, start hpd" walk-through is manual
+by design.
 
 ---
 Back to [index](README.md).

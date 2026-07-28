@@ -316,6 +316,21 @@ export async function uploadFile(
   });
 }
 
+// useUploadArchive uploads one archive (.zip/.tar.gz) and extracts it into a
+// directory — a multi-file upload as a single transfer.
+export function useUploadArchive(uid: string) {
+  const invalidate = useInvalidateFiles(uid);
+  return useMutation({
+    mutationFn: (v: { dir: string; file: File }) =>
+      uploadWithProgress(
+        `/sites/${uid}/files/upload-archive?${q(v.dir)}&filename=${encodeURIComponent(v.file.name)}`,
+        v.file,
+        { contentType: "application/octet-stream" },
+      ),
+    onSettled: () => invalidate(),
+  });
+}
+
 // downloadFile fetches a file and triggers a browser "Save as" via an object URL.
 export async function downloadFile(uid: string, path: string): Promise<void> {
   const blob = await readFileBlob(uid, path);

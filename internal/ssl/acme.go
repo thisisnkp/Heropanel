@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"strings"
@@ -20,6 +21,13 @@ import (
 // testing to avoid rate limits.
 const LetsEncryptDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 
+// ZeroSSLDirectory is ZeroSSL's ACME directory. ZeroSSL is a standard RFC 8555
+// CA that additionally requires **External Account Binding** — the operator gets
+// an EAB key id + HMAC key from their ZeroSSL dashboard and the account is bound
+// to it at registration. Everything after that is identical ACME, so the same
+// order/challenge flow issues its certificates.
+const ZeroSSLDirectory = "https://acme.zerossl.com/v2/DV90"
+
 // LetsEncrypt is a real ACME (RFC 8555) issuer using HTTP-01 challenges.
 //
 // NOTE: issuance requires a reachable ACME server and a publicly-resolvable
@@ -32,6 +40,9 @@ type LetsEncrypt struct {
 	email       string
 	accountKey  crypto.Signer
 	propagation time.Duration // DNS-01 wait; 0 => DefaultPropagationDelay
+	// eab, when set, binds account registration to an external account (ZeroSSL
+	// and other EAB-requiring CAs). nil for Let's Encrypt.
+	eab *acme.ExternalAccountBinding
 }
 
 // NewLetsEncrypt constructs a Let's Encrypt issuer for the given directory URL
@@ -45,6 +56,44 @@ func NewLetsEncrypt(dirURL, email string) (*LetsEncrypt, error) {
 		return nil, err
 	}
 	return &LetsEncrypt{dirURL: dirURL, email: email, accountKey: key}, nil
+}
+
+// NewACMEIssuer constructs a generic RFC 8555 issuer, optionally with External
+// Account Binding. The HMAC key is the base64url (or standard base64) ZeroSSL
+// gives on its dashboard. When eabKID is empty it behaves like a plain ACME CA.
+func NewACMEIssuer(dirURL, email, eabKID, eabHMAC string) (*LetsEncrypt, error) {
+	if dirURL == "" {
+		return nil, errors.New("acme: a directory URL is required")
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	le := &LetsEncrypt{dirURL: dirURL, email: email, accountKey: key}
+	if eabKID != "" {
+		hmacKey, err := decodeEABKey(eabHMAC)
+		if err != nil {
+			return nil, err
+		}
+		le.eab = &acme.ExternalAccountBinding{KID: eabKID, Key: hmacKey}
+	}
+	return le, nil
+}
+
+// decodeEABKey accepts the EAB HMAC in base64url (ZeroSSL's form) or standard
+// base64, returning the raw key bytes.
+func decodeEABKey(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	if b, err := base64.URLEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return nil, errors.New("acme: EAB HMAC key is not valid base64")
 }
 
 // DefaultPropagationDelay is how long to wait after publishing a DNS-01 record
@@ -122,6 +171,11 @@ func (le *LetsEncrypt) issue(ctx context.Context, domain, chalType string,
 	acct := &acme.Account{}
 	if le.email != "" {
 		acct.Contact = []string{"mailto:" + le.email}
+	}
+	// ZeroSSL and other EAB CAs bind the new account to an external account at
+	// registration; Let's Encrypt leaves this nil.
+	if le.eab != nil {
+		acct.ExternalAccountBinding = le.eab
 	}
 	if _, err := client.Register(ctx, acct, acme.AcceptTOS); err != nil && !errors.Is(err, acme.ErrAccountAlreadyExists) {
 		return "", "", time.Time{}, err

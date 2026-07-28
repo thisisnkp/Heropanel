@@ -86,6 +86,40 @@ func listPHPExtensionsHandler(d Deps) http.HandlerFunc {
 	}
 }
 
+// getPHPOpcacheHandler returns a PHP version's shared-memory OPcache tuning
+// (PHP_INI_SYSTEM), read live from the host. Gated by "system.read".
+func getPHPOpcacheHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.PHP.GetVersionOPcache(r.Context(), r.URL.Query().Get("version"))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// setPHPOpcacheHandler applies a PHP version's shared-memory OPcache tuning.
+// Gated by "system.write" — it restarts FPM and affects every site on the
+// version, so it is server state, not a per-site setting.
+func setPHPOpcacheHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in php.VersionOPcache
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		audit.SetResource(r.Context(), "php-opcache", in.Version)
+		audit.AddDetail(r.Context(), "memory_consumption_mb", in.MemoryConsumptionMB)
+		audit.AddDetail(r.Context(), "jit_buffer_size_mb", in.JITBufferSizeMB)
+		out, err := d.PHP.SetVersionOPcache(r.Context(), in)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
 // setPHPExtensionHandler enables or disables an extension for a PHP version.
 // Gated by "system.write" — it restarts PHP-FPM and affects every site on that
 // version, which is emphatically not a per-site permission.

@@ -119,6 +119,16 @@ jobs:
           echo "$out"
           grep -q 'live via HeroPanel'  <<<"$out" || { echo '::error::PHP page was not served'; exit 1; }
 
+      - name: Per-site WAF (ModSecurity + OWASP CRS) blocks a real attack
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-waf.sh)
+          echo "$out"
+          # THE invariant: the same attack request is allowed with the WAF off and
+          # blocked (403) with it on, while normal traffic keeps serving.
+          grep -q 'THE WAF BLOCKED THE ATTACK' <<<"$out" || { echo '::error::the WAF did not block the attack'; exit 1; }
+          grep -q 'a normal request STILL serves (200) with the WAF on' <<<"$out" || { echo '::error::the WAF broke normal traffic'; exit 1; }
+          grep -q 'run-waf.sh : PASS' <<<"$out" || { echo '::error::run-waf.sh failed'; exit 1; }
+
       - name: Git deploy (clone + build + atomic swap + rollback) served by OpenLiteSpeed
         run: |
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git.sh)
@@ -387,6 +397,8 @@ jobs:
           grep -q 'the original database is untouched' <<<"$out" || { echo '::error::the db restore modified the original database'; exit 1; }
           grep -q "THE SNAPSHOT HOLDS THE PANEL'S OWN DATA" <<<"$out" || { echo '::error::the panel self-backup is not a usable snapshot'; exit 1; }
           grep -q 'a wrong key is refused' <<<"$out" || { echo '::error::hpd decrypt accepted a wrong key'; exit 1; }
+          grep -q 'RESTORED FROM THE SFTP SERVER' <<<"$out" || { echo '::error::the SFTP backup target did not round-trip'; exit 1; }
+          grep -q 'RESTORED FROM THE RCLONE REMOTE' <<<"$out" || { echo '::error::the rclone backup target did not round-trip'; exit 1; }
           grep -q 'run-backup.sh : PASS' <<<"$out" || { echo '::error::run-backup.sh failed'; exit 1; }
 
       - name: Mail — Postfix/Dovecot/OpenDKIM end to end
@@ -404,7 +416,51 @@ jobs:
           grep -q 'mail STILL DELIVERS while suspended' <<<"$out" || { echo '::error::suspension bounced incoming mail'; exit 1; }
           grep -q 'IMAP login is refused while suspended' <<<"$out" || { echo '::error::a suspended mailbox logged in'; exit 1; }
           grep -q 'the queue view shows the deferred message' <<<"$out" || { echo '::error::the queue view missed a deferred message'; exit 1; }
+          grep -q 'mail from a forged/unknown sender domain is REJECTED' <<<"$out" || { echo '::error::the inbound verification policy did not reject a forged sender'; exit 1; }
           grep -q 'run-mail.sh : PASS' <<<"$out" || { echo '::error::run-mail.sh failed'; exit 1; }
+
+      - name: Webmail — Roundcube served by the panel, real IMAP login
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-webmail.sh)
+          echo "$out"
+          # THE invariant: a real mailbox user signs in THROUGH Roundcube, which
+          # authenticates against the local Dovecot over TLS — the whole chain
+          # (OLS -> PHP -> Roundcube -> Dovecot), with a password the panel never
+          # stored, and a wrong password refused.
+          grep -q 'LOGGED IN THROUGH ROUNDCUBE' <<<"$out" || { echo '::error::a mailbox user could not log in through webmail'; exit 1; }
+          grep -q 'a wrong password is refused by Roundcube/Dovecot' <<<"$out" || { echo '::error::webmail accepted a wrong password'; exit 1; }
+          grep -q 'OpenLiteSpeed serves Roundcube' <<<"$out" || { echo '::error::the webmail vhost did not serve'; exit 1; }
+          grep -q 'run-webmail.sh : PASS' <<<"$out" || { echo '::error::run-webmail.sh failed'; exit 1; }
+
+      - name: Security — firewall auto-revert + EICAR quarantine
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-security.sh)
+          echo "$out"
+          # THE exit criterion: an unconfirmed firewall change undoes itself, a
+          # confirmed one sticks.
+          grep -q 'THE FIREWALL AUTO-REVERTED' <<<"$out" || { echo '::error::an unconfirmed firewall change did NOT auto-revert'; exit 1; }
+          grep -q 'the CONFIRMED ruleset is still live' <<<"$out" || { echo '::error::a confirmed firewall change was reverted'; exit 1; }
+          # THE exit criterion: a real ClamAV scan finds EICAR and quarantine
+          # removes it from the site into root-only storage.
+          grep -q 'the REAL clamscan detected EICAR' <<<"$out" || { echo '::error::clamscan did not detect the EICAR test file'; exit 1; }
+          grep -q 'the infected file is GONE from the site tree' <<<"$out" || { echo '::error::quarantine did not remove the infected file'; exit 1; }
+          grep -q 'the site user cannot read the quarantined file' <<<"$out" || { echo '::error::a quarantined file was still reachable by the site user'; exit 1; }
+          grep -q 'the file was restored to its original path' <<<"$out" || { echo '::error::quarantine restore did not return the file'; exit 1; }
+          grep -q 'password auth is OFF (key-only) in the effective config' <<<"$out" || { echo '::error::SSH hardening did not take effect'; exit 1; }
+          grep -q 'disabling BOTH auth methods is refused' <<<"$out" || { echo '::error::SSH self-lockout was not refused'; exit 1; }
+          grep -q "apt's effective config has unattended-upgrade ON" <<<"$out" || { echo '::error::auto security updates did not take effect'; exit 1; }
+          grep -q 'the input chain DROPS traffic from the block set' <<<"$out" || { echo '::error::the geo/IP block-list did not render into the ruleset'; exit 1; }
+          grep -q 'run-security.sh : PASS' <<<"$out" || { echo '::error::run-security.sh failed'; exit 1; }
+
+      - name: File-integrity monitoring (AIDE) detects a tampered file
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-fim.sh)
+          echo "$out"
+          grep -q 'the check is CLEAN immediately after the baseline' <<<"$out" || { echo '::error::FIM was not clean after init'; exit 1; }
+          grep -q 'THE FIM CHECK DETECTED THE TAMPERING' <<<"$out" || { echo '::error::FIM did not detect a changed file'; exit 1; }
+          grep -q 'the real lynis audit ran through the panel' <<<"$out" || { echo '::error::the lynis audit scanner did not run'; exit 1; }
+          grep -q 'the real rkhunter rootkit scan ran through the panel' <<<"$out" || { echo '::error::the rkhunter scanner did not run'; exit 1; }
+          grep -q 'run-fim.sh : PASS' <<<"$out" || { echo '::error::run-fim.sh failed'; exit 1; }
 
       - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
         run: |
@@ -412,7 +468,7 @@ jobs:
           echo "$out"
           # The only suite that runs hpd's control-plane store on MariaDB, so it
           # is also the only thing exercising the mysql migrations at all.
-          grep -q 'ok   all 26 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
+          grep -q 'ok   all 36 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
           # The chain must verify against the engine that ships, not just SQLite:
           # MariaDB pads DATETIME(6) to six digits and the hash covers the stored bytes.
           grep -q 'ok   chain intact on MariaDB'   <<<"$out" || { echo '::error::the audit chain does not verify on MariaDB'; exit 1; }
@@ -480,6 +536,10 @@ jobs:
           echo "$out"
           grep -q 'www.example.test A  = 203.0.113.20' <<<"$out" || { echo '::error::DNS record not resolved by dig'; exit 1; }
           grep -q '"capability":"dns.write_zone","outcome":"success"' <<<"$out" || { echo '::error::dns.write_zone did not succeed'; exit 1; }
+          grep -q 'DNSSEC signed = yes' <<<"$out" || { echo '::error::DNSSEC signing did not complete'; exit 1; }
+          grep -q 'DS present via API = yes' <<<"$out" || { echo '::error::DNSSEC DS record not read back'; exit 1; }
+          grep -q 'zone export = ok' <<<"$out" || { echo '::error::zone export failed'; exit 1; }
+          grep -q 'imported record served = yes' <<<"$out" || { echo '::error::zone import did not serve'; exit 1; }
 
       - name: Domains (alias serves, redirect 301s, force-HTTPS 301s)
         run: |
@@ -500,6 +560,24 @@ jobs:
           out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-acme.sh)
           echo "$out"
           grep -q 'run-acme.sh : PASS' <<<"$out" || { echo '::error::real ACME issuance against Pebble failed'; exit 1; }
+
+      - name: ZeroSSL EAB issuance against Pebble (external account binding)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-zerossl.sh)
+          echo "$out"
+          grep -q 'run-zerossl.sh : PASS' <<<"$out" || { echo '::error::ZeroSSL EAB issuance failed'; exit 1; }
+
+      - name: PostgreSQL engine (create/role/grant + export→import round trip)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-postgres.sh)
+          echo "$out"
+          grep -q 'run-postgres.sh : PASS' <<<"$out" || { echo '::error::PostgreSQL engine e2e failed'; exit 1; }
+
+      - name: Rotating data-key envelope (rotate + persist + reload on restart)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-keyring.sh)
+          echo "$out"
+          grep -q 'run-keyring.sh : PASS' <<<"$out" || { echo '::error::data-key rotation e2e failed'; exit 1; }
 
       - name: Installer execute/resume/rollback on Ubuntu (apt)
         run: |

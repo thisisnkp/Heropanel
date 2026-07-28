@@ -140,6 +140,12 @@ type Service struct {
 	dbs     DBs // nil = no database module
 	now     func() time.Time
 
+	// sweepInterval is how often the schedulers re-check for due backups.
+	// Zero means the default (one hour). A short interval is for tests/e2e —
+	// due-ness is still governed by each policy's interval_hours, so a fast
+	// sweep does not mean fast backups, only a prompt reaction to a due one.
+	sweepInterval time.Duration
+
 	// Panel self-backup (see panel.go); nil = not wired.
 	panelRepo   PanelRepo
 	panelSnap   PanelSnapshotter
@@ -161,6 +167,36 @@ func NewService(repo Repo, sites Sites, gw broker.Gateway, key []byte, s3 Target
 
 // WithDBs wires the database module so backups can carry a database dump.
 func (s *Service) WithDBs(d DBs) *Service { s.dbs = d; return s }
+
+// WithTarget registers an additional storage target by name (e.g. an SFTP
+// destination). Returns s for chaining. A nil target is ignored.
+func (s *Service) WithTarget(name string, t Target) *Service {
+	if t != nil && name != "" {
+		s.targets[name] = t
+	}
+	return s
+}
+
+// HasTarget reports whether a named target is registered.
+func (s *Service) HasTarget(name string) bool { _, ok := s.targets[name]; return ok }
+
+// WithSweepInterval overrides how often the schedulers re-check for due
+// backups (default one hour). Mainly for e2e, which cannot wait an hour to see
+// a schedule fire. A value ≤ 0 keeps the default.
+func (s *Service) WithSweepInterval(d time.Duration) *Service {
+	if d > 0 {
+		s.sweepInterval = d
+	}
+	return s
+}
+
+// sweepEvery returns the effective scheduler tick.
+func (s *Service) sweepEvery() time.Duration {
+	if s.sweepInterval > 0 {
+		return s.sweepInterval
+	}
+	return time.Hour
+}
 
 // Available reports whether backups can run at all.
 func (s *Service) Available() bool {
@@ -657,7 +693,11 @@ func (s *Service) RunScheduler(ctx context.Context, sitesByID func(ctx context.C
 	if !s.Available() {
 		return
 	}
-	t := time.NewTicker(time.Hour)
+	// Sweep once at startup: a backup that came due while hpd was down must not
+	// wait up to a whole tick to run. This is the difference between a schedule
+	// that is *stored* and one that actually *fires*.
+	s.sweepDue(ctx, sitesByID, log)
+	t := time.NewTicker(s.sweepEvery())
 	defer t.Stop()
 	for {
 		select {

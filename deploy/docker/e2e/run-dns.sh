@@ -62,7 +62,56 @@ api -X DELETE $base/api/v1/dns/records/$wwwuid >/dev/null
 sleep 1
 echo -n "www.example.test A after delete = "; dig @127.0.0.1 www.example.test A +short; echo "(empty above = deleted)"
 
-sec "broker audit (dns.write_zone / dns.remove_zone outcomes)"
+sec "*** EXPORT the zone as a master file ***"
+EXP=$(api $base/api/v1/dns/zones/$uid/export)
+echo "$EXP" | head -6
+if grep -q "IN\s*SOA" <<<"$EXP" && grep -q "203.0.113.10" <<<"$EXP"; then
+  echo "zone export = ok"
+else
+  echo "zone export = FAIL"
+fi
+
+sec "*** IMPORT a master file into a fresh zone, then dig it ***"
+api -X POST $base/api/v1/dns/zones -H 'Content-Type: application/json' \
+  -d '{"name":"import.test","primary_ns":"ns1.import.test","admin_email":"admin@import.test","ns_ip":"203.0.113.3"}' >/dev/null
+iuid=$(api "$base/api/v1/dns/zones" | grep -oE '"uid":"[^"]+","name":"import.test"' | grep -oE '"uid":"[^"]+"' | cut -d'"' -f4)
+IMPORTED=$(api -X POST $base/api/v1/dns/zones/$iuid/import -H 'Content-Type: application/json' -d '{
+  "zone_file":"$ORIGIN import.test.\n$TTL 3600\nshop\tIN\tA\t198.51.100.7\nmail\tIN\tMX\t5 mx.import.test.\n@\tIN\tTXT\t\"hello world\"\nbad\tIN\tDNSKEY\t257 3 13 xx\n"
+}')
+echo "import result: $IMPORTED"
+grep -q '"imported":3' <<<"$IMPORTED" && echo "import count = ok (3)" || echo "import count = FAIL"
+grep -q 'skipped' <<<"$IMPORTED" && echo "import skipped unsupported = ok"
+sleep 1
+echo -n "shop.import.test A = "; dig @127.0.0.1 shop.import.test A +short
+dig @127.0.0.1 shop.import.test A +short | grep -q '198.51.100.7' && echo "imported record served = yes" || echo "imported record served = no"
+
+sec "*** DNSSEC: enable inline signing, dig DNSKEY, read DS for the registrar ***"
+# BIND inline-signing writes the signed zone + journal next to the zone file, so
+# in this container we make the zones dir writable by bind (production runs named
+# with the right ownership from the installer). The broker already chowns the
+# key-directory when it sees a dnssec-policy in named.conf.
+chown -R bind:bind /etc/bind/zones 2>/dev/null || true
+api -X PUT $base/api/v1/dns/zones/$uid/dnssec -H 'Content-Type: application/json' -d '{"enabled":true}' >/dev/null
+echo "dnssec enabled; waiting for BIND to sign…"
+signed=""
+for i in $(seq 1 40); do
+  DK=$(dig @127.0.0.1 example.test DNSKEY +short 2>/dev/null)
+  if [ -n "$DK" ]; then signed=yes; break; fi
+  sleep 1
+done
+echo -n "example.test DNSKEY = "; dig @127.0.0.1 example.test DNSKEY +short | head -2
+echo "DNSSEC signed = ${signed:-no}"
+ST=$(api $base/api/v1/dns/zones/$uid/dnssec)
+echo "dnssec status: $ST"
+if grep -q '"signed":true' <<<"$ST" && grep -qE '"ds":\["[^"]' <<<"$ST"; then
+  echo "DS present via API = yes"
+else
+  echo "DS present via API = no"
+fi
+# The zone view now reports dnssec on.
+api $base/api/v1/dns/zones/$uid | grep -q '"dnssec_enabled":true' && echo "zone view dnssec_enabled = yes"
+
+sec "broker audit (dns.write_zone / dns.remove_zone / dns.dnssec_status outcomes)"
 grep -oE '"capability":"dns\.[a-z_]+","outcome":"[^"]+"' /tmp/broker.log
 
 sec "named log tail"

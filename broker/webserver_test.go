@@ -16,6 +16,9 @@ import (
 func newBrokerWithFS(t *testing.T, runner exec.Runner) (*brokerd.Broker, *fsys.Fake) {
 	t.Helper()
 	fake := fsys.NewFake()
+	// phpenmod present => the PHP capabilities detect the Debian layout, which is
+	// what these tests assert paths for. (RHEL/Remi paths are covered separately.)
+	_ = fake.WriteFile("/usr/sbin/phpenmod", nil, 0o755)
 	b := brokerd.New(brokerd.DefaultRegistry(), policy.Default(), audit.NewChain(nil), runner, nil)
 	b.SetFS(fake)
 	return b, fake

@@ -14,17 +14,12 @@ import { RecordingsTable } from "./RecordingsTable";
 export function RecordingsPage() {
   const [offset, setOffset] = useState(0);
   const [q, setQ] = useState("");
-  const { data, isLoading, error, isFetching } = useAllRecordings(offset);
+  // The search runs on the server across ALL history, so a query is not limited
+  // to the loaded page. Reset paging whenever the query changes.
+  const { data, isLoading, error, isFetching } = useAllRecordings(offset, q);
+  const searching = q.trim() !== "";
 
   const recordings = useMemo(() => data ?? [], [data]);
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return recordings;
-    return recordings.filter((r) =>
-      [r.actor_email, r.system_user, r.site_name, r.site_uid, r.actor_ip]
-        .some((f) => (f ?? "").toLowerCase().includes(needle)),
-    );
-  }, [recordings, q]);
 
   if (error) {
     return (
@@ -48,15 +43,13 @@ export function RecordingsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Filter by person, site, Linux user, or IP"
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOffset(0);
+          }}
+          placeholder="Search all history by person, site, Linux user, or IP"
           className="max-w-sm"
         />
-        {q && (
-          <span className="text-xs text-muted">
-            {filtered.length} of {recordings.length} shown
-          </span>
-        )}
         {isFetching && <Spinner />}
       </div>
 
@@ -64,21 +57,22 @@ export function RecordingsPage() {
         <Spinner />
       ) : recordings.length === 0 ? (
         <EmptyState
-          title={offset > 0 ? "No older sessions" : "No recorded sessions"}
-          hint="Sessions are recorded automatically once a terminal is opened, and kept for the configured retention period."
+          title={searching ? "No matching sessions" : offset > 0 ? "No older sessions" : "No recorded sessions"}
+          hint={
+            searching
+              ? "The search covers all recorded history — no session matches that query."
+              : "Sessions are recorded automatically once a terminal is opened, and kept for the configured retention period."
+          }
         />
-      ) : filtered.length === 0 ? (
-        <EmptyState title="Nothing matches that filter" hint="The filter searches the sessions loaded below." />
       ) : (
-        <RecordingsTable recordings={filtered} showSite />
+        <RecordingsTable recordings={recordings} showSite />
       )}
 
       {(offset > 0 || atPageLimit) && (
         <div className="flex items-center justify-between">
-          {/* The filter only searches what is loaded, so say so rather than
-              letting an auditor read "no results" as "no such session". */}
           <span className="text-xs text-muted">
-            Showing sessions {offset + 1}–{offset + recordings.length}. The filter searches this page only.
+            {searching ? "Search results" : `Showing sessions ${offset + 1}–${offset + recordings.length}`}
+            {searching ? " across all history." : ""}
           </span>
           <div className="flex gap-2">
             <Button

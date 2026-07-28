@@ -47,7 +47,14 @@ var ErrNoCipher = errors.New("secrets: no master key configured")
 // from Seal/Open, so callers can wire an unconfigured panel without nil checks
 // at every use site.
 type Cipher struct {
-	aead cipher.AEAD
+	aead cipher.AEAD // legacy hp1 column-sealing key (HKDF of the master)
+	// wrap seals/unwraps data keys under the master (envelope, keyring.go). nil
+	// when the Cipher was built without a master.
+	wrap cipher.AEAD
+	// dataKeys holds unwrapped data keys by generation; active is the generation
+	// new values seal under (0 => legacy hp1). Empty until a keyring is loaded.
+	dataKeys map[int]dataKey
+	active   int
 }
 
 // New derives a Cipher from a master key, which must be exactly MasterKeyLen
@@ -68,7 +75,11 @@ func New(masterKey []byte) (*Cipher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("secrets: new gcm: %w", err)
 	}
-	return &Cipher{aead: aead}, nil
+	wrap, err := keyWrapAEAD(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: derive key-wrap key: %w", err)
+	}
+	return &Cipher{aead: aead, wrap: wrap, dataKeys: map[int]dataKey{}}, nil
 }
 
 // FromBase64 derives a Cipher from a base64-encoded (standard or raw, padded or
@@ -133,12 +144,24 @@ func (c *Cipher) Seal(plaintext []byte, aad string) (string, error) {
 	if aad == "" {
 		return "", errors.New("secrets: aad is required")
 	}
-	nonce := make([]byte, c.aead.NonceSize())
+	// With a keyring loaded, seal under the active data key (hp2.<gen>.…);
+	// otherwise fall back to the legacy single-key hp1 format, unchanged.
+	aead := c.aead
+	prefix := version + "."
+	if c.active > 0 {
+		dk, ok := c.dataKeys[c.active]
+		if !ok {
+			return "", fmt.Errorf("secrets: active data key %d not loaded", c.active)
+		}
+		aead = dk.aead
+		prefix = versionKeyed + "." + strconv.Itoa(c.active) + "."
+	}
+	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("secrets: nonce: %w", err)
 	}
-	sealed := c.aead.Seal(nonce, nonce, plaintext, []byte(aad))
-	return version + "." + base64.RawURLEncoding.EncodeToString(sealed), nil
+	sealed := aead.Seal(nonce, nonce, plaintext, []byte(aad))
+	return prefix + base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
 // Open decrypts a stored blob. It fails if the blob was tampered with, was
@@ -148,18 +171,40 @@ func (c *Cipher) Open(blob, aad string) ([]byte, error) {
 		return nil, ErrNoCipher
 	}
 	tag, body, ok := strings.Cut(blob, ".")
-	if !ok || tag != version {
+	if !ok {
+		return nil, errors.New("secrets: unrecognized ciphertext format")
+	}
+	// Pick the AEAD by format: hp1 => the legacy key; hp2.<gen> => that data key.
+	aead := c.aead
+	switch tag {
+	case version: // hp1
+	case versionKeyed: // hp2.<gen>.<base64>
+		genStr, rest, ok := strings.Cut(body, ".")
+		if !ok {
+			return nil, errors.New("secrets: unrecognized ciphertext format")
+		}
+		gen, err := strconv.Atoi(genStr)
+		if err != nil {
+			return nil, errors.New("secrets: unrecognized ciphertext format")
+		}
+		dk, ok := c.dataKeys[gen]
+		if !ok {
+			return nil, fmt.Errorf("secrets: data key generation %d is not available", gen)
+		}
+		aead = dk.aead
+		body = rest
+	default:
 		return nil, errors.New("secrets: unrecognized ciphertext format")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(body)
 	if err != nil {
 		return nil, errors.New("secrets: ciphertext is not valid base64")
 	}
-	ns := c.aead.NonceSize()
-	if len(raw) < ns+c.aead.Overhead() {
+	ns := aead.NonceSize()
+	if len(raw) < ns+aead.Overhead() {
 		return nil, errors.New("secrets: ciphertext is too short")
 	}
-	plaintext, err := c.aead.Open(nil, raw[:ns], raw[ns:], []byte(aad))
+	plaintext, err := aead.Open(nil, raw[:ns], raw[ns:], []byte(aad))
 	if err != nil {
 		// Deliberately opaque: never leak whether the key, the AAD, or the bytes
 		// were wrong.

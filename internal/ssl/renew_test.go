@@ -63,7 +63,7 @@ func TestIssueDNSPublishesChallengeAndRecordsWildcard(t *testing.T) {
 	svc.WithDNS(dnsp)
 	ctx := context.Background()
 
-	cert, err := svc.IssueDNS(ctx, 1, "*.example.com")
+	cert, err := svc.IssueDNS(ctx, 1, "*.example.com", "")
 	if err != nil {
 		t.Fatalf("issue dns: %v", err)
 	}
@@ -94,19 +94,19 @@ func TestIssueDNSRequiresDNSProviderAndIssuer(t *testing.T) {
 
 	// No DNS provider wired.
 	svc, _ := newSvc(t, &fakeDNSACME{})
-	if _, err := svc.IssueDNS(ctx, 1, "*.example.com"); !errx.IsKind(err, errx.KindUnavailable) {
+	if _, err := svc.IssueDNS(ctx, 1, "*.example.com", ""); !errx.IsKind(err, errx.KindUnavailable) {
 		t.Fatalf("want unavailable without a DNS provider, got %v", err)
 	}
 	// Issuer that only supports HTTP-01.
 	svc2, _ := newSvc(t, &fakeACME{})
 	svc2.WithDNS(newDNSProvider())
-	if _, err := svc2.IssueDNS(ctx, 1, "*.example.com"); !errx.IsKind(err, errx.KindUnavailable) {
+	if _, err := svc2.IssueDNS(ctx, 1, "*.example.com", ""); !errx.IsKind(err, errx.KindUnavailable) {
 		t.Fatalf("want unavailable for an HTTP-01-only issuer, got %v", err)
 	}
 	// Bad domain.
 	svc3, _ := newSvc(t, &fakeDNSACME{})
 	svc3.WithDNS(newDNSProvider())
-	if _, err := svc3.IssueDNS(ctx, 1, "not-a-domain"); !errx.IsKind(err, errx.KindValidation) {
+	if _, err := svc3.IssueDNS(ctx, 1, "not-a-domain", ""); !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation for a bad domain, got %v", err)
 	}
 }
@@ -121,10 +121,10 @@ func TestRenewerRenewsDueCertificates(t *testing.T) {
 	if _, err := svc.IssueSelfSigned(ctx, 1, "self.example.com"); err != nil {
 		t.Fatalf("self-signed: %v", err)
 	}
-	if _, err := svc.Issue(ctx, 1, "http.example.com", "/srv/site/public"); err != nil {
+	if _, err := svc.Issue(ctx, 1, "http.example.com", "/srv/site/public", ""); err != nil {
 		t.Fatalf("http-01: %v", err)
 	}
-	if _, err := svc.IssueDNS(ctx, 1, "*.wild.example.com"); err != nil {
+	if _, err := svc.IssueDNS(ctx, 1, "*.wild.example.com", ""); err != nil {
 		t.Fatalf("dns-01: %v", err)
 	}
 

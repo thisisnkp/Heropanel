@@ -18,7 +18,7 @@ func NewDNSStore(db *DB) *DNSStore { return &DNSStore{db: db} }
 
 var _ dns.Repo = (*DNSStore)(nil)
 
-const dnsZoneCols = `id, uid, owner_id, name, primary_ns, admin_email, serial, refresh, retry, expire, minimum, ttl, status, created_at, updated_at`
+const dnsZoneCols = `id, uid, owner_id, name, primary_ns, admin_email, serial, refresh, retry, expire, minimum, ttl, status, dnssec_enabled, created_at, updated_at`
 
 func (s *DNSStore) InsertZone(ctx context.Context, z *dns.ZoneRow) error {
 	if z.UID == "" {
@@ -98,6 +98,13 @@ func (s *DNSStore) DeleteZone(ctx context.Context, uid string) error {
 
 func (s *DNSStore) SetSerial(ctx context.Context, zoneID, serial int64) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE dns_zones SET serial = ? WHERE id = ?`, serial, zoneID); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+func (s *DNSStore) SetDNSSEC(ctx context.Context, zoneID int64, enabled bool) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE dns_zones SET dnssec_enabled = ? WHERE id = ?`, enabled, zoneID); err != nil {
 		return errx.Internal(err)
 	}
 	return nil

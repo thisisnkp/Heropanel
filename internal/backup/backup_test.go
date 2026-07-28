@@ -237,7 +237,15 @@ func (m *memRepo) UpsertConfig(_ context.Context, siteID int64, c Config) error 
 	m.cfg[siteID] = &c
 	return nil
 }
-func (m *memRepo) EnabledConfigs(context.Context) ([]ConfigRow, error) { return nil, nil }
+func (m *memRepo) EnabledConfigs(context.Context) ([]ConfigRow, error) {
+	var out []ConfigRow
+	for id, c := range m.cfg {
+		if c.Enabled {
+			out = append(out, ConfigRow{SiteID: id, Config: *c})
+		}
+	}
+	return out, nil
+}
 
 type fakeSites struct{}
 
@@ -285,6 +293,43 @@ func newTestService(t *testing.T) (*Service, *memRepo, *fakeGW, *fakeDBs, string
 		dbs: dbs, now: time.Now,
 	}
 	return svc, repo, gw, dbs, dir
+}
+
+// The scheduler must actually FIRE, not merely store a schedule: an enabled
+// policy with no prior backup is due, and RunScheduler sweeps once at startup
+// — so a backup appears without anyone calling Create.
+func TestSchedulerFiresDueBackupOnStartup(t *testing.T) {
+	svc, repo, _, _, _ := newTestService(t)
+	repo.cfg = map[int64]*Config{1: {Enabled: true, IntervalHours: 24, Target: TargetLocal, KeepChains: 2}}
+	svc.WithSweepInterval(50 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go svc.RunScheduler(ctx, func(context.Context, int64) (string, bool) { return "S1", true }, nil)
+
+	// Poll briefly: the startup sweep should produce exactly one backup.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if recs, _ := repo.ListBySiteID(t.Context(), 1); len(recs) >= 1 {
+			return // fired
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the scheduler never fired a due backup")
+}
+
+// A backup that is NOT yet due (a recent one exists, interval not elapsed) is
+// left alone — the sweep reacts to due-ness, not to its own tick.
+func TestSchedulerSkipsWhenNotDue(t *testing.T) {
+	svc, repo, _, _, _ := newTestService(t)
+	repo.cfg = map[int64]*Config{1: {Enabled: true, IntervalHours: 24, Target: TargetLocal, KeepChains: 2}}
+	// A backup from a minute ago: nowhere near the 24h interval.
+	repo.recs = []Record{{SiteID: 1, UID: "recent", CreatedAt: svc.now().UTC().Add(-time.Minute).Format("2006-01-02 15:04:05")}}
+
+	svc.sweepDue(t.Context(), func(context.Context, int64) (string, bool) { return "S1", true }, nil)
+	if recs, _ := repo.ListBySiteID(t.Context(), 1); len(recs) != 1 {
+		t.Fatalf("a not-due sweep created a backup: %d records", len(recs))
+	}
 }
 
 // A policy naming a database makes every backup carry a second sealed object:

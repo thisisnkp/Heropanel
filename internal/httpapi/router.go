@@ -25,14 +25,17 @@ import (
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/keyring"
 	"github.com/thisisnkp/heropanel/internal/mail"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
+	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/terminal"
+	"github.com/thisisnkp/heropanel/internal/webmail"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	"github.com/thisisnkp/heropanel/web"
 )
@@ -56,6 +59,7 @@ type Deps struct {
 	Auth      *auth.Service     // nil when no datastore is configured
 	Audit     *audit.Service    // nil when no datastore is configured
 	Users     UserDirectory     // nil when no datastore is configured
+	Keyring   *keyring.Service  // rotating data-key envelope; nil without a datastore
 	Sites     *site.Service     // nil when no datastore is configured
 	PHP       *php.Service      // nil when no datastore is configured
 	Databases *database.Service // nil when no datastore is configured
@@ -80,6 +84,25 @@ type Deps struct {
 	Cron    *cron.Service    // nil when no datastore is configured
 	Backups *backup.Service  // nil when no datastore is configured
 	Mail    *mail.Service    // nil when no datastore is configured
+	// Webmail integrates Roundcube served by the panel. Nil without a broker or
+	// a configured webmail hostname.
+	Webmail *webmail.Service
+	// Firewall manages the host nftables ruleset with a rollback timer. Nil
+	// when no datastore/broker — every apply is a privileged capability.
+	Firewall *security.Firewall
+	// Malware scans site trees and quarantines detections. Nil without the
+	// broker/datastore.
+	Malware *security.Malware
+	// Fail2Ban surfaces jails and bans. Nil without the broker.
+	Fail2Ban *security.Fail2Ban
+	// SSH hardens the host sshd (key-only, port, root login). Nil without the broker.
+	SSH *security.SSH
+	// Updates configures automatic security updates. Nil without the broker.
+	Updates *security.Updates
+	// FIM is file-integrity monitoring (AIDE). Nil without the broker.
+	FIM *security.FIM
+	// AuditScan runs the host audit scanners (rkhunter, lynis). Nil without the broker.
+	AuditScan *security.Audit
 	// Monitor samples node health for the dashboard. It needs no datastore or
 	// broker (node metrics come from world-readable /proc), so it is present
 	// whenever hpd is.
@@ -105,6 +128,10 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(exposeRequestID())
 	r.Use(middleware.RealIP)
+	// Panel IP-allowlist: sits right after RealIP so a disallowed address is
+	// turned away before it reaches any handler or audit trail. No-op when the
+	// list is empty (the default).
+	r.Use(ipAllowlist(d.Config.Security.PanelIPAllowlist))
 	r.Use(recoverer(d.Logger))
 	r.Use(securityHeaders(d.Config.Server.TLS.Enabled))
 	r.Use(cors(d.Config.Security.CORS))
@@ -156,9 +183,21 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/auth/mfa", mfaCompleteHandler(d)) // completes an MFA login (pre-session)
 				r.With(requireAuth).Post("/auth/logout", logoutHandler(d))
 				r.With(requireAuth).Get("/auth/me", meHandler)
+				r.With(requireAuth).Get("/auth/sessions", listSessionsHandler(d))
+				r.With(requireAuth).Delete("/auth/sessions/{uid}", revokeSessionHandler(d))
+				r.With(requireAuth).Post("/auth/sessions/revoke-others", revokeOtherSessionsHandler(d))
 				r.With(requireAuth).Post("/auth/mfa/setup", mfaSetupHandler(d))
 				r.With(requireAuth).Post("/auth/mfa/enable", mfaEnableHandler(d))
 				r.With(requireAuth).Post("/auth/mfa/disable", mfaDisableHandler(d))
+
+				// Passkeys (WebAuthn). Login is passwordless (unauthenticated);
+				// registration and management require a session.
+				r.Post("/auth/webauthn/login/begin", passkeyLoginBeginHandler(d))
+				r.Post("/auth/webauthn/login/finish", passkeyLoginFinishHandler(d))
+				r.With(requireAuth).Get("/account/passkeys", listPasskeysHandler(d))
+				r.With(requireAuth).Post("/account/passkeys/register/begin", passkeyRegisterBeginHandler(d))
+				r.With(requireAuth).Post("/account/passkeys/register/finish", passkeyRegisterFinishHandler(d))
+				r.With(requireAuth).Delete("/account/passkeys/{uid}", deletePasskeyHandler(d))
 
 				// API keys (scoped programmatic access).
 				r.With(requireAuth).Get("/account/api-keys", listAPIKeysHandler(d))
@@ -184,6 +223,8 @@ func NewRouter(d Deps) http.Handler {
 					// site restart everyone else's.
 					r.With(requirePermission("system.read")).Get("/php/extensions", listPHPExtensionsHandler(d))
 					r.With(requirePermission("system.write")).Post("/php/extensions", setPHPExtensionHandler(d))
+					r.With(requirePermission("system.read")).Get("/php/opcache", getPHPOpcacheHandler(d))
+					r.With(requirePermission("system.write")).Put("/php/opcache", setPHPOpcacheHandler(d))
 				}
 				if d.Databases != nil {
 					r.With(requirePermission("database.read")).Get("/databases", listDatabasesHandler(d))
@@ -222,12 +263,17 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/suspend", suspendSiteHandler(d))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/resume", resumeSiteHandler(d))
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/clone", cloneSiteHandler(d))
+					r.With(requirePermission("site.write")).Put("/sites/{uid}/waf", setSiteWAFHandler(d))
 				}
 				if d.DNS != nil {
 					r.With(requirePermission("dns.read")).Get("/dns/zones", listZonesHandler(d))
 					r.With(requirePermission("dns.write")).Post("/dns/zones", createZoneHandler(d))
 					r.With(requirePermission("dns.read")).Get("/dns/zones/{uid}", getZoneHandler(d))
 					r.With(requirePermission("dns.write")).Delete("/dns/zones/{uid}", deleteZoneHandler(d))
+					r.With(requirePermission("dns.read")).Get("/dns/zones/{uid}/export", exportZoneHandler(d))
+					r.With(requirePermission("dns.write")).Post("/dns/zones/{uid}/import", importZoneHandler(d))
+					r.With(requirePermission("dns.read")).Get("/dns/zones/{uid}/dnssec", getDNSSECHandler(d))
+					r.With(requirePermission("dns.write")).Put("/dns/zones/{uid}/dnssec", setDNSSECHandler(d))
 					r.With(requirePermission("dns.read")).Get("/dns/zones/{uid}/records", listRecordsHandler(d))
 					r.With(requirePermission("dns.write")).Post("/dns/zones/{uid}/records", createRecordHandler(d))
 					r.With(requirePermission("dns.write")).Delete("/dns/records/{uid}", deleteRecordHandler(d))
@@ -248,6 +294,7 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("file.read")).Get("/sites/{uid}/files/content", readFileHandler(d))
 					r.With(requirePermission("file.read")).Get("/sites/{uid}/files/archive", archiveFileHandler(d))
 					r.With(requirePermission("file.write")).Put("/sites/{uid}/files/content", writeFileHandler(d))
+					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/upload-archive", uploadArchiveHandler(d))
 					r.With(requirePermission("file.write")).Delete("/sites/{uid}/files", deleteFileHandler(d))
 					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/mkdir", mkdirFileHandler(d))
 					r.With(requirePermission("file.write")).Post("/sites/{uid}/files/rename", renameFileHandler(d))
@@ -410,6 +457,55 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("system.write")).Post("/system/backups", createPanelBackupHandler(d))
 					r.With(requirePermission("system.write")).Delete("/system/backups/{uid}", deletePanelBackupHandler(d))
 				}
+				if d.Keyring != nil {
+					r.With(requirePermission("system.read")).Get("/system/keyring", keyringStatusHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/keyring/rotate", rotateKeyringHandler(d))
+				}
+				if d.Firewall != nil {
+					// The firewall is host-wide and can lock the box out, so it
+					// carries its own permission pair and applies are two-phase.
+					r.With(requirePermission("security.read")).Get("/firewall", listFirewallHandler(d))
+					r.With(requirePermission("security.read")).Get("/firewall/status", firewallStatusHandler(d))
+					r.With(requirePermission("security.write")).Post("/firewall/rules", addFirewallRuleHandler(d))
+					r.With(requirePermission("security.write")).Delete("/firewall/rules/{uid}", deleteFirewallRuleHandler(d))
+					r.With(requirePermission("security.write")).Post("/firewall/apply", applyFirewallHandler(d))
+					r.With(requirePermission("security.write")).Post("/firewall/confirm", confirmFirewallHandler(d))
+					r.With(requirePermission("security.write")).Post("/firewall/rollback", rollbackFirewallHandler(d))
+					r.With(requirePermission("security.read")).Get("/firewall/iplist", listFirewallIPEntriesHandler(d))
+					r.With(requirePermission("security.write")).Post("/firewall/iplist", addFirewallIPEntryHandler(d))
+					r.With(requirePermission("security.write")).Delete("/firewall/iplist/{uid}", deleteFirewallIPEntryHandler(d))
+					r.With(requirePermission("security.read")).Get("/firewall/countries", listFirewallCountriesHandler(d))
+					r.With(requirePermission("security.write")).Post("/firewall/countries", importFirewallCountryHandler(d))
+					r.With(requirePermission("security.write")).Delete("/firewall/countries/{cc}", removeFirewallCountryHandler(d))
+				}
+				if d.Malware != nil {
+					r.With(requirePermission("security.write")).Post("/sites/{uid}/scan", scanSiteHandler(d))
+					r.With(requirePermission("security.read")).Get("/security/quarantine", listQuarantineHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/quarantine", quarantineHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/quarantine/{uid}/restore", restoreQuarantineHandler(d))
+					r.With(requirePermission("security.write")).Delete("/security/quarantine/{uid}", deleteQuarantineHandler(d))
+				}
+				if d.Fail2Ban != nil {
+					r.With(requirePermission("security.read")).Get("/security/fail2ban", fail2banHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/fail2ban/ban", fail2banActionHandler(d, false))
+					r.With(requirePermission("security.write")).Post("/security/fail2ban/unban", fail2banActionHandler(d, true))
+				}
+				if d.SSH != nil {
+					r.With(requirePermission("security.read")).Get("/security/ssh", sshStatusHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/ssh", hardenSSHHandler(d))
+				}
+				if d.Updates != nil {
+					r.With(requirePermission("security.read")).Get("/security/updates", updatesStatusHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/updates", configureUpdatesHandler(d))
+				}
+				if d.FIM != nil {
+					r.With(requirePermission("security.read")).Get("/security/fim", fimStatusHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/fim/init", fimInitHandler(d))
+					r.With(requirePermission("security.read")).Post("/security/fim/check", fimCheckHandler(d))
+				}
+				if d.AuditScan != nil {
+					r.With(requirePermission("security.read")).Post("/security/audit/{tool}", auditScanHandler(d))
+				}
 				if d.Mail != nil {
 					// Mail carries its own permission pair: a mail domain is not
 					// a site, and site.write must not reach anyone's mailboxes.
@@ -429,6 +525,17 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("mail.read")).Get("/mail/queue", mailQueueHandler(d))
 					r.With(requirePermission("mail.write")).Post("/mail/queue/flush", flushMailQueueHandler(d))
 					r.With(requirePermission("mail.write")).Post("/mail/queue/delete", deleteMailQueueHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/tls", mailTLSStatusHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/tls", enableMailTLSHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/inbound", mailInboundStatusHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/inbound", setMailInboundHandler(d))
+					r.With(requirePermission("mail.read")).Get("/mail/authverify", mailAuthVerifyStatusHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/authverify", setMailAuthVerifyHandler(d))
+				}
+				if d.Webmail != nil {
+					r.With(requirePermission("mail.read")).Get("/webmail", webmailStatusHandler(d))
+					r.With(requirePermission("mail.write")).Post("/webmail/install", installWebmailHandler(d))
+					r.With(requirePermission("mail.write")).Post("/mail/accounts/{uid}/webmail-sso", webmailSSOHandler(d))
 				}
 				if d.Jobs != nil {
 					r.With(requireAuth).Get("/jobs", listJobsHandler(d))

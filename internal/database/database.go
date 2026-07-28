@@ -16,6 +16,36 @@ import (
 
 var reName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
+// Engines the panel manages. Each maps to a broker capability prefix ("db" for
+// MariaDB, "pg" for PostgreSQL) — the SQL differs but the orchestration is the
+// same render → broker → record shape.
+const (
+	EngineMariaDB  = "mariadb"
+	EnginePostgres = "postgres"
+)
+
+// normalizeEngine validates the engine, defaulting to MariaDB.
+func normalizeEngine(engine string) (string, error) {
+	switch engine {
+	case "", EngineMariaDB:
+		return EngineMariaDB, nil
+	case EnginePostgres:
+		return EnginePostgres, nil
+	default:
+		return "", errx.Validation("invalid_engine", "Engine must be \"mariadb\" or \"postgres\".",
+			errx.Field{Field: "engine", Code: "unsupported", Message: "unknown engine"})
+	}
+}
+
+// brokerCap returns the broker capability name for an engine + operation, e.g.
+// ("postgres", "user.create") => "pg.user.create".
+func brokerCap(engine, op string) string {
+	if engine == EnginePostgres {
+		return "pg." + op
+	}
+	return "db." + op
+}
+
 // DumpDir is where exports are produced and imports are staged. It must match
 // the broker's dumpRoot: hpd writes uploads here and reads dumps back, while the
 // broker is the only thing that ever runs SQL against them.
@@ -110,21 +140,30 @@ func (s *Service) requireBroker() error {
 	return nil
 }
 
-// CreateDatabase records and creates a database.
-func (s *Service) CreateDatabase(ctx context.Context, ownerID int64, name string) (*Instance, error) {
+// CreateDatabase records and creates a database on the given engine (default
+// MariaDB).
+func (s *Service) CreateDatabase(ctx context.Context, ownerID int64, name, engine string) (*Instance, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if !reName.MatchString(name) {
 		return nil, errx.Validation("invalid_name",
 			"Database name must start with a letter and use only lowercase letters, digits, and underscore.")
 	}
+	engine, err := normalizeEngine(engine)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.requireBroker(); err != nil {
 		return nil, err
 	}
-	rec := &InstanceRecord{OwnerID: ownerID, Engine: "mariadb", Name: name, Charset: "utf8mb4", Status: "active"}
+	charset := "utf8mb4"
+	if engine == EnginePostgres {
+		charset = "UTF8"
+	}
+	rec := &InstanceRecord{OwnerID: ownerID, Engine: engine, Name: name, Charset: charset, Status: "active"}
 	if err := s.repo.InsertDatabase(ctx, rec); err != nil {
 		return nil, err
 	}
-	if _, err := s.broker.Invoke(ctx, "db.create", map[string]any{"name": name}); err != nil {
+	if _, err := s.broker.Invoke(ctx, brokerCap(engine, "create"), map[string]any{"name": name}); err != nil {
 		_ = s.repo.DeleteDatabase(ctx, rec.UID)
 		return nil, err
 	}
@@ -140,7 +179,7 @@ func (s *Service) DeleteDatabase(ctx context.Context, uid string) error {
 	if err := s.requireBroker(); err != nil {
 		return err
 	}
-	if _, err := s.broker.Invoke(ctx, "db.drop", map[string]any{"name": rec.Name}); err != nil {
+	if _, err := s.broker.Invoke(ctx, brokerCap(rec.Engine, "drop"), map[string]any{"name": rec.Name}); err != nil {
 		return err
 	}
 	return s.repo.DeleteDatabase(ctx, uid)
@@ -160,11 +199,15 @@ func (s *Service) ListDatabases(ctx context.Context, ownerID int64, limit, offse
 }
 
 // CreateUser records and creates a database user with the given password.
-func (s *Service) CreateUser(ctx context.Context, ownerID int64, username, host, password string) (*User, error) {
+func (s *Service) CreateUser(ctx context.Context, ownerID int64, username, host, password, engine string) (*User, error) {
 	username = strings.ToLower(strings.TrimSpace(username))
 	if !reName.MatchString(username) {
 		return nil, errx.Validation("invalid_username",
 			"Username must start with a letter and use only lowercase letters, digits, and underscore.")
+	}
+	engine, err := normalizeEngine(engine)
+	if err != nil {
+		return nil, err
 	}
 	if host == "" {
 		host = "localhost"
@@ -175,11 +218,12 @@ func (s *Service) CreateUser(ctx context.Context, ownerID int64, username, host,
 	if err := s.requireBroker(); err != nil {
 		return nil, err
 	}
-	rec := &UserRecord{OwnerID: ownerID, Engine: "mariadb", Username: username, Host: host}
+	rec := &UserRecord{OwnerID: ownerID, Engine: engine, Username: username, Host: host}
 	if err := s.repo.InsertUser(ctx, rec); err != nil {
 		return nil, err
 	}
-	if _, err := s.broker.Invoke(ctx, "db.user.create", map[string]any{
+	// PostgreSQL roles have no host; the broker capability ignores the field.
+	if _, err := s.broker.Invoke(ctx, brokerCap(engine, "user.create"), map[string]any{
 		"username": username, "host": host, "password": password,
 	}); err != nil {
 		return nil, err
@@ -210,13 +254,16 @@ func (s *Service) Grant(ctx context.Context, dbUID, userUID string, privileges [
 	if err != nil {
 		return err
 	}
+	if dbRec.Engine != userRec.Engine {
+		return errx.Validation("engine_mismatch", "The database and user must be on the same engine.")
+	}
 	if len(privileges) == 0 {
 		privileges = []string{"ALL"}
 	}
 	if err := s.requireBroker(); err != nil {
 		return err
 	}
-	if _, err := s.broker.Invoke(ctx, "db.grant", map[string]any{
+	if _, err := s.broker.Invoke(ctx, brokerCap(dbRec.Engine, "grant"), map[string]any{
 		"database":   dbRec.Name,
 		"username":   userRec.Username,
 		"host":       userRec.Host,
@@ -236,7 +283,7 @@ func (s *Service) DeleteUser(ctx context.Context, uid string) error {
 	if err := s.requireBroker(); err != nil {
 		return err
 	}
-	if _, err := s.broker.Invoke(ctx, "db.user.drop", map[string]any{
+	if _, err := s.broker.Invoke(ctx, brokerCap(rec.Engine, "user.drop"), map[string]any{
 		"username": rec.Username, "host": rec.Host,
 	}); err != nil {
 		return err
@@ -262,7 +309,7 @@ func (s *Service) Revoke(ctx context.Context, dbUID, userUID string, privileges 
 	if err := s.requireBroker(); err != nil {
 		return err
 	}
-	if _, err := s.broker.Invoke(ctx, "db.revoke", map[string]any{
+	if _, err := s.broker.Invoke(ctx, brokerCap(dbRec.Engine, "revoke"), map[string]any{
 		"database":   dbRec.Name,
 		"username":   userRec.Username,
 		"host":       userRec.Host,
@@ -282,7 +329,7 @@ func (s *Service) Size(ctx context.Context, uid string) (*Size, error) {
 	if err := s.requireBroker(); err != nil {
 		return nil, err
 	}
-	res, err := s.broker.Invoke(ctx, "db.size", map[string]any{"name": rec.Name})
+	res, err := s.broker.Invoke(ctx, brokerCap(rec.Engine, "size"), map[string]any{"name": rec.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +350,7 @@ func (s *Service) Export(ctx context.Context, uid string) (*Export, error) {
 	// A fresh filename per export: two concurrent exports of the same database
 	// must not write over each other's dump mid-stream.
 	file := rec.Name + "-" + idgen.NewULID() + ".sql"
-	res, err := s.broker.Invoke(ctx, "db.export", map[string]any{
+	res, err := s.broker.Invoke(ctx, brokerCap(rec.Engine, "export"), map[string]any{
 		"name": rec.Name, "file": file,
 	})
 	if err != nil {
@@ -347,7 +394,7 @@ func (s *Service) Import(ctx context.Context, uid, file string) error {
 	if err := s.requireBroker(); err != nil {
 		return err
 	}
-	_, err = s.broker.Invoke(ctx, "db.import", map[string]any{"name": rec.Name, "file": file})
+	_, err = s.broker.Invoke(ctx, brokerCap(rec.Engine, "import"), map[string]any{"name": rec.Name, "file": file})
 	return err
 }
 

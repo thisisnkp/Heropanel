@@ -27,6 +27,7 @@ const (
 	ProviderSelfSigned  = "self_signed"
 	ProviderCustom      = "custom"
 	ProviderLetsEncrypt = "letsencrypt"
+	ProviderZeroSSL     = "zerossl"
 )
 
 // Cert is the API view of a certificate (never includes the private key).
@@ -97,15 +98,16 @@ type DNSProvider interface {
 
 // Service issues, installs, and records certificates.
 type Service struct {
-	repo   Repo
-	broker broker.Gateway
-	acme   ACME        // optional (nil => Let's Encrypt disabled)
-	dns    DNSProvider // optional (nil => DNS-01 / wildcard unavailable)
+	repo    Repo
+	broker  broker.Gateway
+	acme    ACME            // default ACME issuer (Let's Encrypt); nil => disabled
+	issuers map[string]ACME // per-provider issuers (e.g. "zerossl"); overrides acme
+	dns     DNSProvider     // optional (nil => DNS-01 / wildcard unavailable)
 }
 
 // NewService constructs the SSL Service. acme may be nil.
 func NewService(repo Repo, gw broker.Gateway, acme ACME) *Service {
-	return &Service{repo: repo, broker: gw, acme: acme}
+	return &Service{repo: repo, broker: gw, acme: acme, issuers: map[string]ACME{}}
 }
 
 // WithDNS wires the DNS provider used for DNS-01 (and therefore wildcard)
@@ -114,6 +116,31 @@ func (s *Service) WithDNS(p DNSProvider) *Service {
 	s.dns = p
 	return s
 }
+
+// WithIssuer registers an additional ACME issuer under a provider name (e.g.
+// "zerossl"), selected by the provider argument to Issue/IssueDNS. Returns s for
+// chaining.
+func (s *Service) WithIssuer(provider string, iss ACME) *Service {
+	if s.issuers == nil {
+		s.issuers = map[string]ACME{}
+	}
+	s.issuers[provider] = iss
+	return s
+}
+
+// issuerFor returns the ACME issuer for a provider: a registered one, else the
+// default (Let's Encrypt). An empty/"letsencrypt" provider uses the default.
+func (s *Service) issuerFor(provider string) ACME {
+	if provider != "" && provider != ProviderLetsEncrypt {
+		if iss, ok := s.issuers[provider]; ok {
+			return iss
+		}
+	}
+	return s.acme
+}
+
+// HasIssuer reports whether an ACME issuer is available for a provider.
+func (s *Service) HasIssuer(provider string) bool { return s.issuerFor(provider) != nil }
 
 func (s *Service) requireBroker() error {
 	if s.broker == nil {
@@ -156,12 +183,14 @@ func (s *Service) UploadCustom(ctx context.Context, ownerID int64, certPEM, keyP
 	return s.installAndRecord(ctx, ownerID, normalizeDomain(domain), ProviderCustom, certPEM, keyPEM, leaf.NotAfter, "")
 }
 
-// Issue obtains a Let's Encrypt certificate via ACME HTTP-01, writing the
-// challenge into the given site webroot.
-func (s *Service) Issue(ctx context.Context, ownerID int64, domain, webroot string) (*Cert, error) {
+// Issue obtains an ACME certificate via HTTP-01, writing the challenge into the
+// given site webroot. provider selects the CA ("" / "letsencrypt" => Let's
+// Encrypt; "zerossl" => ZeroSSL, when configured).
+func (s *Service) Issue(ctx context.Context, ownerID int64, domain, webroot, provider string) (*Cert, error) {
 	domain = normalizeDomain(domain)
-	if s.acme == nil {
-		return nil, errx.New(errx.KindUnavailable, "acme_unavailable", "Let's Encrypt is not configured.")
+	issuer := s.issuerFor(provider)
+	if issuer == nil {
+		return nil, errx.New(errx.KindUnavailable, "acme_unavailable", "That ACME provider is not configured.")
 	}
 	if err := s.requireBroker(); err != nil {
 		return nil, err
@@ -172,23 +201,32 @@ func (s *Service) Issue(ctx context.Context, ownerID int64, domain, webroot stri
 		})
 		return err
 	}
-	certPEM, keyPEM, notAfter, err := s.acme.Issue(ctx, domain, writeChallenge)
+	certPEM, keyPEM, notAfter, err := issuer.Issue(ctx, domain, writeChallenge)
 	if err != nil {
 		return nil, errx.Upstream(err, "acme_failed", "Certificate issuance failed.")
 	}
-	return s.installAndRecord(ctx, ownerID, domain, ProviderLetsEncrypt, certPEM, keyPEM, notAfter, webroot)
+	return s.installAndRecord(ctx, ownerID, domain, providerName(provider), certPEM, keyPEM, notAfter, webroot)
+}
+
+// providerName normalizes a provider argument to a stored provider value.
+func providerName(provider string) string {
+	if provider == ProviderZeroSSL {
+		return ProviderZeroSSL
+	}
+	return ProviderLetsEncrypt
 }
 
 // IssueDNS obtains a Let's Encrypt certificate via ACME DNS-01, publishing the
 // challenge into a zone HeroPanel is authoritative for. This is the path for
 // **wildcard** certificates ("*.example.com"), which HTTP-01 cannot issue.
-func (s *Service) IssueDNS(ctx context.Context, ownerID int64, domain string) (*Cert, error) {
+func (s *Service) IssueDNS(ctx context.Context, ownerID int64, domain, provider string) (*Cert, error) {
 	domain = normalizeDomain(domain)
 	if err := validateIssuableDomain(domain); err != nil {
 		return nil, err
 	}
-	issuer, ok := s.acme.(ACMEDNS)
-	if s.acme == nil || !ok {
+	base := s.issuerFor(provider)
+	issuer, ok := base.(ACMEDNS)
+	if base == nil || !ok {
 		return nil, errx.New(errx.KindUnavailable, "acme_dns_unavailable",
 			"DNS-01 issuance is not configured.")
 	}
@@ -208,7 +246,7 @@ func (s *Service) IssueDNS(ctx context.Context, ownerID int64, domain string) (*
 		return nil, errx.Upstream(err, "acme_failed", "Certificate issuance failed.")
 	}
 	// A DNS-01 cert has no webroot: renewal repeats the DNS-01 flow.
-	return s.installAndRecord(ctx, ownerID, domain, ProviderLetsEncrypt, certPEM, keyPEM, notAfter, "")
+	return s.installAndRecord(ctx, ownerID, domain, providerName(provider), certPEM, keyPEM, notAfter, "")
 }
 
 // validateIssuableDomain accepts a hostname or a single-label wildcard.

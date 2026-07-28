@@ -57,6 +57,10 @@ var basePermissions = []seedPermission{
 	// someone site.write must not hand them everyone's mailboxes.
 	{"mail.read", "mail", "read", "View mail domains, mailboxes and aliases"},
 	{"mail.write", "mail", "write", "Manage mail domains, mailboxes and aliases"},
+	// Security is host-wide and high-stakes: firewall, malware scans, quarantine.
+	// A firewall change can lock the whole box out, so it carries its own pair.
+	{"security.read", "security", "read", "View firewall rules, scans and quarantine"},
+	{"security.write", "security", "write", "Change the firewall, run scans, manage quarantine"},
 }
 
 // seedRole is a role to ensure exists.

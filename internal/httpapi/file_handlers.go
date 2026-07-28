@@ -114,6 +114,24 @@ func writeFileHandler(d Deps) http.HandlerFunc {
 	}
 }
 
+// uploadArchiveHandler streams one uploaded archive into a directory and unpacks
+// it — a multi-file upload as a single transfer. Gated by "file.write". The body
+// is the archive's raw bytes; ?path is the destination directory and ?filename
+// selects the format (zip / tar.gz).
+func uploadArchiveHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dir := r.URL.Query().Get("path")
+		filename := r.URL.Query().Get("filename")
+		audit.AddDetail(r.Context(), "dir", dir)
+		audit.AddDetail(r.Context(), "archive", filename)
+		if err := d.Files.UploadAndExtract(r.Context(), chi.URLParam(r, "uid"), dir, filename, r.Body); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"dir": dir, "extracted": true})
+	}
+}
+
 // deleteFileHandler removes a file or directory tree. Gated by "file.write".
 func deleteFileHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

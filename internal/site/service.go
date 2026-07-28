@@ -90,12 +90,24 @@ type Service struct {
 	runtime Runtime
 	domains Domains
 	apps    AppProxy
+	// systemVhosts contributes panel-level vhosts (e.g. webmail) to the same
+	// render-all the customer sites go through, so a system service serves over
+	// the one OpenLiteSpeed config without a database site row of its own.
+	systemVhosts func(ctx context.Context) []webserver.Site
 }
 
 // NewService constructs the site Service from its dependencies.
 func NewService(d Deps) *Service {
 	return &Service{repo: d.Repo, broker: d.Broker, web: d.Web, php: d.PHP,
 		runtime: d.Runtime, domains: d.Domains, apps: d.Apps}
+}
+
+// WithSystemVhosts registers a provider of panel-level vhosts (webmail today).
+// They are appended to every webserver render, so enabling one and re-applying
+// (ReapplyWebserver) makes it serve alongside the customer sites.
+func (s *Service) WithSystemVhosts(p func(ctx context.Context) []webserver.Site) *Service {
+	s.systemVhosts = p
+	return s
 }
 
 // ValidateInput validates a create request without side effects. It is used by
@@ -291,7 +303,12 @@ func (s *Service) applyWebserver(ctx context.Context, includeID int64) error {
 			ForceHTTPS:    forceHTTPS,
 			Redirects:     redirects,
 			Suspended:     suspended,
+			WAFEnabled:    r.WAFEnabled == 1,
 		})
+	}
+	// Panel-level vhosts (webmail) render through the same config.
+	if s.systemVhosts != nil {
+		sites = append(sites, s.systemVhosts(ctx)...)
 	}
 	return s.web.Apply(ctx, sites)
 }
@@ -334,6 +351,30 @@ func (s *Service) domainsFor(ctx context.Context, siteID int64, primary string) 
 // sites. It is the hook the runtime service calls after a runtime change so a
 // proxy site's vhost is (re)pointed at its app.
 func (s *Service) ReapplyWebserver(ctx context.Context) error {
+	return s.applyWebserver(ctx, 0)
+}
+
+// SetWAF toggles the per-site ModSecurity + OWASP CRS web application firewall
+// and re-applies the web server so the vhost picks it up. The WAF module and
+// rules must be present on the host; the render references a pinned rules path.
+func (s *Service) SetWAF(ctx context.Context, uid string, enabled bool) error {
+	rec, err := s.repo.GetByUID(ctx, uid)
+	if err != nil {
+		return err
+	}
+	// Make sure the rules file the vhost is about to reference exists before the
+	// config that loads it is applied — a vhost pointing at a missing rules file
+	// would fail the config test.
+	if enabled && s.broker != nil {
+		if _, err := s.broker.Invoke(ctx, "waf.provision", map[string]any{
+			"config": webserver.RenderWAFConfig(),
+		}); err != nil {
+			return err
+		}
+	}
+	if err := s.repo.SetWAF(ctx, rec.ID, enabled); err != nil {
+		return err
+	}
 	return s.applyWebserver(ctx, 0)
 }
 
@@ -641,6 +682,7 @@ func toView(r *Record) *Site {
 		DocumentRoot:  r.DocumentRoot,
 		SystemUser:    r.LinuxUser.String,
 		AppProject:    r.AppProject.String,
+		WAFEnabled:    r.WAFEnabled == 1,
 		CreatedAt:     r.CreatedAt,
 	}
 }

@@ -1,6 +1,50 @@
 import { describe, expect, it } from "vitest";
 import { isIgnored, isIgnoredNested, parseGitignore, type IgnoreFile } from "./gitignore";
 
+describe("character classes", () => {
+  const m = (pat: string, path: string) => isIgnored(parseGitignore(pat), path, false);
+  it("matches a set", () => {
+    expect(m("file[123].txt", "file2.txt")).toBe(true);
+    expect(m("file[123].txt", "file4.txt")).toBe(false);
+  });
+  it("matches a range", () => {
+    expect(m("*.[oa]", "main.o")).toBe(true);
+    expect(m("log[0-9]", "log7")).toBe(true);
+    expect(m("log[0-9]", "logx")).toBe(false);
+  });
+  it("negates with [! …]", () => {
+    expect(m("file[!0-9].txt", "filea.txt")).toBe(true);
+    expect(m("file[!0-9].txt", "file5.txt")).toBe(false);
+  });
+  it("a class never spans a slash", () => {
+    // "[a-z]" cannot match "/", so a/b is not hit by "x[a-z]b" logic.
+    expect(m("a[/]b", "a/b")).toBe(false);
+  });
+  it("treats an unterminated bracket as a literal", () => {
+    expect(m("weird[name", "weird[name")).toBe(true);
+  });
+});
+
+describe("info/exclude and global excludes (lower precedence)", () => {
+  it("applies .git/info/exclude under the gitignore chain", () => {
+    const info = parseGitignore("secret.txt");
+    expect(isIgnoredNested([], "secret.txt", false, { infoExclude: info })).toBe(true);
+  });
+  it("a .gitignore negation overrides info/exclude (higher precedence)", () => {
+    const info = parseGitignore("*.log");
+    const files: IgnoreFile[] = [{ dir: "", rules: parseGitignore("!keep.log") }];
+    expect(isIgnoredNested(files, "keep.log", false, { infoExclude: info })).toBe(false);
+    expect(isIgnoredNested(files, "other.log", false, { infoExclude: info })).toBe(true);
+  });
+  it("the global excludesfile is the lowest precedence of all", () => {
+    const global = parseGitignore("*.tmp");
+    // info/exclude re-includes what global excluded.
+    const info = parseGitignore("!build.tmp");
+    expect(isIgnoredNested([], "build.tmp", false, { global, infoExclude: info })).toBe(false);
+    expect(isIgnoredNested([], "cache.tmp", false, { global })).toBe(true);
+  });
+});
+
 // The matcher is pure logic with no server to catch its mistakes, and it is the
 // kind of code that silently drifts: a wrong answer greys out a file the
 // operator can still see, so nothing breaks loudly. These pin the behaviour the

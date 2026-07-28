@@ -22,7 +22,9 @@ import { DockerPage } from "@/features/docker/DockerPage";
 import { AppsPage } from "@/features/apps/AppsPage";
 import { MailPage } from "@/features/mail/MailPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
+import { SecurityPage } from "@/features/security/SecurityPage";
 import { ModulesPage } from "@/features/modules/ModulesPage";
+import { AccountPage } from "@/features/account/AccountPage";
 
 function FullscreenSpinner() {
   return (
@@ -91,7 +93,9 @@ export function App() {
           <Route path="/apps" element={<AppsPage />} />
           <Route path="/monitor" element={<MonitorPage />} />
           <Route path="/mail" element={<MailPage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/modules" element={<ModulesPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

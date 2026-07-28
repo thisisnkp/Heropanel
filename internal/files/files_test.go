@@ -88,6 +88,56 @@ func TestNoBrokerIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestUploadAndExtractStagesExtractsThenRemoves(t *testing.T) {
+	br := &fakeBroker{}
+	svc := NewService(fakeSites{ref: baremetalRef()}, br)
+	if err := svc.UploadAndExtract(context.Background(), "site1", "dest", "bundle.tar.gz",
+		strings.NewReader("archive-bytes")); err != nil {
+		t.Fatalf("upload-and-extract: %v", err)
+	}
+	// Sequence: file.write (stage the archive) → file.extract → file.remove (cleanup).
+	var seq []string
+	var stagedArchive string
+	for _, c := range br.calls {
+		seq = append(seq, c.capability)
+		if c.capability == "file.extract" {
+			stagedArchive, _ = c.input["archive"].(string)
+			if dest, _ := c.input["dest"].(string); dest != "dest" {
+				t.Errorf("extract dest = %q, want dest", dest)
+			}
+		}
+	}
+	// mkdir the dest, stage (write), extract, then remove the staged archive.
+	if seq[0] != "file.mkdir" || !contains(seq, "file.write") || !contains(seq, "file.extract") || seq[len(seq)-1] != "file.remove" {
+		t.Fatalf("call sequence = %v, want mkdir → write → extract → remove", seq)
+	}
+	// The staged archive is under an unpredictable temp name in the destination.
+	if !strings.HasPrefix(stagedArchive, "dest/.hp-upload-") || !strings.HasSuffix(stagedArchive, ".tar.gz") {
+		t.Errorf("staged archive = %q, want a temp name in dest", stagedArchive)
+	}
+}
+
+func TestUploadAndExtractRejectsNonArchive(t *testing.T) {
+	br := &fakeBroker{}
+	svc := NewService(fakeSites{ref: baremetalRef()}, br)
+	if err := svc.UploadAndExtract(context.Background(), "site1", "", "notes.txt",
+		strings.NewReader("x")); !errx.IsKind(err, errx.KindValidation) {
+		t.Fatalf("a non-archive upload must be refused, got %v", err)
+	}
+	if len(br.calls) != 0 {
+		t.Error("nothing should be staged for a non-archive filename")
+	}
+}
+
+func contains(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
 // ── broker payloads ───────────────────────────────────────────────────────────
 
 func TestListSendsRootPathUsername(t *testing.T) {

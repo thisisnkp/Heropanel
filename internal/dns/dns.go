@@ -20,6 +20,10 @@ import (
 // into named.conf) and the broker (which writes them) use this constant.
 const zonesDir = "/etc/bind/zones"
 
+// keysDir is BIND's DNSSEC key directory. A DNSSEC-enabled zone tells named to
+// keep and use its keys here (the broker ensures it exists, owned by bind).
+const keysDir = "/etc/bind/keys"
+
 // ZoneFilePath is the on-disk path of a zone's records file.
 func ZoneFilePath(zone string) string { return zonesDir + "/db." + zone }
 
@@ -38,6 +42,7 @@ type Zone struct {
 	Serial     int64  `json:"serial"`
 	TTL        int    `json:"ttl"`
 	Status     string `json:"status"`
+	DNSSEC     bool   `json:"dnssec_enabled"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
 }
@@ -55,21 +60,22 @@ type Record struct {
 
 // ZoneRow / RecordRow are the persistence rows.
 type ZoneRow struct {
-	ID         int64  `db:"id"`
-	UID        string `db:"uid"`
-	OwnerID    int64  `db:"owner_id"`
-	Name       string `db:"name"`
-	PrimaryNS  string `db:"primary_ns"`
-	AdminEmail string `db:"admin_email"`
-	Serial     int64  `db:"serial"`
-	Refresh    int    `db:"refresh"`
-	Retry      int    `db:"retry"`
-	Expire     int    `db:"expire"`
-	Minimum    int    `db:"minimum"`
-	TTL        int    `db:"ttl"`
-	Status     string `db:"status"`
-	CreatedAt  string `db:"created_at"`
-	UpdatedAt  string `db:"updated_at"`
+	ID            int64  `db:"id"`
+	UID           string `db:"uid"`
+	OwnerID       int64  `db:"owner_id"`
+	Name          string `db:"name"`
+	PrimaryNS     string `db:"primary_ns"`
+	AdminEmail    string `db:"admin_email"`
+	Serial        int64  `db:"serial"`
+	Refresh       int    `db:"refresh"`
+	Retry         int    `db:"retry"`
+	Expire        int    `db:"expire"`
+	Minimum       int    `db:"minimum"`
+	TTL           int    `db:"ttl"`
+	Status        string `db:"status"`
+	DNSSECEnabled bool   `db:"dnssec_enabled"`
+	CreatedAt     string `db:"created_at"`
+	UpdatedAt     string `db:"updated_at"`
 }
 
 type RecordRow struct {
@@ -94,6 +100,7 @@ type Repo interface {
 	ListActiveZones(ctx context.Context) ([]ZoneRow, error)
 	DeleteZone(ctx context.Context, uid string) error
 	SetSerial(ctx context.Context, zoneID, serial int64) error
+	SetDNSSEC(ctx context.Context, zoneID int64, enabled bool) error
 	InsertRecord(ctx context.Context, r *RecordRow) error
 	ListRecords(ctx context.Context, zoneID int64) ([]RecordRow, error)
 	GetRecordByUID(ctx context.Context, uid string) (*RecordRow, error)
@@ -288,11 +295,21 @@ func quoteTXT(s string) string {
 
 // RenderNamedConf renders the declarative set of zone {} blocks for all active
 // zones (BIND's named.conf.heropanel include).
+//
+// A DNSSEC-enabled zone gets `dnssec-policy default` + `inline-signing yes` +
+// `key-directory`, which is the modern BIND way: named generates the keys,
+// signs the zone in memory (the plain zone file hpd writes is untouched, so
+// ordinary record edits keep working), and handles rollover on its own. The DS
+// for the registrar is read back separately (dns.dnssec_status).
 func RenderNamedConf(zones []ZoneRow) string {
 	var b strings.Builder
 	for i := range zones {
-		fmt.Fprintf(&b, "zone \"%s\" {\n    type master;\n    file \"%s\";\n};\n",
+		fmt.Fprintf(&b, "zone \"%s\" {\n    type master;\n    file \"%s\";\n",
 			zones[i].Name, ZoneFilePath(zones[i].Name))
+		if zones[i].DNSSECEnabled {
+			fmt.Fprintf(&b, "    dnssec-policy default;\n    inline-signing yes;\n    key-directory \"%s\";\n", keysDir)
+		}
+		b.WriteString("};\n")
 	}
 	return b.String()
 }

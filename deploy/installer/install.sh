@@ -12,6 +12,13 @@ set -eu
 CHANNEL="${HP_CHANNEL:-stable}"
 BASE_URL="${HP_BASE_URL:-https://get.heropanel.io}"
 
+# The ed25519 release public key, pinned into this script at release time. It is
+# forwarded to hp-installer, which refuses to install an hpd/hp-broker whose
+# SHA256SUMS manifest is not signed by the matching private key (held offline).
+# Empty in-tree; the release pipeline substitutes the real key. An operator can
+# also override it via HP_RELEASE_PUBKEY.
+PINNED_PUBKEY="${HP_RELEASE_PUBKEY:-}"
+
 log()  { printf '\033[0;36m==>\033[0m %s\n' "$1"; }
 err()  { printf '\033[0;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
 
@@ -71,6 +78,10 @@ fi
 
 chmod +x "$TMP/hp-installer"
 
-# 6. Hand off. Extra args to install.sh are forwarded to hp-installer.
+# 6. Hand off. Extra args to install.sh are forwarded to hp-installer. The
+# pinned release key travels with it so the daemon binaries are signature-checked.
 log "Starting installer…"
+if [ -n "$PINNED_PUBKEY" ]; then
+  exec "$TMP/hp-installer" --channel "$CHANNEL" --pubkey "$PINNED_PUBKEY" "$@"
+fi
 exec "$TMP/hp-installer" --channel "$CHANNEL" "$@"

@@ -26,7 +26,10 @@ type Record struct {
 	// When set, the vhost's upstream is resolved live from the app's published
 	// loopback port rather than from a systemd runtime. NULL for ordinary sites.
 	AppProject sql.NullString `db:"app_project"`
-	CreatedAt  string         `db:"created_at"`
+	// WAFEnabled turns on the ModSecurity + OWASP CRS web application firewall
+	// for this site's vhost. 0 = off (the default).
+	WAFEnabled int    `db:"waf_enabled"`
+	CreatedAt  string `db:"created_at"`
 }
 
 // ProvisionData carries the derived identity/paths written when a site is
@@ -53,6 +56,8 @@ type Repo interface {
 	Provision(ctx context.Context, p ProvisionData) error
 	// UpdateStatus sets a site's status by internal id.
 	UpdateStatus(ctx context.Context, id int64, status string) error
+	// SetWAF toggles the per-site web application firewall by internal id.
+	SetWAF(ctx context.Context, id int64, enabled bool) error
 	// GetByUID returns a site (joined with its system user).
 	GetByUID(ctx context.Context, uid string) (*Record, error)
 	// GetByAppProject returns the proxy site backed by the named Docker app, or a

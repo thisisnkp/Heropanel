@@ -18,7 +18,7 @@ export function SSLPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-fg">SSL certificates</h1>
-          <p className="text-sm text-muted">Let's Encrypt (HTTP-01 &amp; DNS-01/wildcard), self-signed, or custom upload.</p>
+          <p className="text-sm text-muted">ACME — Let's Encrypt or ZeroSSL (HTTP-01 &amp; DNS-01/wildcard), self-signed, or custom upload.</p>
         </div>
         <Button onClick={() => setIssuing(true)}>Issue certificate</Button>
       </div>
@@ -76,6 +76,7 @@ function IssueModal({ onClose }: { onClose: () => void }) {
   const upload = useUploadCert();
   const [domain, setDomain] = useState("");
   const [method, setMethod] = useState("http");
+  const [provider, setProvider] = useState("letsencrypt");
   const [webroot, setWebroot] = useState("");
   const [certPem, setCertPem] = useState("");
   const [keyPem, setKeyPem] = useState("");
@@ -88,7 +89,7 @@ function IssueModal({ onClose }: { onClose: () => void }) {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === "le") issue.mutate({ domain, method, webroot: method === "http" ? webroot : undefined }, { onSuccess: done, onError: fail });
+    if (mode === "le") issue.mutate({ domain, method, provider, webroot: method === "http" ? webroot : undefined }, { onSuccess: done, onError: fail });
     else if (mode === "self") self.mutate({ domain }, { onSuccess: done, onError: fail });
     else upload.mutate({ cert_pem: certPem, key_pem: keyPem }, { onSuccess: done, onError: fail });
   };
@@ -99,7 +100,7 @@ function IssueModal({ onClose }: { onClose: () => void }) {
     <Modal title="Issue certificate" onClose={onClose} wide={mode === "upload"}>
       <div className="mb-4 flex gap-2">
         {([
-          ["le", "Let's Encrypt"],
+          ["le", "ACME"],
           ["self", "Self-signed"],
           ["upload", "Upload"],
         ] as const).map(([id, label]) => (
@@ -120,6 +121,12 @@ function IssueModal({ onClose }: { onClose: () => void }) {
           <>
             <Field label="Domain" hint="use *.example.com for a wildcard (forces DNS-01)">
               <Input autoFocus value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="acme.example.com" />
+            </Field>
+            <Field label="Certificate authority" hint="ZeroSSL needs EAB credentials configured on the server">
+              <Select value={provider} onChange={(e) => setProvider(e.target.value)}>
+                <option value="letsencrypt">Let's Encrypt</option>
+                <option value="zerossl">ZeroSSL</option>
+              </Select>
             </Field>
             <Field label="Validation">
               <Select value={method} onChange={(e) => setMethod(e.target.value)}>

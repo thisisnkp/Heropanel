@@ -95,6 +95,9 @@ type Repo interface {
 	InsertAccount(ctx context.Context, r *AccountRecord) error
 	ListAccounts(ctx context.Context, domainID int64) ([]AccountRecord, error)
 	GetAccountByUID(ctx context.Context, uid string) (*AccountRecord, error)
+	// AccountAddress resolves an account UID to its full mailbox address
+	// (local_part@domain), joining the domain so callers need no second lookup.
+	AccountAddress(ctx context.Context, uid string) (string, error)
 	UpdateAccountPassword(ctx context.Context, id int64, hash string) error
 	UpdateAccountQuota(ctx context.Context, id int64, quotaMB int) error
 	UpdateAccountStatus(ctx context.Context, id int64, status string) error
@@ -121,6 +124,13 @@ type Service struct {
 	cipher       *secrets.Cipher // seals DKIM private keys; nil = DKIM disabled
 	dns          DNSProvider     // wires records into managed zones; nil = display-only
 	resolverAddr string          // pinned resolver for CheckDNS ("" = system)
+
+	hostname   string       // mail host FQDN (HP_MAIL_HOSTNAME); "" = TLS off
+	certs      CertProvider // ensures the mail host's cert; nil = no auto-issue
+	tlsEnabled bool         // TLS wired at least once this process
+
+	webmailURL string         // Roundcube login URL for SSO hand-off; "" = SSO off
+	ssoRepo    WebmailSSORepo // one-time master-user sessions; nil = SSO off
 }
 
 // NewService constructs the mail service.
@@ -222,6 +232,9 @@ func (s *Service) CreateDomain(ctx context.Context, ownerID int64, domain string
 	// — the live DNS check is the honest surface for a record that is missing,
 	// whatever the reason.
 	_, _ = s.wireDNS(ctx, rec)
+	// TLS wiring is best-effort too: submission/imaps come up for the mail host
+	// as soon as one exists, without a separate call.
+	s.maybeEnableTLS(ctx)
 	return domainView(rec), nil
 }
 

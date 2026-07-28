@@ -78,9 +78,10 @@ func issueCertHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FromContext(r.Context())
 		var req struct {
-			Domain  string `json:"domain"`
-			Webroot string `json:"webroot"`
-			Method  string `json:"method"`
+			Domain   string `json:"domain"`
+			Webroot  string `json:"webroot"`
+			Method   string `json:"method"`
+			Provider string `json:"provider"` // "" / "letsencrypt" | "zerossl"
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -90,13 +91,14 @@ func issueCertHandler(d Deps) http.HandlerFunc {
 			err error
 		)
 		audit.AddDetail(r.Context(), "domain", req.Domain)
+		audit.AddDetail(r.Context(), "provider", req.Provider)
 		// A wildcard can only be issued over DNS-01, so route it there regardless.
 		if req.Method == "dns" || strings.HasPrefix(strings.TrimSpace(req.Domain), "*.") {
 			audit.AddDetail(r.Context(), "method", "dns-01")
-			out, err = d.SSL.IssueDNS(r.Context(), p.UserID, req.Domain)
+			out, err = d.SSL.IssueDNS(r.Context(), p.UserID, req.Domain, req.Provider)
 		} else {
 			audit.AddDetail(r.Context(), "method", "http-01")
-			out, err = d.SSL.Issue(r.Context(), p.UserID, req.Domain, req.Webroot)
+			out, err = d.SSL.Issue(r.Context(), p.UserID, req.Domain, req.Webroot, req.Provider)
 		}
 		if err != nil {
 			writeError(w, r, err)

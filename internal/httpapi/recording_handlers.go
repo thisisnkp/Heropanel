@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/thisisnkp/heropanel/internal/audit"
+	"github.com/thisisnkp/heropanel/internal/terminal"
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
@@ -33,6 +34,24 @@ func listRecordingsHandler(d Deps) http.HandlerFunc {
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		q := r.URL.Query().Get("q")
+		after := r.URL.Query().Get("after")
+		before := r.URL.Query().Get("before")
+
+		// A search (a query or a date bound) runs across all history, so "nothing
+		// matches" is a real answer rather than "not in the newest page"; without
+		// one, the plain newest-first listing is cheaper.
+		if q != "" || after != "" || before != "" {
+			recs, err := d.Recordings.Search(r.Context(), terminal.RecordingFilter{
+				Query: q, SiteID: siteID, After: after, Before: before, Limit: limit, Offset: offset,
+			})
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			writeJSON(w, r, http.StatusOK, recs)
+			return
+		}
 
 		recs, err := d.Recordings.List(r.Context(), siteID, limit, offset)
 		if err != nil {

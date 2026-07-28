@@ -91,12 +91,15 @@ case "$verb" in
         postfix)               pgrep -x master >/dev/null 2>&1 ;;
         dovecot)               pgrep -x dovecot >/dev/null 2>&1 ;;
         opendkim)              pgrep -x opendkim >/dev/null 2>&1 ;;
+        opendmarc)             pgrep -x opendmarc >/dev/null 2>&1 ;;
         *) false ;;
       esac
       if [ $? -eq 0 ]; then echo active; else echo inactive; rc=3; fi
     done
     exit $rc ;;
-  disable|stop) stop_app "$unit"; exit 0 ;;
+  disable|stop)
+    if [ "$unit" = "opendmarc" ]; then pkill -x opendmarc 2>/dev/null || true; exit 0; fi
+    stop_app "$unit"; exit 0 ;;
   start|restart)
     case "$unit" in
       heropanel-cron-*) run_oneshot "$unit"; exit $? ;;
@@ -107,6 +110,14 @@ case "$verb" in
         pkill -x opendkim 2>/dev/null || true
         sleep 0.3
         opendkim -x /etc/opendkim.conf 2>/tmp/opendkim.log || true
+        sleep 0.3 ;;
+      opendmarc)
+        # The broker starts the DMARC milter when SPF/DMARC enforcement is turned
+        # on. Real systemd supervises it in production.
+        pkill -x opendmarc 2>/dev/null || true
+        sleep 0.3
+        mkdir -p /run/opendmarc && chown opendmarc:opendmarc /run/opendmarc 2>/dev/null || true
+        opendmarc -c /etc/opendmarc.conf 2>/tmp/opendmarc.log || true
         sleep 0.3 ;;
       postfix) postfix reload 2>/dev/null || postfix start 2>/dev/null || true ;;
       dovecot) doveadm reload 2>/dev/null || dovecot 2>/dev/null || true ;;

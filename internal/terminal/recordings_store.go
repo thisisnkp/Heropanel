@@ -61,12 +61,29 @@ const TimeLayout = "2006-01-02 15:04:05"
 // FormatTime renders a timestamp in the stored layout, always UTC.
 func FormatTime(t time.Time) string { return t.UTC().Format(TimeLayout) }
 
+// RecordingFilter narrows a search across all recorded history. Query matches
+// (case-insensitively, as a substring) the actor email, the system user, the
+// actor IP, or the site name — the fields an auditor actually searches by. After
+// and Before bound the start time (stored-layout strings, either optional), and
+// SiteID scopes to one site. Empty everywhere is "everything, newest first".
+type RecordingFilter struct {
+	Query  string
+	SiteID int64
+	After  string
+	Before string
+	Limit  int
+	Offset int
+}
+
 // Recordings is the metadata store.
 type Recordings interface {
 	Create(ctx context.Context, r *Recording) error
 	Finish(ctx context.Context, uid string, size, durationMS int64, truncated bool) error
 	Get(ctx context.Context, uid string) (*Recording, error)
 	List(ctx context.Context, siteID int64, limit, offset int) ([]Recording, error)
+	// Search filters across all history rather than paging blindly, so "nothing
+	// matches" is a real answer instead of "not in the newest 200".
+	Search(ctx context.Context, f RecordingFilter) ([]Recording, error)
 	Delete(ctx context.Context, uid string) (string, error)
 	Expired(ctx context.Context, now time.Time, limit int) ([]Recording, error)
 }
@@ -198,6 +215,14 @@ func (s *RecordingStore) List(ctx context.Context, siteID int64, limit, offset i
 		return []Recording{}, nil
 	}
 	return s.meta.List(ctx, siteID, limit, offset)
+}
+
+// Search filters recordings across all history (not just the newest page).
+func (s *RecordingStore) Search(ctx context.Context, f RecordingFilter) ([]Recording, error) {
+	if !s.Enabled() {
+		return []Recording{}, nil
+	}
+	return s.meta.Search(ctx, f)
 }
 
 func (s *RecordingStore) Get(ctx context.Context, uid string) (*Recording, error) {

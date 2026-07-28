@@ -33,13 +33,15 @@ func createDatabaseHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FromContext(r.Context())
 		var req struct {
-			Name string `json:"name"`
+			Name   string `json:"name"`
+			Engine string `json:"engine"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
 		audit.AddDetail(r.Context(), "name", req.Name)
-		out, err := d.Databases.CreateDatabase(r.Context(), p.UserID, req.Name)
+		audit.AddDetail(r.Context(), "engine", req.Engine)
+		out, err := d.Databases.CreateDatabase(r.Context(), p.UserID, req.Name, req.Engine)
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -80,6 +82,7 @@ func createDBUserHandler(d Deps) http.HandlerFunc {
 			Username string `json:"username"`
 			Host     string `json:"host"`
 			Password string `json:"password"`
+			Engine   string `json:"engine"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -87,7 +90,8 @@ func createDBUserHandler(d Deps) http.HandlerFunc {
 		// Username and host, never the password.
 		audit.AddDetail(r.Context(), "username", req.Username)
 		audit.AddDetail(r.Context(), "host", req.Host)
-		out, err := d.Databases.CreateUser(r.Context(), p.UserID, req.Username, req.Host, req.Password)
+		audit.AddDetail(r.Context(), "engine", req.Engine)
+		out, err := d.Databases.CreateUser(r.Context(), p.UserID, req.Username, req.Host, req.Password, req.Engine)
 		if err != nil {
 			writeError(w, r, err)
 			return

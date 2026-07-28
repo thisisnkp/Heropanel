@@ -39,6 +39,10 @@ func main() {
 		noWebServer = flag.Bool("no-webserver", false, "do not install/configure the site web server")
 		source      = flag.String("source", "", "directory holding the staged hpd/hp-broker binaries")
 		yes         = flag.Bool("yes", false, "proceed without the interactive confirmation")
+		pubKey      = flag.String("pubkey", os.Getenv("HP_RELEASE_PUBKEY"), "ed25519 release public key (base64/hex/@path); requires a signed SHA256SUMS")
+		genKey      = flag.Bool("gen-key", false, "generate a release keypair and print it (release tooling)")
+		sign        = flag.String("sign", "", "sign the SHA256SUMS in this directory with the private key in --key (release tooling)")
+		key         = flag.String("key", os.Getenv("HP_RELEASE_KEY"), "ed25519 release private key (base64/hex/@path) for --sign")
 	)
 	flag.Parse()
 
@@ -47,9 +51,18 @@ func main() {
 		return
 	}
 
+	// Release-side tooling: mint a keypair, or sign a built manifest. These need
+	// no host profile and run anywhere (CI, a dev laptop, an offline signer).
+	if *genKey {
+		os.Exit(runGenKey(*jsonOut))
+	}
+	if *sign != "" {
+		os.Exit(runSign(*sign, *key))
+	}
+
 	profile := installer.Detect()
 	report := installer.Compatibility(profile)
-	opts := installer.Options{Channel: *channel, DB: *dbDriver, Port: *port, Minimal: *minimal, NoWebServer: *noWebServer}
+	opts := installer.Options{Channel: *channel, DB: *dbDriver, Port: *port, Minimal: *minimal, NoWebServer: *noWebServer, ReleasePubKey: *pubKey}
 
 	switch {
 	case *detect:
@@ -139,6 +152,49 @@ func runRollback(profile installer.Profile, opts installer.Options, source strin
 		return 1
 	}
 	fmt.Fprintln(os.Stderr, "Rollback complete.")
+	return 0
+}
+
+// runGenKey mints a release keypair. The private key is kept offline by whoever
+// cuts releases; the public key is pinned into install.sh / passed as --pubkey.
+func runGenKey(asJSON bool) int {
+	pub, priv, err := installer.GenerateReleaseKey()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hp-installer:", err)
+		return 1
+	}
+	if asJSON {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"public_key": pub, "private_key": priv})
+		return 0
+	}
+	fmt.Println("# HeroPanel release keypair — keep the private key OFFLINE and secret.")
+	fmt.Println("HP_RELEASE_PUBKEY=" + pub)
+	fmt.Println("HP_RELEASE_KEY=" + priv)
+	return 0
+}
+
+// runSign signs the SHA256SUMS in dir with the given private key, writing
+// SHA256SUMS.sig beside it. Run at release time, after the manifest is built.
+func runSign(dir, key string) int {
+	if key == "" {
+		fmt.Fprintln(os.Stderr, "hp-installer: --sign needs a private key via --key or HP_RELEASE_KEY")
+		return 2
+	}
+	manifest, err := os.ReadFile(dir + "/SHA256SUMS")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hp-installer: read manifest:", err)
+		return 1
+	}
+	sig, err := installer.SignManifest(manifest, key)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hp-installer: sign:", err)
+		return 1
+	}
+	if err := os.WriteFile(dir+"/SHA256SUMS.sig", []byte(sig+"\n"), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "hp-installer: write signature:", err)
+		return 1
+	}
+	fmt.Fprintln(os.Stderr, "Signed SHA256SUMS →", dir+"/SHA256SUMS.sig")
 	return 0
 }
 

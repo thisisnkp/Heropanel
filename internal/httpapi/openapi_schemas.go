@@ -132,6 +132,15 @@ var openapiSchemas = map[string]any{
 			"enabled": prop("boolean", ""),
 		})),
 	}),
+	"PHPVersionOPcache": object(map[string]any{
+		"version":                    prop("string", ""),
+		"memory_consumption_mb":      prop("integer", "Shared-memory segment size (PHP_INI_SYSTEM)."),
+		"interned_strings_buffer_mb": prop("integer", ""),
+		"max_accelerated_files":      prop("integer", ""),
+		"validate_timestamps":        prop("boolean", ""),
+		"revalidate_freq_sec":        prop("integer", ""),
+		"jit_buffer_size_mb":         prop("integer", "0 disables the JIT buffer."),
+	}),
 
 	// ── domains ──────────────────────────────────────────────────────────────
 	"Domain": object(map[string]any{
@@ -229,16 +238,30 @@ var openapiSchemas = map[string]any{
 	"DatabaseSize": object(map[string]any{
 		"bytes": prop("integer", ""),
 	}),
+	"KeyringStatus": object(map[string]any{
+		"available":         prop("boolean", ""),
+		"active_generation": prop("integer", "0 => legacy single-key (hp1) mode."),
+		"key_count":         prop("integer", ""),
+		"legacy_key_in_use": prop("boolean", ""),
+	}),
 
 	// ── dns ──────────────────────────────────────────────────────────────────
 	"DNSZone": object(map[string]any{
-		"uid":         prop("string", ""),
-		"name":        prop("string", ""),
-		"primary_ns":  prop("string", ""),
-		"admin_email": prop("string", ""),
-		"serial":      prop("integer", "SOA serial, bumped on every change."),
-		"ttl":         prop("integer", ""),
-		"status":      map[string]any{"type": "string", "enum": []any{"active", "pending", "error"}},
+		"uid":            prop("string", ""),
+		"name":           prop("string", ""),
+		"primary_ns":     prop("string", ""),
+		"admin_email":    prop("string", ""),
+		"serial":         prop("integer", "SOA serial, bumped on every change."),
+		"ttl":            prop("integer", ""),
+		"status":         map[string]any{"type": "string", "enum": []any{"active", "pending", "error"}},
+		"dnssec_enabled": prop("boolean", "Whether BIND inline-signs the zone."),
+	}),
+	"DNSSECStatus": object(map[string]any{
+		"zone":    prop("string", ""),
+		"enabled": prop("boolean", ""),
+		"signed":  prop("boolean", "Keys generated and the zone is signed."),
+		"ds":      arrayOf(prop("string", "DS record to hand the registrar.")),
+		"dnskey":  arrayOf(prop("string", "")),
 	}),
 	"DNSRecord": object(map[string]any{
 		"uid":      prop("string", ""),

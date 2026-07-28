@@ -22,11 +22,17 @@ export function useRecordings(siteUID: string) {
 // session that exists.
 export const PageSize = 200;
 
-export function useAllRecordings(offset = 0) {
+export function useAllRecordings(offset = 0, query = "") {
+  const q = query.trim();
   return useQuery({
-    queryKey: ["recordings", "all", offset],
+    queryKey: ["recordings", "all", offset, q],
+    // A query runs a server-side search across *all* history, so "nothing matches"
+    // is a real answer rather than "not in the newest page"; without one, the
+    // plain newest-first listing is returned.
     queryFn: () =>
-      api.get<TerminalRecording[]>(`/terminal/recordings?limit=${PageSize}&offset=${offset}`),
+      api.get<TerminalRecording[]>(
+        `/terminal/recordings?limit=${PageSize}&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
+      ),
   });
 }
 

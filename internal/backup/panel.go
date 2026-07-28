@@ -199,19 +199,25 @@ func (s *Service) RunPanelScheduler(ctx context.Context, log interface{ Info(str
 	if !s.PanelAvailable() {
 		return
 	}
-	t := time.NewTicker(time.Hour)
+	sweep := func() {
+		if !s.panelDue(ctx) {
+			return
+		}
+		if _, err := s.CreatePanelBackup(ctx); err == nil && log != nil {
+			log.Info("scheduled panel backup completed")
+		}
+	}
+	// Sweep once at startup so a snapshot that came due during downtime runs
+	// promptly rather than waiting a full tick.
+	sweep()
+	t := time.NewTicker(s.sweepEvery())
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if !s.panelDue(ctx) {
-				continue
-			}
-			if _, err := s.CreatePanelBackup(ctx); err == nil && log != nil {
-				log.Info("scheduled panel backup completed")
-			}
+			sweep()
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
@@ -112,19 +113,60 @@ func terminalHandler(d Deps) http.HandlerFunc {
 			defer func() { _ = rec.End(ctx) }()
 		}
 
-		go pumpBrokerToWS(ctx, cancel, conn, stream, rec)
-		pumpWSToBroker(ctx, conn, stream, rec)
+		// Idle timeout: close a session that has gone quiet in both directions for
+		// the configured window. A dangling shell on a customer's site is a standing
+		// risk; a long-running command keeps the session alive because its output
+		// counts as activity, so only a genuinely idle session is closed.
+		var onActivity func()
+		if idle := d.Config.Terminal.IdleTimeout.D(); idle > 0 {
+			activity := make(chan struct{}, 1)
+			onActivity = func() {
+				select {
+				case activity <- struct{}{}:
+				default:
+				}
+			}
+			go func() {
+				t := time.NewTimer(idle)
+				defer t.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-activity:
+						if !t.Stop() {
+							select {
+							case <-t.C:
+							default:
+							}
+						}
+						t.Reset(idle)
+					case <-t.C:
+						writeControl(ctx, conn, terminalControl{Type: "error", Message: "Session closed after being idle."})
+						_ = conn.Close(websocket.StatusPolicyViolation, "idle timeout")
+						cancel()
+						return
+					}
+				}
+			}()
+		}
+
+		go pumpBrokerToWS(ctx, cancel, conn, stream, rec, onActivity)
+		pumpWSToBroker(ctx, conn, stream, rec, onActivity)
 	}
 }
 
 // pumpBrokerToWS forwards PTY output and the final exit status to the browser,
 // recording the output as it passes. rec may be nil (recording disabled).
-func pumpBrokerToWS(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, stream brokerclient.Stream, rec *terminal.Session) {
+func pumpBrokerToWS(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, stream brokerclient.Stream, rec *terminal.Session, onActivity func()) {
 	defer cancel()
 	for {
 		f, err := stream.Recv()
 		if err != nil {
 			return // broker stream closed → session over
+		}
+		if onActivity != nil {
+			onActivity()
 		}
 		switch f.Kind {
 		case brokerwire.StreamEcho:
@@ -156,11 +198,14 @@ func pumpBrokerToWS(ctx context.Context, cancel context.CancelFunc, conn *websoc
 
 // pumpWSToBroker forwards keystrokes and resizes to the PTY. It returns when the
 // browser disconnects, which closes the stream and kills the shell.
-func pumpWSToBroker(ctx context.Context, conn *websocket.Conn, stream brokerclient.Stream, rec *terminal.Session) {
+func pumpWSToBroker(ctx context.Context, conn *websocket.Conn, stream brokerclient.Stream, rec *terminal.Session, onActivity func()) {
 	for {
 		typ, data, err := conn.Read(ctx)
 		if err != nil {
 			return // client gone or context cancelled
+		}
+		if onActivity != nil {
+			onActivity()
 		}
 		switch typ {
 		case websocket.MessageBinary:

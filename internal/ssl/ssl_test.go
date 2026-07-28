@@ -89,6 +89,42 @@ func TestIssueSelfSignedInstallsAndRecords(t *testing.T) {
 	}
 }
 
+func TestIssueRoutesToZeroSSLProvider(t *testing.T) {
+	def := &fakeACME{}
+	zs := &fakeACME{}
+	svc, _ := newSvc(t, def)
+	svc = svc.WithIssuer(ssl.ProviderZeroSSL, zs)
+
+	cert, err := svc.Issue(context.Background(), 1, "z.example.com", "/srv/heropanel/sites/1", ssl.ProviderZeroSSL)
+	if err != nil {
+		t.Fatalf("issue zerossl: %v", err)
+	}
+	// The ZeroSSL issuer did the work and the record carries the ZeroSSL provider.
+	if !zs.wroteChallenge || def.wroteChallenge {
+		t.Fatalf("wrong issuer used: zerossl=%v default=%v", zs.wroteChallenge, def.wroteChallenge)
+	}
+	if cert.Provider != ssl.ProviderZeroSSL {
+		t.Fatalf("provider = %q, want zerossl", cert.Provider)
+	}
+	// An empty provider still routes to the default (Let's Encrypt).
+	if !svc.HasIssuer("") || !svc.HasIssuer(ssl.ProviderZeroSSL) {
+		t.Fatal("both the default and zerossl issuers must report available")
+	}
+}
+
+func TestIssueUnknownProviderFallsBackToDefault(t *testing.T) {
+	def := &fakeACME{}
+	svc, _ := newSvc(t, def)
+	// No zerossl registered => falls back to the default issuer, not an error.
+	cert, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1", ssl.ProviderZeroSSL)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if !def.wroteChallenge || cert.Provider != ssl.ProviderZeroSSL {
+		t.Fatalf("fallback issuer used but provider recorded = %q", cert.Provider)
+	}
+}
+
 func TestUploadCustomValidatesPair(t *testing.T) {
 	svc, _ := newSvc(t, nil)
 	// Mismatched/garbage PEM is rejected.
@@ -101,7 +137,7 @@ func TestIssueACMEOrchestration(t *testing.T) {
 	fa := &fakeACME{}
 	svc, gw := newSvc(t, fa)
 
-	cert, err := svc.Issue(context.Background(), 1, "le.example.com", "/srv/heropanel/sites/1")
+	cert, err := svc.Issue(context.Background(), 1, "le.example.com", "/srv/heropanel/sites/1", "")
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -128,14 +164,14 @@ func TestIssueACMEOrchestration(t *testing.T) {
 
 func TestIssueACMEUnavailable(t *testing.T) {
 	svc, _ := newSvc(t, nil) // no ACME provider
-	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1"); !errx.IsKind(err, errx.KindUnavailable) {
+	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1", ""); !errx.IsKind(err, errx.KindUnavailable) {
 		t.Fatalf("want unavailable, got %v", err)
 	}
 }
 
 func TestIssueACMEFailurePropagates(t *testing.T) {
 	svc, _ := newSvc(t, &fakeACME{fail: true})
-	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1"); !errx.IsKind(err, errx.KindUpstream) {
+	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1", ""); !errx.IsKind(err, errx.KindUpstream) {
 		t.Fatalf("want upstream, got %v", err)
 	}
 }

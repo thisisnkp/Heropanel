@@ -263,6 +263,7 @@ export interface Site {
   webserver: string;
   document_root: string;
   system_user: string;
+  waf_enabled?: boolean;
   created_at: string;
 }
 
@@ -437,6 +438,7 @@ export interface DNSZone {
   serial: number;
   ttl: number;
   status: string;
+  dnssec_enabled: boolean;
   created_at: string;
 }
 

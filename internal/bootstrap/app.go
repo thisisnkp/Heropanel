@@ -18,6 +18,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/apps"
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/auth/webauthn"
 	backuppkg "github.com/thisisnkp/heropanel/internal/backup"
 	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
 	icache "github.com/thisisnkp/heropanel/internal/cache"
@@ -31,15 +32,18 @@ import (
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/httpapi"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/keyring"
 	mailpkg "github.com/thisisnkp/heropanel/internal/mail"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/runtime"
+	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/terminal"
+	"github.com/thisisnkp/heropanel/internal/webmail"
 	"github.com/thisisnkp/heropanel/internal/webserver"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	pcache "github.com/thisisnkp/heropanel/pkg/cache"
@@ -159,6 +163,22 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		log.Warn("no security.secret_key set — private Git repositories are disabled")
 	}
 
+	// Load the rotating data-key envelope: with a datastore + master key, any
+	// wrapped data keys are unwrapped so existing hp2 blobs open and new writes
+	// seal under the active generation. An empty table leaves legacy hp1 mode.
+	var keyringSvc *keyring.Service
+	if db != nil && cipher.Configured() {
+		ks := repository.NewKeyringStore(db)
+		if wrapped, kerr := ks.List(ctx); kerr != nil {
+			log.Warn("could not load the data-key ring", "err", kerr)
+		} else if lerr := cipher.LoadKeyring(wrapped); lerr != nil {
+			log.Warn("could not install the data-key ring", "err", lerr)
+		} else if len(wrapped) > 0 {
+			log.Info("data-key ring loaded", "active_generation", cipher.ActiveGeneration(), "keys", len(wrapped))
+		}
+		keyringSvc = keyring.NewService(cipher, ks)
+	}
+
 	// Services are available only with a datastore. Seed baseline RBAC
 	// (idempotent), then construct the auth and site services.
 	var authSvc *auth.Service
@@ -176,6 +196,14 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var cronSvc *cron.Service
 	var backupSvc *backuppkg.Service
 	var mailSvc *mailpkg.Service
+	var webmailSvc *webmail.Service
+	var firewallSvc *security.Firewall
+	var malwareSvc *security.Malware
+	var fail2banSvc *security.Fail2Ban
+	var sshSvc *security.SSH
+	var updatesSvc *security.Updates
+	var fimSvc *security.FIM
+	var auditScanSvc *security.Audit
 	var dnsSvc *dns.Service
 	var domainSvc *domain.Service
 	if db != nil {
@@ -190,6 +218,16 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		authSvc = auth.NewService(users, sessions, rbac, cacheWiring.Cache, auth.DefaultConfig()).
 			WithAPIKeys(repository.NewAPIKeyRepository(db))
+		// Passkeys (WebAuthn): enabled only when a relying-party id is configured
+		// — it must match the panel's domain exactly and cannot be guessed.
+		if cfg.Security.WebAuthn.RPID != "" {
+			authSvc = authSvc.WithWebAuthn(repository.NewWebAuthnRepository(db), webauthn.New(webauthn.Config{
+				RPID:   cfg.Security.WebAuthn.RPID,
+				RPName: firstNonEmpty(cfg.Security.WebAuthn.RPName, "HeroPanel"),
+				Origin: cfg.Security.WebAuthn.Origin,
+			}))
+			log.Info("passkeys enabled", "rp_id", cfg.Security.WebAuthn.RPID)
+		}
 		auditSvc = audit.NewService(repository.NewAuditRepository(db))
 		userDir = &userDirectoryAdapter{repo: users}
 		siteStore := repository.NewSiteStore(db)
@@ -251,6 +289,27 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		// The database module lets a site's backup carry its database: a full
 		// dump per backup, sealed as a second object on the same target.
 		backupSvc = backupSvc.WithDBs(backupDBAdapter{svc: dbSvc, repo: dbStore})
+		if cfg.Backup.SweepIntervalSec > 0 {
+			backupSvc = backupSvc.WithSweepInterval(time.Duration(cfg.Backup.SweepIntervalSec) * time.Second)
+		}
+		// SFTP target: a sealed off-cloud copy over SSH (3-2-1). Registered only
+		// when a host is configured; credentials come from the secret env.
+		if cfg.Backup.SFTP.Host != "" {
+			backupSvc = backupSvc.WithTarget(backuppkg.TargetSFTP, backuppkg.NewSFTPTarget(backuppkg.SFTPConfig{
+				Host: cfg.Backup.SFTP.Host, Port: cfg.Backup.SFTP.Port, User: cfg.Backup.SFTP.User,
+				Password: cfg.Backup.SFTP.Password, PrivateKey: cfg.Backup.SFTP.PrivateKey,
+				BasePath: cfg.Backup.SFTP.BasePath, HostKey: cfg.Backup.SFTP.HostKey,
+			}))
+			log.Info("backup sftp target configured", "host", cfg.Backup.SFTP.Host)
+		}
+		// rclone target: any of rclone's cloud backends (GDrive/Dropbox/OneDrive…)
+		// via an operator-configured remote — no OAuth code or provider SDK in hpd.
+		if t := backuppkg.NewRcloneTarget(backuppkg.RcloneConfig{
+			Bin: cfg.Backup.Rclone.Bin, Config: cfg.Backup.Rclone.Config, Remote: cfg.Backup.Rclone.Remote,
+		}); t != nil {
+			backupSvc = backupSvc.WithTarget(backuppkg.TargetRclone, t)
+			log.Info("backup rclone target configured", "remote", cfg.Backup.Rclone.Remote)
+		}
 		// Panel self-backup: the panel's own database on the same pipeline,
 		// sealed with the same derived key. Restore is out-of-band by design
 		// (`hpd decrypt` + docs/22 §7).
@@ -284,6 +343,38 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		if dnsSvc != nil {
 			mailSvc = mailSvc.WithDNS(mailDNSAdapter{svc: dnsSvc})
 		}
+		// Passwordless webmail sign-on: mint one-time Dovecot master credentials
+		// that hand off to Roundcube. Enabled only when webmail has a hostname.
+		if cfg.Webmail.Hostname != "" {
+			mailSvc = mailSvc.WithWebmailSSO(
+				"https://"+cfg.Webmail.Hostname+"/",
+				repository.NewWebmailSSOStore(db))
+		}
+		// Firewall: nftables with a snapshot-and-revert safety net. The guard
+		// runs in-process (hpd is local to the box, so it can always fire the
+		// revert even when the change locked out remote access) and recovers a
+		// pending change across a restart from the persisted deadline.
+		firewallSvc = security.NewFirewall(repository.NewFirewallStore(db), gw)
+		if cfg.Security.FirewallWindowSec > 0 {
+			firewallSvc = firewallSvc.WithWindow(time.Duration(cfg.Security.FirewallWindowSec) * time.Second)
+		}
+		firewallSvc = firewallSvc.WithGeoSource(cfg.Security.GeoDBURLv4, cfg.Security.GeoDBURLv6)
+		if firewallSvc.Available() {
+			go firewallSvc.RunGuard(ctx, log)
+			log.Info("firewall guard enabled")
+		}
+		// Malware scanning (ClamAV) with quarantine, over the site tree.
+		malwareSvc = security.NewMalware(repository.NewMalwareStore(db), gw, malwareSiteAdapter{repo: siteStore})
+		// Fail2Ban surfacing (read-only view + manual ban/unban through its client).
+		fail2banSvc = security.NewFail2Ban(gw)
+		// SSH hardening: a panel-owned sshd drop-in, sshd -t tested, reloaded.
+		sshSvc = security.NewSSH(gw)
+		// Automatic security updates: a panel-owned unattended-upgrades drop-in.
+		updatesSvc = security.NewUpdates(gw)
+		// File-integrity monitoring (AIDE): baseline + tamper detection.
+		fimSvc = security.NewFIM(gw)
+		// Host audit scanners (rkhunter, lynis).
+		auditScanSvc = security.NewAudit(gw)
 		gitSvc = git.NewService(repository.NewGitStore(db), gitSiteAdapter{repo: siteStore}, gw).
 			WithRestarter(runtimeSvc). // auto-restart a proxy app after each deploy
 			WithSecrets(cipher)        // enables private repos (token / deploy key)
@@ -334,6 +425,39 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		sslSvc = ssl.NewService(repository.NewCertStore(db), gw, acmeProvider).
 			WithDNS(sslDNSAdapter{svc: dnsSvc}) // enables DNS-01 + wildcard issuance
+
+		// ZeroSSL: a second ACME CA, enabled when the operator supplies EAB
+		// credentials (KID from config, HMAC key from the secret env).
+		if cfg.SSL.ZeroSSLEABKID != "" && cfg.SSL.ZeroSSLEABHMAC != "" {
+			dir := cfg.SSL.ZeroSSLDirectory
+			if dir == "" {
+				dir = ssl.ZeroSSLDirectory
+			}
+			if zs, err := ssl.NewACMEIssuer(dir, cfg.SSL.Email, cfg.SSL.ZeroSSLEABKID, cfg.SSL.ZeroSSLEABHMAC); err != nil {
+				log.Warn("could not initialize ZeroSSL", "err", err)
+			} else {
+				sslSvc = sslSvc.WithIssuer(ssl.ProviderZeroSSL, zs)
+				log.Info("ZeroSSL enabled (EAB)")
+			}
+		}
+
+		// Mail TLS: the mail host presents one certificate (its own FQDN) on
+		// submission/587, imaps/993 and smtps/465. Wire the SSL module in as the
+		// cert provider so a real Let's Encrypt cert is used when the operator has
+		// issued one, and a self-signed fallback otherwise — TLS out of the box.
+		if mailSvc != nil && cfg.Mail.Hostname != "" {
+			mailSvc = mailSvc.WithTLS(cfg.Mail.Hostname, mailCertAdapter{ssl: sslSvc})
+			log.Info("mail TLS configured", "hostname", cfg.Mail.Hostname)
+		}
+
+		// Webmail: Roundcube served by the panel's own OLS/PHP against the local
+		// Dovecot/Postfix, as a system vhost on the configured webmail hostname.
+		if cfg.Webmail.Hostname != "" && siteSvc != nil {
+			webmailSvc = webmail.NewService(gw, cfg.Webmail.Hostname, cfg.Webmail.PHPVersion).
+				WithReloader(siteSvc)
+			siteSvc.WithSystemVhosts(webmailSvc.SystemVhosts)
+			log.Info("webmail configured", "hostname", cfg.Webmail.Hostname)
+		}
 
 		log.Info("auth ready", "session_ttl", auth.DefaultConfig().SessionTTL.String())
 	}
@@ -483,6 +607,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		go dbSvc.RunSSOSweeper(ctx, log)
 		log.Info("database sign-on sweeper enabled", "ttl", database.SSOTTL.String())
 	}
+	// Prune expired one-time webmail SSO master users the same way.
+	if mailSvc != nil && mailSvc.WebmailSSOAvailable() {
+		go mailSvc.RunWebmailSSOSweeper(ctx, log)
+		log.Info("webmail sign-on sweeper enabled", "ttl", mailpkg.WebmailSSOTTL.String())
+	}
 
 	// Node metrics. Needs no datastore or broker — /proc is world-readable — so
 	// the monitor exists whenever hpd does. Per-site and service metrics are wired
@@ -561,6 +690,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Auth:       authSvc,
 		Audit:      auditSvc,
 		Users:      userDir,
+		Keyring:    keyringSvc,
 		Sites:      siteSvc,
 		PHP:        phpSvc,
 		Databases:  dbSvc,
@@ -577,6 +707,14 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Cron:       cronSvc,
 		Backups:    backupSvc,
 		Mail:       mailSvc,
+		Webmail:    webmailSvc,
+		Firewall:   firewallSvc,
+		Malware:    malwareSvc,
+		Fail2Ban:   fail2banSvc,
+		SSH:        sshSvc,
+		Updates:    updatesSvc,
+		FIM:        fimSvc,
+		AuditScan:  auditScanSvc,
 		Monitor:    monitorSvc,
 		Jobs:       jobs,
 		Registry:   reg,

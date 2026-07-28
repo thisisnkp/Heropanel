@@ -12,7 +12,7 @@ export function useDBUsers() {
 export function useCreateDatabase() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { name: string }) => api.post<Database>("/databases", v),
+    mutationFn: (v: { name: string; engine?: string }) => api.post<Database>("/databases", v),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["databases"] }),
   });
 }
@@ -28,7 +28,7 @@ export function useDeleteDatabase() {
 export function useCreateDBUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { username: string; host: string; password: string }) =>
+    mutationFn: (v: { username: string; host: string; password: string; engine?: string }) =>
       api.post<DatabaseUser>("/database-users", v),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["database-users"] }),
   });

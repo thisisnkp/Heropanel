@@ -395,6 +395,19 @@ func (e *Executor) applyBinaries(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// When a release public key is pinned, the manifest must be signed and the
+	// signature must verify before any hash in it is trusted. This is the trust
+	// root: without it, checksums prove only internal consistency, not origin.
+	if e.Options.ReleasePubKey != "" {
+		pub, err := parsePublicKey(e.Options.ReleasePubKey)
+		if err != nil {
+			return fmt.Errorf("release public key: %w", err)
+		}
+		if err := verifyManifestSignature(e.Layout.SourceDir, pub); err != nil {
+			return fmt.Errorf("integrity check failed: %w", err)
+		}
+		e.Log.Info("SHA256SUMS signature verified against the release key")
+	}
 	for _, name := range installBinaries {
 		src := filepath.Join(e.Layout.SourceDir, name)
 		if _, err := os.Stat(src); err != nil {

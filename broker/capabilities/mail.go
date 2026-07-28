@@ -26,6 +26,10 @@ const (
 
 	// mailMapDir holds the postfix hash-map sources (and their .db files).
 	mailMapDir = "/etc/postfix/heropanel"
+	// dovecotMasterPath is the passwd-file of one-time SSO *master* users (see
+	// mail.sso.apply). Empty = no master users = webmail SSO off. Dovecot-owned
+	// 0600, like the mailbox users file.
+	dovecotMasterPath = "/etc/dovecot/heropanel-master"
 	// dovecotUsersPath is the passwd-file Dovecot authenticates against. Its
 	// auth process runs as the dovecot user, so the file is dovecot-owned,
 	// mode 0600 — password hashes stay unreadable to everyone else.
@@ -60,9 +64,18 @@ var reMailLocalPart = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]{0,63}$`)
 const dovecotConf = `# HeroPanel mail configuration (rendered; do not edit).
 mail_location = maildir:` + vmailRoot + `/%d/%n/Maildir
 first_valid_uid = 100
+auth_master_user_separator = *
 passdb {
   driver = passwd-file
   args = ` + dovecotUsersPath + `
+}
+# Passwordless webmail SSO: a one-time master user (mailbox*master) authenticates
+# as the mailbox without its password. The file is empty until the panel mints a
+# session, so this block is inert by default.
+passdb {
+  driver = passwd-file
+  args = ` + dovecotMasterPath + `
+  master = yes
 }
 userdb {
   driver = static
@@ -159,9 +172,11 @@ func (MailProvision) Execute(c capability.Context, raw json.RawMessage) (capabil
 			return capability.Result{}, errx.New(errx.KindUpstream, "postmap_failed", "postmap failed on "+name+".")
 		}
 	}
-	if ok, _ := c.FS.Exists(dovecotUsersPath); !ok {
-		if err := c.FS.WriteFile(dovecotUsersPath, []byte(""), 0o600); err != nil {
-			return capability.Result{}, errx.Upstream(err, "mail_users_failed", "Could not seed the dovecot users file.")
+	for _, p := range []string{dovecotUsersPath, dovecotMasterPath} {
+		if ok, _ := c.FS.Exists(p); !ok {
+			if err := c.FS.WriteFile(p, []byte(""), 0o600); err != nil {
+				return capability.Result{}, errx.Upstream(err, "mail_users_failed", "Could not seed a dovecot passwd-file.")
+			}
 		}
 	}
 	if err := ownUsersFile(c); err != nil {
@@ -278,13 +293,15 @@ func (MailApply) Execute(c capability.Context, raw json.RawMessage) (capability.
 
 // ownUsersFile hands the passwd-file to dovecot's auth user, private.
 func ownUsersFile(c capability.Context) error {
-	res, err := c.Runner.Run(c.Ctx, exec.Command{
-		Path: chownPath, Args: []string{dovecotUser + ":" + dovecotUser, dovecotUsersPath},
-		Timeout: 20 * time.Second,
-	})
-	if err != nil || res.ExitCode != 0 {
-		return errx.New(errx.KindUpstream, "mail_users_failed",
-			"Could not hand the dovecot users file to dovecot.")
+	for _, p := range []string{dovecotUsersPath, dovecotMasterPath} {
+		res, err := c.Runner.Run(c.Ctx, exec.Command{
+			Path: chownPath, Args: []string{dovecotUser + ":" + dovecotUser, p},
+			Timeout: 20 * time.Second,
+		})
+		if err != nil || res.ExitCode != 0 {
+			return errx.New(errx.KindUpstream, "mail_users_failed",
+				"Could not hand a dovecot passwd-file to dovecot.")
+		}
 	}
 	return nil
 }
@@ -292,7 +309,7 @@ func ownUsersFile(c capability.Context) error {
 // modeFor keeps the dovecot passwd-file (password hashes) root-only while the
 // postfix map sources stay world-readable like postfix expects.
 func modeFor(path string) fs.FileMode {
-	if path == dovecotUsersPath {
+	if path == dovecotUsersPath || path == dovecotMasterPath {
 		return 0o600
 	}
 	return 0o644

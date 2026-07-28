@@ -34,6 +34,8 @@ interface BackupList {
   config: BackupConfig;
   available: boolean;
   s3: boolean;
+  sftp: boolean;
+  rclone: boolean;
 }
 
 function useBackups(uid: string) {
@@ -115,7 +117,9 @@ export function BackupsTab({ uid }: { uid: string }) {
         )}
       </div>
 
-      {canWrite && <ConfigForm uid={uid} config={data.config} s3={data.s3} onSaved={invalidate} />}
+      {canWrite && (
+        <ConfigForm uid={uid} config={data.config} s3={data.s3} sftp={data.sftp} rclone={data.rclone} onSaved={invalidate} />
+      )}
 
       {data.backups.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
@@ -189,11 +193,15 @@ function ConfigForm({
   uid,
   config,
   s3,
+  sftp,
+  rclone,
   onSaved,
 }: {
   uid: string;
   config: BackupConfig;
   s3: boolean;
+  sftp: boolean;
+  rclone: boolean;
   onSaved: () => void;
 }) {
   const [c, setC] = useState<BackupConfig>(config);
@@ -235,6 +243,8 @@ function ConfigForm({
       >
         <option value="local">Local disk</option>
         {s3 && <option value="s3">S3</option>}
+        {sftp && <option value="sftp">SFTP</option>}
+        {rclone && <option value="rclone">Cloud drive (rclone)</option>}
       </select>
       <label className="flex items-center gap-1.5 text-xs text-muted">
         database

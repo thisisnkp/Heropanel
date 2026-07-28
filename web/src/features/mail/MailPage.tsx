@@ -13,9 +13,19 @@ import {
   useDeleteQueued,
   useFlushMailQueue,
   useMailDNS,
+  useEnableMailTLS,
+  useInstallWebmail,
+  useMailInbound,
+  useSetMailInbound,
+  useMailAuthVerify,
+  useSetMailAuthVerify,
+  useWebmail,
+  useWebmailSSO,
+  submitWebmailHandoff,
   useMailDomain,
   useMailDomains,
   useMailQueue,
+  useMailTLS,
   useMailUsage,
   useSetMailboxPassword,
   useSetMailboxStatus,
@@ -52,6 +62,11 @@ export function MailPage() {
       {domains.data && !domains.data.available && (
         <Alert>Mail management needs the privileged broker — it is not available on this host.</Alert>
       )}
+
+      {domains.data?.available && <MailTLSCard />}
+      {domains.data?.available && <InboundPolicyCard />}
+      {domains.data?.available && <AuthVerifyCard />}
+      {domains.data?.available && <WebmailCard />}
 
       {domains.data && list.length === 0 && (
         <Card>
@@ -183,8 +198,13 @@ function MailboxesTab({ domainUid, accounts }: { domainUid: string; accounts: Ma
   const usage = useMailUsage(domainUid);
   const del = useDeleteMailbox(domainUid);
   const setStatus = useSetMailboxStatus(domainUid);
+  const wm = useWebmail();
+  const sso = useWebmailSSO();
   const [adding, setAdding] = useState(false);
   const [pwFor, setPwFor] = useState<Mailbox | null>(null);
+  // The webmail button appears only once Roundcube is installed and the mailbox
+  // is active (a suspended mailbox cannot log in).
+  const webmailReady = wm.data?.installed ?? false;
 
   return (
     <div className="p-4 space-y-3">
@@ -206,6 +226,21 @@ function MailboxesTab({ domainUid, accounts }: { domainUid: string; accounts: Ma
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge status={a.status} />
+              {webmailReady && a.status === "active" && (
+                <Button
+                  variant="ghost"
+                  className="h-7 px-2"
+                  loading={sso.isPending && sso.variables === a.uid}
+                  onClick={() =>
+                    sso.mutate(a.uid, {
+                      onSuccess: (ho) => submitWebmailHandoff(ho),
+                      onError: (e) => toast.error(e.message),
+                    })
+                  }
+                >
+                  Webmail
+                </Button>
+              )}
               <Button variant="ghost" className="h-7 px-2" onClick={() => setPwFor(a)}>Password</Button>
               <Button
                 variant="ghost"
@@ -440,5 +475,212 @@ function QueueModal({ onClose }: { onClose: () => void }) {
         ))}
       </div>
     </Modal>
+  );
+}
+
+// MailTLSCard shows the mail host's TLS posture — the one certificate the MTAs
+// present on submission/587, imaps/993 and smtps/465 — and lets an operator
+// (re)wire it. When no mail hostname is configured, TLS is off and the card
+// explains how to turn it on.
+function MailTLSCard() {
+  const tls = useMailTLS();
+  const enable = useEnableMailTLS();
+  if (tls.isLoading || !tls.data) return null;
+  const t = tls.data;
+
+  if (!t.ready) {
+    return (
+      <Card>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-fg">Mail TLS</h2>
+              <Badge>off</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              Set a mail hostname (<code>HP_MAIL_HOSTNAME</code>, e.g. <code>mail.example.com</code>) to serve
+              authenticated submission (587), IMAPS (993) and SMTPS (465) with a real certificate.
+            </p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-fg">Mail TLS</h2>
+            {t.enabled ? <StatusBadge status="active" /> : <Badge>not wired</Badge>}
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            <span className="font-medium text-fg">{t.hostname}</span> presents its certificate on submission{" "}
+            {t.submission_port} (STARTTLS), IMAPS {t.imaps_port} and SMTPS {t.smtps_port}. A Let's Encrypt cert is
+            used when issued for this host; otherwise a self-signed fallback.
+          </p>
+        </div>
+        <Button
+          disabled={enable.isPending}
+          onClick={() =>
+            enable.mutate(undefined, {
+              onSuccess: () => toast.success("Mail TLS wired for " + t.hostname),
+              onError: (e) => toast.error(e.message),
+            })
+          }
+        >
+          {enable.isPending ? "Wiring…" : t.enabled ? "Re-apply TLS" : "Enable TLS"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// WebmailCard exposes Roundcube webmail: enable/install it, and open it once
+// live. Webmail is served by the panel's own OLS/PHP against the local mail, so
+// mailbox users read and send mail in the browser with their own credentials.
+function WebmailCard() {
+  const wm = useWebmail();
+  const install = useInstallWebmail();
+  if (wm.isLoading || !wm.data) return null;
+  const w = wm.data;
+
+  if (!w.enabled) {
+    return (
+      <Card>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-fg">Webmail</h2>
+          <Badge>off</Badge>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Set a webmail hostname (<code>HP_WEBMAIL_HOSTNAME</code>, e.g. <code>webmail.example.com</code>) to serve
+          Roundcube against this host's mailboxes.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-fg">Webmail</h2>
+            {w.installed ? <StatusBadge status="active" /> : <Badge>not installed</Badge>}
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Roundcube on <span className="font-medium text-fg">{w.hostname}</span>, served by the panel against the
+            local Dovecot/Postfix over TLS. Mailbox users sign in with their own credentials.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {w.installed && w.url && (
+            <a href={w.url} target="_blank" rel="noreferrer">
+              <Button variant="ghost">Open webmail</Button>
+            </a>
+          )}
+          <Button
+            disabled={install.isPending}
+            onClick={() =>
+              install.mutate(undefined, {
+                onSuccess: () => toast.success("Webmail installed on " + w.hostname),
+                onError: (e) => toast.error(e.message),
+              })
+            }
+          >
+            {install.isPending ? "Installing…" : w.installed ? "Re-install" : "Install webmail"}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// InboundPolicyCard selects what the host does with mail it receives: HELO,
+// sender and recipient hygiene (forged/unknown-domain senders, open relay).
+// DKIM is verified inbound regardless. Local submission stays exempt.
+function InboundPolicyCard() {
+  const inbound = useMailInbound();
+  const setInbound = useSetMailInbound();
+  if (inbound.isLoading || !inbound.data) return null;
+  const level = inbound.data.level;
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-fg">Inbound verification</h2>
+            <Badge>{level}</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            What the host does with received mail. <span className="font-medium text-fg">standard</span> rejects
+            forged and unknown-domain senders; <span className="font-medium text-fg">strict</span> adds sender
+            verification. DKIM is verified on the way in either way; local submission is exempt.
+          </p>
+        </div>
+        <select
+          className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-fg"
+          value={level}
+          disabled={setInbound.isPending}
+          onChange={(e) =>
+            setInbound.mutate(e.target.value, {
+              onSuccess: () => toast.success("Inbound policy: " + e.target.value),
+              onError: (err) => toast.error(err.message),
+            })
+          }
+        >
+          <option value="off">off</option>
+          <option value="standard">standard</option>
+          <option value="strict">strict</option>
+        </select>
+      </div>
+    </Card>
+  );
+}
+
+// AuthVerifyCard controls full SPF + DMARC verification (policyd-spf + OpenDMARC)
+// on top of the inbound level. monitor evaluates and stamps results without
+// rejecting; enforce rejects a hard SPF fail and a DMARC failure the sender's
+// own policy asks to reject. Local/authenticated submission stays exempt.
+function AuthVerifyCard() {
+  const av = useMailAuthVerify();
+  const setAV = useSetMailAuthVerify();
+  if (av.isLoading || !av.data) return null;
+  const mode = av.data.mode;
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-fg">SPF &amp; DMARC</h2>
+            <Badge>{mode}</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Verify the sender's SPF and DMARC <span className="font-medium text-fg">alignment</span> on received mail.{" "}
+            <span className="font-medium text-fg">monitor</span> evaluates and records results without rejecting;{" "}
+            <span className="font-medium text-fg">enforce</span> rejects a hard SPF fail and a DMARC failure the
+            sender's own policy asks to reject. Needs policyd-spf and OpenDMARC installed; local submission is exempt.
+          </p>
+        </div>
+        <select
+          className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-fg"
+          value={mode}
+          disabled={setAV.isPending}
+          onChange={(e) =>
+            setAV.mutate(e.target.value, {
+              onSuccess: () => toast.success("SPF/DMARC: " + e.target.value),
+              onError: (err) => toast.error(err.message),
+            })
+          }
+        >
+          <option value="off">off</option>
+          <option value="monitor">monitor</option>
+          <option value="enforce">enforce</option>
+        </select>
+      </div>
+    </Card>
   );
 }

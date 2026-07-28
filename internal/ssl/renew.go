@@ -95,12 +95,13 @@ func (r *Renewer) renewOne(ctx context.Context, rec *Record) error {
 	case ProviderSelfSigned:
 		_, err := r.svc.IssueSelfSigned(ctx, rec.OwnerID, rec.CommonName)
 		return err
-	case ProviderLetsEncrypt:
+	case ProviderLetsEncrypt, ProviderZeroSSL:
+		// Both are ACME; renew with the same provider (and flow) that issued it.
 		if rec.Webroot != "" {
-			_, err := r.svc.Issue(ctx, rec.OwnerID, rec.CommonName, rec.Webroot)
+			_, err := r.svc.Issue(ctx, rec.OwnerID, rec.CommonName, rec.Webroot, rec.Provider)
 			return err
 		}
-		_, err := r.svc.IssueDNS(ctx, rec.OwnerID, rec.CommonName)
+		_, err := r.svc.IssueDNS(ctx, rec.OwnerID, rec.CommonName, rec.Provider)
 		return err
 	default:
 		return nil // custom uploads cannot be renewed automatically

@@ -50,6 +50,7 @@ deferred list, and definition of done.
 | 21 | [Scheduler](21-scheduler.md) | Cron as **real systemd timers** — site-scoped, never root, overlap-safe oneshots with `Persistent=true` catch-up and journal-free logs |
 | 22 | [Backups](22-backup.md) | Full + incremental (GNU tar snapshots), zstd, **always sealed** (chunked AES-256-GCM) before any target — local or S3 (hand-rolled SigV4) — scheduled, restored **into a new site** |
 | 23 | [Mail](23-mail.md) | Postfix + Dovecot via rendered flat maps (MTAs never read the panel), BLF-CRYPT mailboxes, **sealed DKIM** + SPF/DMARC auto-wired into DNS with a live check, quotas, queue view |
+| 24 | [Security](24-security.md) | nftables firewall with a **self-reverting apply**, ClamAV scan + **quarantine**, hand-rolled **WebAuthn passkeys**, panel IP-allowlist, Fail2Ban surfacing |
 
 ## Product Principles
 

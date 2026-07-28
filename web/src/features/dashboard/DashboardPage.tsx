@@ -53,6 +53,7 @@ export function DashboardPage() {
       )}
 
       <PanelBackupsCard />
+      <KeyringCard />
 
       <Card className="p-6">
         <h2 className="text-sm font-semibold text-fg">Getting started</h2>
@@ -63,6 +64,60 @@ export function DashboardPage() {
         </ul>
       </Card>
     </div>
+  );
+}
+
+interface KeyringStatus {
+  available: boolean;
+  active_generation: number;
+  key_count: number;
+  legacy_key_in_use: boolean;
+}
+
+// Data-key rotation: the envelope that seals credentials at rest. Rotating mints
+// a new active data key; existing values keep opening under their own generation.
+function KeyringCard() {
+  const { data: me } = useMe();
+  const canRead = can(me, "system.read");
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["keyring"],
+    queryFn: () => api.get<KeyringStatus>("/system/keyring"),
+    enabled: canRead,
+  });
+  const rotate = useMutation({
+    mutationFn: () => api.post<KeyringStatus>("/system/keyring/rotate", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["keyring"] }),
+  });
+  if (!canRead || !data) return null;
+
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+      <div>
+        <h2 className="text-sm font-semibold text-fg">Data-key rotation</h2>
+        <p className="mt-0.5 text-xs text-muted">
+          {data.available
+            ? data.legacy_key_in_use
+              ? "Sealed credentials use the master-derived key (generation 0). Rotate to a wrapped data key so future rotations re-wrap keys instead of re-encrypting every row."
+              : `Active data-key generation ${data.active_generation} · ${data.key_count} key(s). New sealed values use it; older values still open under their own generation.`
+            : "Needs the broker's master key (HP_SECRET_KEY) and a datastore."}
+        </p>
+      </div>
+      {data.available && can(me, "system.write") && (
+        <Button
+          variant="ghost"
+          loading={rotate.isPending}
+          onClick={() =>
+            rotate.mutate(undefined, {
+              onSuccess: (s) => toast.success(`Rotated to data-key generation ${s.active_generation}`),
+              onError: (e) => toast.error("Rotation failed", e instanceof ApiRequestError ? e.message : undefined),
+            })
+          }
+        >
+          Rotate data key
+        </Button>
+      )}
+    </Card>
   );
 }
 

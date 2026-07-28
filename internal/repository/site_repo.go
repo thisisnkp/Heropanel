@@ -23,7 +23,7 @@ var _ site.Repo = (*SiteStore)(nil)
 
 const siteSelect = `
 	SELECT s.id, s.uid, s.owner_id, s.name, s.primary_domain, s.type, s.deploy_mode,
-	       s.status, s.webserver, s.document_root, s.app_project, s.created_at,
+	       s.status, s.webserver, s.document_root, s.app_project, s.waf_enabled, s.created_at,
 	       ssu.linux_user AS linux_user, ssu.linux_uid AS linux_uid, ssu.home_dir AS home_dir
 	  FROM sites s
 	  LEFT JOIN site_system_users ssu ON ssu.site_id = s.id`
@@ -75,6 +75,18 @@ func (s *SiteStore) Provision(ctx context.Context, p site.ProvisionData) error {
 // UpdateStatus implements site.Repo.
 func (s *SiteStore) UpdateStatus(ctx context.Context, id int64, status string) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE sites SET status = ? WHERE id = ?`, status, id); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// SetWAF implements site.Repo: toggles the per-site WAF.
+func (s *SiteStore) SetWAF(ctx context.Context, id int64, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sites SET waf_enabled = ? WHERE id = ?`, v, id); err != nil {
 		return errx.Internal(err)
 	}
 	return nil

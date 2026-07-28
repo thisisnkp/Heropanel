@@ -74,6 +74,75 @@ func deleteZoneHandler(d Deps) http.HandlerFunc {
 	}
 }
 
+// getDNSSECHandler returns a zone's DNSSEC state and, when signed, the DS/DNSKEY
+// the operator hands the registrar. Gated by "dns.read".
+func getDNSSECHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, err := d.DNS.DNSSECStatus(r.Context(), chi.URLParam(r, "uid"))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, st)
+	}
+}
+
+// setDNSSECHandler turns inline signing on or off for a zone. Gated by
+// "dns.write".
+func setDNSSECHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		audit.SetResource(r.Context(), "dns", chi.URLParam(r, "uid"))
+		audit.AddDetail(r.Context(), "dnssec_enabled", req.Enabled)
+		zone, err := d.DNS.SetDNSSEC(r.Context(), chi.URLParam(r, "uid"), req.Enabled)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, zone)
+	}
+}
+
+// exportZoneHandler returns a zone as a standard RFC 1035 master file
+// (text/plain). Gated by "dns.read".
+func exportZoneHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		text, err := d.DNS.ExportZone(r.Context(), chi.URLParam(r, "uid"))
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(text))
+	}
+}
+
+// importZoneHandler adds the records in a pasted master file to a zone. Gated by
+// "dns.write". Additive: it does not delete existing records.
+func importZoneHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ZoneFile string `json:"zone_file"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		audit.SetResource(r.Context(), "dns", chi.URLParam(r, "uid"))
+		res, err := d.DNS.ImportZone(r.Context(), chi.URLParam(r, "uid"), req.ZoneFile)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.AddDetail(r.Context(), "imported", res.Imported)
+		writeJSON(w, r, http.StatusOK, res)
+	}
+}
+
 // listRecordsHandler returns a zone's records. Gated by "dns.read".
 func listRecordsHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -2,7 +2,6 @@ package capabilities
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/thisisnkp/heropanel/broker/capability"
@@ -41,7 +40,8 @@ func (PHPWritePool) Execute(c capability.Context, raw json.RawMessage) (capabili
 		return capability.Result{}, err
 	}
 
-	dir := fmt.Sprintf("%s/%s/fpm/pool.d", phpPoolBase, in.Version)
+	fam := detectPHPFamily(c)
+	dir := fam.poolDir(in.Version)
 	path := dir + "/" + in.PoolName + ".conf"
 
 	if err := c.FS.MkdirAll(dir, 0o755); err != nil {
@@ -73,7 +73,7 @@ func (PHPWritePool) Execute(c capability.Context, raw json.RawMessage) (capabili
 	// asks php-fpm whether it would accept the config while the running master is
 	// still untouched.
 	res, err := c.Runner.Run(c.Ctx, exec.Command{
-		Path:    fmt.Sprintf("/usr/sbin/php-fpm%s", in.Version),
+		Path:    fam.fpmBinary(in.Version),
 		Args:    []string{"-t"},
 		Timeout: 20 * time.Second,
 	})
@@ -83,7 +83,7 @@ func (PHPWritePool) Execute(c capability.Context, raw json.RawMessage) (capabili
 			"PHP-FPM rejected the pool configuration; the change was rolled back.")
 	}
 
-	service := fmt.Sprintf("php%s-fpm", in.Version)
+	service := fam.fpmService(in.Version)
 	res, err = c.Runner.Run(c.Ctx, exec.Command{
 		Path:    systemctlPath,
 		Args:    []string{"reload", service},

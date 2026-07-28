@@ -44,6 +44,8 @@ cat > /srv/heropanel/sites/1/public/index.php <<'PHP'
 echo "max_execution_time=" . ini_get('max_execution_time') . "\n";
 echo "memory_limit=" . ini_get('memory_limit') . "\n";
 echo "opcache=" . (function_exists('opcache_get_status') && opcache_get_status(false)['opcache_enabled'] ? 'on' : 'off') . "\n";
+echo "opcache_mem=" . ini_get('opcache.memory_consumption') . "\n";
+echo "opcache_files=" . ini_get('opcache.max_accelerated_files') . "\n";
 echo "exif=" . (extension_loaded('exif') ? 'yes' : 'no') . "\n";
 PHP
 chmod o+r /srv/heropanel/sites/1/public/index.php
@@ -123,6 +125,25 @@ api -X POST http://127.0.0.1:18443/api/v1/php/extensions -H 'Content-Type: appli
 OUT=$(serve); echo "$OUT"
 check "re-enabling an extension is live"          "$OUT" 'exif=yes'
 
+sec "PER-VERSION OPcache tuning (PHP_INI_SYSTEM, all sites on the version)"
+# The shared-memory sizes cannot be set from a pool — the master allocates them
+# once at startup. Read defaults, raise them, and see the new value in a served
+# phpinfo after the version-wide restart.
+O=$(api "http://127.0.0.1:18443/api/v1/php/opcache?version=8.3")
+echo "opcache defaults: $O"
+check "opcache read returns defaults" "$O" '"memory_consumption_mb":128'
+R=$(api -X PUT http://127.0.0.1:18443/api/v1/php/opcache -H 'Content-Type: application/json' -d '{
+  "version":"8.3","memory_consumption_mb":192,"interned_strings_buffer_mb":16,
+  "max_accelerated_files":20011,"validate_timestamps":true,"revalidate_freq_sec":5,"jit_buffer_size_mb":0
+}')
+check "opcache tuning accepted"                 "$R" '"memory_consumption_mb":192'
+check "write_opcache config-tested + restarted (broker)" "$(cat /tmp/broker.log)" '"capability":"php.write_opcache","outcome":"success"'
+OUT=$(serve); echo "$OUT"
+check "opcache.memory_consumption is live"      "$OUT" 'opcache_mem=192'
+check "opcache.max_accelerated_files is live"   "$OUT" 'opcache_files=20011'
+# Read it back through the live-read path (proves php.read_opcache parses the file).
+check "opcache read-back reflects the change"   "$(api 'http://127.0.0.1:18443/api/v1/php/opcache?version=8.3')" '"max_accelerated_files":20011'
+
 sec "a bad extension name is refused"
 check "bad extension name refused" \
   "$(api -X POST http://127.0.0.1:18443/api/v1/php/extensions -H 'Content-Type: application/json' -d '{"version":"8.3","extension":"gd; rm -rf /","enabled":true}')" \
@@ -132,6 +153,7 @@ sec "it is all in the audit chain"
 A=$(api 'http://127.0.0.1:18443/api/v1/audit')
 check "php settings change audited" "$A" '"action":"PUT /api/v1/sites/{uid}/php"'
 check "extension change audited"    "$A" '"action":"POST /api/v1/php/extensions"'
+check "opcache tuning audited"      "$A" '"action":"PUT /api/v1/php/opcache"'
 check "chain intact"                "$(api http://127.0.0.1:18443/api/v1/audit/verify)" '"intact":true'
 
 sec "RESULT"

@@ -26,6 +26,15 @@ type Config struct {
 	Security Security `yaml:"security"`
 	Backup   Backup   `yaml:"backup"`
 	Mail     Mail     `yaml:"mail"`
+	Webmail  Webmail  `yaml:"webmail"`
+}
+
+// Webmail configures the Roundcube webmail integration. Hostname is the FQDN it
+// is served on (webmail.example.com); empty disables webmail. PHPVersion is the
+// php-fpm version its pool runs (default 8.3).
+type Webmail struct {
+	Hostname   string `yaml:"hostname"`
+	PHPVersion string `yaml:"php_version"`
 }
 
 // Mail configures the mail module's edges. Resolver pins the DNS server the
@@ -33,13 +42,46 @@ type Config struct {
 // a local authoritative server; empty uses the system resolver.
 type Mail struct {
 	Resolver string `yaml:"resolver"`
+	// Hostname is the mail server's own FQDN (mail.example.com). The MTAs
+	// present this host's single certificate on submission/587, imaps/993 and
+	// smtps/465. Empty leaves TLS off (delivery on port 25 still works).
+	Hostname string `yaml:"hostname"`
 }
 
 // Backup configures where sealed site backups may be sent besides local disk.
 // All-empty means "local only", which always works.
 type Backup struct {
-	S3    BackupS3    `yaml:"s3"`
-	Panel BackupPanel `yaml:"panel"`
+	S3     BackupS3     `yaml:"s3"`
+	SFTP   BackupSFTP   `yaml:"sftp"`
+	Rclone BackupRclone `yaml:"rclone"`
+	Panel  BackupPanel  `yaml:"panel"`
+	// SweepIntervalSec is how often the backup schedulers re-check for due
+	// backups. 0 = the default (one hour). Small values are for e2e only:
+	// due-ness is still governed by each policy's interval_hours.
+	SweepIntervalSec int `yaml:"sweep_interval_sec"`
+}
+
+// BackupSFTP is an SFTP (SSH) backup target. Password/PrivateKey are secrets and
+// come from the environment, never the yaml file. HostKey pins the server's
+// public key (an authorized_keys line) — strongly recommended; empty means the
+// host key is not verified.
+type BackupSFTP struct {
+	Host       string `yaml:"host"`
+	Port       int    `yaml:"port"`
+	User       string `yaml:"user"`
+	BasePath   string `yaml:"base_path"`
+	HostKey    string `yaml:"host_key"`
+	Password   string `yaml:"-"`
+	PrivateKey string `yaml:"-"`
+}
+
+// BackupRclone is an rclone-backed target: any of rclone's cloud backends
+// (Google Drive, Dropbox, OneDrive, …). The operator configures the remote with
+// `rclone config`; the panel streams sealed blobs to it. Remote empty = off.
+type BackupRclone struct {
+	Bin    string `yaml:"bin"`    // rclone binary (default "rclone")
+	Config string `yaml:"config"` // path to rclone.conf ("" = rclone default)
+	Remote string `yaml:"remote"` // e.g. "gdrive:heropanel-backups"
 }
 
 // BackupPanel drives the panel's self-backup: a sealed snapshot of the panel's
@@ -66,6 +108,10 @@ type BackupS3 struct {
 // Terminal configures the web terminal and its session recording.
 type Terminal struct {
 	Recording Recording `yaml:"recording"`
+	// IdleTimeout closes an interactive session after this long with no activity
+	// in either direction (no keystrokes and no output). 0 disables the timeout.
+	// A dangling shell on a customer's site is a standing risk; this bounds it.
+	IdleTimeout Duration `yaml:"idle_timeout"`
 }
 
 // Recording configures session recording. An empty Dir switches it off: the
@@ -92,6 +138,13 @@ type Broker struct {
 type SSL struct {
 	Email     string `yaml:"email"`
 	Directory string `yaml:"directory"`
+	// ZeroSSL is an optional second ACME CA. It requires External Account
+	// Binding: ZeroSSLEABKID from the yaml/env, and the HMAC key from the secret
+	// env only (HP_SSL_ZEROSSL_EAB_HMAC) — never the yaml file. ZeroSSLDirectory
+	// defaults to ZeroSSL production when empty but EAB is set.
+	ZeroSSLDirectory string `yaml:"zerossl_directory"`
+	ZeroSSLEABKID    string `yaml:"zerossl_eab_kid"`
+	ZeroSSLEABHMAC   string `yaml:"-"` // secret env only
 }
 
 // Server holds HTTP server settings.
@@ -150,6 +203,32 @@ type Security struct {
 	// store a secret at rest — they report "unavailable" rather than falling back
 	// to plaintext storage.
 	SecretKey string `yaml:"-"`
+	// PanelIPAllowlist restricts panel/API access to these CIDRs (or bare IPs).
+	// Empty = open to all (the default). A misconfigured allowlist can lock the
+	// operator out, so it is opt-in and set deliberately. HP_PANEL_IP_ALLOWLIST
+	// is a comma-separated override.
+	PanelIPAllowlist []string `yaml:"panel_ip_allowlist"`
+	// WebAuthn configures passkeys. Empty RPID keeps them disabled — the
+	// relying-party id must match the panel's domain exactly and cannot be
+	// guessed safely.
+	WebAuthn WebAuthn `yaml:"webauthn"`
+	// FirewallWindowSec overrides the firewall confirmation window (0 = the
+	// module default of 60s). Bounded by the module's own floor.
+	FirewallWindowSec int `yaml:"firewall_window_sec"`
+	// GeoDBURLv4/v6 are URL templates (each with a single %s for the lowercase
+	// ISO country code) for the aggregated-CIDR zone files a country geo-import
+	// fetches. They default to the public ipdeny aggregated mirrors; point them
+	// at an internal copy to keep the panel's outbound reach in your control.
+	// Overridable via HP_SECURITY_GEODB_URL / HP_SECURITY_GEODB_URL6.
+	GeoDBURLv4 string `yaml:"geodb_url_v4"`
+	GeoDBURLv6 string `yaml:"geodb_url_v6"`
+}
+
+// WebAuthn identifies the relying party for passkeys.
+type WebAuthn struct {
+	RPID   string `yaml:"rp_id"`   // the panel's registrable domain, e.g. panel.example.com
+	RPName string `yaml:"rp_name"` // display name, e.g. "HeroPanel"
+	Origin string `yaml:"origin"`  // the full origin, e.g. https://panel.example.com
 }
 
 // CSRF configures double-submit CSRF protection for cookie-authenticated
@@ -203,6 +282,8 @@ func Default() Config {
 			BodyLimitBytes: 10 << 20, // 10 MiB
 			RateLimit:      RateLimit{Enabled: true, RPS: 20, Burst: 40},
 			CORS:           CORS{AllowedOrigins: []string{}},
+			GeoDBURLv4:     "https://www.ipdeny.com/ipblocks/data/aggregated/%s-aggregated.zone",
+			GeoDBURLv6:     "https://www.ipdeny.com/ipv6/ipaddresses/aggregated/%s-aggregated.zone",
 		},
 		Backup: Backup{
 			Panel: BackupPanel{Enabled: true, IntervalHours: 24, Target: "local", Keep: 7},
@@ -240,6 +321,19 @@ func (c *Config) applyEnv() {
 			c.Server.Port = p
 		}
 	}
+	// The write timeout bounds a synchronous response. Long-running privileged
+	// reads (a full rkhunter/lynis audit that takes minutes) need it raised, so
+	// it is env-overridable (e.g. "600s").
+	if v := os.Getenv("HP_TERMINAL_IDLE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Terminal.IdleTimeout = Duration(d)
+		}
+	}
+	if v := os.Getenv("HP_SERVER_WRITE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Server.WriteTimeout = Duration(d)
+		}
+	}
 	if v := os.Getenv("HP_LOG_LEVEL"); v != "" {
 		c.Log.Level = v
 	}
@@ -267,6 +361,43 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("HP_BACKUP_S3_SECRET_KEY"); v != "" {
 		c.Backup.S3.SecretKey = v
 	}
+	if v := os.Getenv("HP_BACKUP_SFTP_HOST"); v != "" {
+		c.Backup.SFTP.Host = v
+	}
+	if v := os.Getenv("HP_BACKUP_SFTP_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Backup.SFTP.Port = n
+		}
+	}
+	if v := os.Getenv("HP_BACKUP_SFTP_USER"); v != "" {
+		c.Backup.SFTP.User = v
+	}
+	if v := os.Getenv("HP_BACKUP_SFTP_BASE_PATH"); v != "" {
+		c.Backup.SFTP.BasePath = v
+	}
+	if v := os.Getenv("HP_BACKUP_SFTP_HOST_KEY"); v != "" {
+		c.Backup.SFTP.HostKey = v
+	}
+	if v := os.Getenv("HP_BACKUP_SFTP_PASSWORD"); v != "" {
+		c.Backup.SFTP.Password = v
+	}
+	if v := os.Getenv("HP_BACKUP_SFTP_PRIVATE_KEY"); v != "" {
+		c.Backup.SFTP.PrivateKey = v
+	}
+	if v := os.Getenv("HP_BACKUP_RCLONE_REMOTE"); v != "" {
+		c.Backup.Rclone.Remote = v
+	}
+	if v := os.Getenv("HP_BACKUP_RCLONE_CONFIG"); v != "" {
+		c.Backup.Rclone.Config = v
+	}
+	if v := os.Getenv("HP_BACKUP_RCLONE_BIN"); v != "" {
+		c.Backup.Rclone.Bin = v
+	}
+	if v := os.Getenv("HP_BACKUP_SWEEP_INTERVAL_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Backup.SweepIntervalSec = n
+		}
+	}
 	if v := os.Getenv("HP_BACKUP_PANEL_ENABLED"); v != "" {
 		c.Backup.Panel.Enabled = v == "1" || strings.EqualFold(v, "true")
 	}
@@ -285,6 +416,44 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_MAIL_RESOLVER"); v != "" {
 		c.Mail.Resolver = v
+	}
+	if v := os.Getenv("HP_MAIL_HOSTNAME"); v != "" {
+		c.Mail.Hostname = v
+	}
+	if v := os.Getenv("HP_WEBMAIL_HOSTNAME"); v != "" {
+		c.Webmail.Hostname = v
+	}
+	if v := os.Getenv("HP_WEBMAIL_PHP_VERSION"); v != "" {
+		c.Webmail.PHPVersion = v
+	}
+	if v := os.Getenv("HP_PANEL_IP_ALLOWLIST"); v != "" {
+		parts := strings.Split(v, ",")
+		c.Security.PanelIPAllowlist = c.Security.PanelIPAllowlist[:0]
+		for _, p := range parts {
+			if p = strings.TrimSpace(p); p != "" {
+				c.Security.PanelIPAllowlist = append(c.Security.PanelIPAllowlist, p)
+			}
+		}
+	}
+	if v := os.Getenv("HP_WEBAUTHN_RP_ID"); v != "" {
+		c.Security.WebAuthn.RPID = v
+	}
+	if v := os.Getenv("HP_WEBAUTHN_RP_NAME"); v != "" {
+		c.Security.WebAuthn.RPName = v
+	}
+	if v := os.Getenv("HP_WEBAUTHN_ORIGIN"); v != "" {
+		c.Security.WebAuthn.Origin = v
+	}
+	if v := os.Getenv("HP_FIREWALL_WINDOW_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Security.FirewallWindowSec = n
+		}
+	}
+	if v := os.Getenv("HP_SECURITY_GEODB_URL"); v != "" {
+		c.Security.GeoDBURLv4 = v
+	}
+	if v := os.Getenv("HP_SECURITY_GEODB_URL6"); v != "" {
+		c.Security.GeoDBURLv6 = v
 	}
 	if v := os.Getenv("HP_DATABASE_ADMINER_URL"); v != "" {
 		c.Database.AdminerURL = v
@@ -313,6 +482,16 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_SSL_DIRECTORY"); v != "" {
 		c.SSL.Directory = v
+	}
+	if v := os.Getenv("HP_SSL_ZEROSSL_DIRECTORY"); v != "" {
+		c.SSL.ZeroSSLDirectory = v
+	}
+	if v := os.Getenv("HP_SSL_ZEROSSL_EAB_KID"); v != "" {
+		c.SSL.ZeroSSLEABKID = v
+	}
+	// The EAB HMAC is a credential: secret env only, never the yaml.
+	if v := os.Getenv("HP_SSL_ZEROSSL_EAB_HMAC"); v != "" {
+		c.SSL.ZeroSSLEABHMAC = v
 	}
 
 	// The rate limiter, so a test harness or a load run can turn it off without

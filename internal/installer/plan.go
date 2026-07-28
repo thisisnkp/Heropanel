@@ -10,6 +10,10 @@ type Options struct {
 	Minimal     bool     `json:"minimal"`      // low-RAM preset
 	NoWebServer bool     `json:"no_webserver"` // don't manage the site web server
 	Modules     []string `json:"modules"`      // optional modules to install
+	// ReleasePubKey pins the ed25519 release key (base64/hex/@path). When set,
+	// the SHA256SUMS manifest must carry a valid SHA256SUMS.sig or the install
+	// aborts — signature anchors the checksum chain to the release key.
+	ReleasePubKey string `json:"release_pubkey,omitempty"`
 }
 
 // DefaultOptions returns sensible install defaults.

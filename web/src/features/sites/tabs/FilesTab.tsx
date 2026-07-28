@@ -27,6 +27,7 @@ import {
   useSearch,
   useTransfer,
   useUpload,
+  useUploadArchive,
 } from "../files";
 
 // The editor refuses to open a file larger than this; it is offered for download
@@ -104,11 +105,13 @@ export function FilesTab({ uid }: { uid: string }) {
   const search = useSearch(uid, cwd, query, searchMode);
 
   const upload = useUpload(uid);
+  const uploadArchive = useUploadArchive(uid);
   const remove = useRemove(uid);
   const transfer = useTransfer(uid);
   const extract = useExtract(uid);
   const chown = useFixOwnership(uid);
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const archiveInput = useRef<HTMLInputElement | null>(null);
   const filterInput = useRef<HTMLInputElement | null>(null);
 
   // `entry === null` is the background menu (paste, new file, …).
@@ -235,6 +238,19 @@ export function FilesTab({ uid }: { uid: string }) {
       },
     );
     if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const startArchiveUpload = (files: FileList | null) => {
+    if (!canWrite || !files || files.length === 0) return;
+    const file = files[0];
+    uploadArchive.mutate(
+      { dir: cwd, file },
+      {
+        onSuccess: () => toast.success(`Extracted ${file.name} here`),
+        onError: (e) => toast.error("Archive upload failed", e instanceof ApiRequestError ? e.message : undefined),
+      },
+    );
+    if (archiveInput.current) archiveInput.current.value = "";
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -389,6 +405,7 @@ export function FilesTab({ uid }: { uid: string }) {
         canWrite && { label: "New file", separatorBefore: true, onSelect: () => setDialog("newfile") },
         canWrite && { label: "New folder", onSelect: () => setDialog("newfolder") },
         canWrite && { label: "Upload files…", onSelect: () => fileInput.current?.click() },
+        canWrite && { label: "Upload archive & extract…", onSelect: () => archiveInput.current?.click() },
         { label: "Select all", shortcut: "Ctrl+A", separatorBefore: true, onSelect: () => setSelected(new Set(visible.map((v) => v.name))) },
         { label: "Refresh", onSelect: () => void refetch() },
       ];
@@ -571,6 +588,7 @@ export function FilesTab({ uid }: { uid: string }) {
                   New folder
                 </Button>
                 <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => startUpload(e.target.files)} />
+                <input ref={archiveInput} type="file" accept=".zip,.tar.gz,.tgz" className="hidden" onChange={(e) => startArchiveUpload(e.target.files)} />
                 <Button className="h-9 px-3" loading={upload.isPending} onClick={() => fileInput.current?.click()}>
                   Upload
                 </Button>

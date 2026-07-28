@@ -28,14 +28,17 @@ import (
 	"github.com/thisisnkp/heropanel/internal/files"
 	"github.com/thisisnkp/heropanel/internal/git"
 	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/heropanel/internal/keyring"
 	"github.com/thisisnkp/heropanel/internal/mail"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
+	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/terminal"
+	"github.com/thisisnkp/heropanel/internal/webmail"
 	"github.com/thisisnkp/heropanel/internal/ws"
 )
 
@@ -70,6 +73,55 @@ func (stubDockerBroker) Invoke(_ context.Context, capability string, _ any) (map
 		return map[string]any{"available": true}, nil
 	}
 	return map[string]any{}, nil
+}
+func (stubDockerBroker) Health(context.Context) error { return nil }
+
+// stubFirewallRepo satisfies security.FirewallRepo so the /firewall routes
+// mount in the walked spec. It stores nothing.
+type stubFirewallRepo struct{}
+
+func (stubFirewallRepo) ListRules(context.Context) ([]security.RuleRecord, error) { return nil, nil }
+func (stubFirewallRepo) InsertRule(context.Context, *security.RuleRecord) error   { return nil }
+func (stubFirewallRepo) DeleteRule(context.Context, string) error                 { return nil }
+func (stubFirewallRepo) NextPosition(context.Context) (int, error)                { return 1, nil }
+func (stubFirewallRepo) GetState(context.Context) (*security.State, error) {
+	return &security.State{}, nil
+}
+func (stubFirewallRepo) SetState(context.Context, string, string) error { return nil }
+func (stubFirewallRepo) ListIPEntries(context.Context) ([]security.IPListEntry, error) {
+	return nil, nil
+}
+func (stubFirewallRepo) InsertIPEntry(context.Context, *security.IPListEntry) error { return nil }
+func (stubFirewallRepo) DeleteIPEntry(context.Context, string) error                { return nil }
+func (stubFirewallRepo) InsertIPEntries(context.Context, []*security.IPListEntry) error {
+	return nil
+}
+func (stubFirewallRepo) DeleteIPEntriesByCountry(context.Context, string) error { return nil }
+
+// stubMalwareRepo and stubMalwareSites satisfy the malware service's contracts
+// so the /security/quarantine and /sites/{uid}/scan routes mount in the walk.
+type stubMalwareRepo struct{}
+
+func (stubMalwareRepo) InsertScan(context.Context, *security.ScanRecord) error { return nil }
+func (stubMalwareRepo) ListScans(context.Context, int) ([]security.ScanRecord, error) {
+	return nil, nil
+}
+func (stubMalwareRepo) InsertQuarantine(context.Context, *security.QuarantineRecord) error {
+	return nil
+}
+func (stubMalwareRepo) ListQuarantine(context.Context) ([]security.QuarantineRecord, error) {
+	return nil, nil
+}
+func (stubMalwareRepo) GetQuarantine(context.Context, string) (*security.QuarantineRecord, error) {
+	return &security.QuarantineRecord{}, nil
+}
+func (stubMalwareRepo) SetQuarantineStatus(context.Context, string, string) error { return nil }
+func (stubMalwareRepo) DeleteQuarantine(context.Context, string) error            { return nil }
+
+type stubMalwareSites struct{}
+
+func (stubMalwareSites) Resolve(context.Context, string) (*security.SiteRef, error) {
+	return &security.SiteRef{}, nil
 }
 
 type stubTerminalSites struct{}
@@ -123,6 +175,9 @@ func (stubRecordings) Get(context.Context, string) (*terminal.Recording, error) 
 	return &terminal.Recording{}, nil
 }
 func (stubRecordings) List(context.Context, int64, int, int) ([]terminal.Recording, error) {
+	return nil, nil
+}
+func (stubRecordings) Search(context.Context, terminal.RecordingFilter) ([]terminal.Recording, error) {
 	return nil, nil
 }
 func (stubRecordings) Delete(context.Context, string) (string, error) { return "", nil }
@@ -185,6 +240,7 @@ func fullRouterDeps(t *testing.T) Deps {
 		Auth:      &auth.Service{},
 		Audit:     &audit.Service{},
 		Users:     stubUsers{},
+		Keyring:   keyring.NewService(nil, nil),
 		Sites:     &site.Service{},
 		PHP:       &php.Service{},
 		Databases: &database.Service{},
@@ -196,9 +252,18 @@ func fullRouterDeps(t *testing.T) Deps {
 		Cron:      cron.NewService(nil, nil, nil),
 		Backups:   backup.NewService(nil, nil, nil, nil, nil),
 		Mail:      mail.NewService(nil, nil),
-		Monitor:   monitor.New().WithHistory(stubMetricRepo{}).WithAlertAdmin(stubAlertAdmin{}),
-		Jobs:      &job.Dispatcher{},
-		Registry:  registry.New(),
+		Webmail:   webmail.NewService(stubDockerBroker{}, "webmail.example.com", "8.3"),
+		Firewall:  security.NewFirewall(stubFirewallRepo{}, stubDockerBroker{}),
+		Malware:   security.NewMalware(stubMalwareRepo{}, stubDockerBroker{}, stubMalwareSites{}),
+		Fail2Ban:  security.NewFail2Ban(stubDockerBroker{}),
+		SSH:       security.NewSSH(stubDockerBroker{}),
+		Updates:   security.NewUpdates(stubDockerBroker{}),
+		FIM:       security.NewFIM(stubDockerBroker{}),
+		AuditScan: security.NewAudit(stubDockerBroker{}),
+		// (stubDockerBroker is a broker.Gateway; the walk never invokes it.)
+		Monitor:  monitor.New().WithHistory(stubMetricRepo{}).WithAlertAdmin(stubAlertAdmin{}),
+		Jobs:     &job.Dispatcher{},
+		Registry: registry.New(),
 		// Apps rides on Docker, so both use the same daemon-present stub — and the
 		// Apps route group only mounts when Apps is non-nil, so it must be here or
 		// the whole one-click API vanishes from the walked spec.

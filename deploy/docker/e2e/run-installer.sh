@@ -45,15 +45,34 @@ install -m0755 /hp/hpd /hp/hp-broker /hp/hp-installer /stage/
 echo "manifest:"; cat /stage/SHA256SUMS
 /stage/hp-installer --version
 
+sec "sign the manifest with a fresh ed25519 release key (the trust root)"
+eval "$(/stage/hp-installer --gen-key | grep '^HP_RELEASE')"
+echo "  pinned pubkey: ${HP_RELEASE_PUBKEY:0:16}…"
+/stage/hp-installer --sign /stage --key "$HP_RELEASE_KEY"
+present /stage/SHA256SUMS.sig
+# A tampered manifest must fail verification live: corrupt the manifest after
+# signing, run the integrity check via --execute --pubkey, expect refusal + no
+# install. Done in a throwaway copy so the real install starts clean.
+sec "tampered manifest is refused (signature no longer matches)"
+cp -r /stage /stage-bad
+echo "0000000000000000000000000000000000000000000000000000000000000000  hpd" > /stage-bad/SHA256SUMS
+( cd /stage-bad && sha256sum hp-broker >> SHA256SUMS )
+BAD=$(/stage-bad/hp-installer --execute --yes --minimal --no-webserver --source /stage-bad --pubkey "$HP_RELEASE_PUBKEY" 2>&1 || true)
+check "tampered manifest fails signature" "$BAD" 'signature does not verify'
+absent /opt/heropanel/bin/hpd
+rm -rf /stage-bad /var/lib/heropanel/install-journal.json /opt/heropanel /etc/heropanel /var/lib/heropanel 2>/dev/null || true
+id heropanel >/dev/null 2>&1 && userdel -r heropanel 2>/dev/null || true
+
 sec "detect + plan (dry run, no changes)"
 /stage/hp-installer --detect || true
 /stage/hp-installer --plan --minimal --no-webserver
 
-sec "EXECUTE  (minimal profile: SQLite, no web server)"
-/stage/hp-installer --execute --yes --minimal --no-webserver --source /stage 2>/tmp/exec.log
+sec "EXECUTE  (minimal profile: SQLite, no web server; signature-verified)"
+/stage/hp-installer --execute --yes --minimal --no-webserver --source /stage --pubkey "$HP_RELEASE_PUBKEY" 2>/tmp/exec.log
 rc=$?
 cat /tmp/exec.log
 check "execute returned 0" "$rc" '^0$'
+check "SHA256SUMS signature verified" "$(cat /tmp/exec.log)" 'SHA256SUMS signature verified against the release key'
 check "binaries verified against SHA256SUMS" "$(cat /tmp/exec.log)" 'binaries verified against SHA256SUMS'
 
 sec "artifacts were installed"

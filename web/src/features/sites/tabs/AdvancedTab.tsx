@@ -3,7 +3,7 @@ import { ApiRequestError, type SiteLimits } from "@/lib/api";
 import { Alert, Button, Card, Field, Input, Modal, Spinner } from "@/components/ui";
 import { toast } from "@/stores/toast";
 import { useDeleteSite } from "../sites";
-import { useClone, useLimits, useSetLimits } from "../site-detail";
+import { useClone, useLimits, useSetLimits, useSetWAF, useSite } from "../site-detail";
 
 const MB = 1024 * 1024;
 
@@ -49,6 +49,7 @@ export function AdvancedTab({
 
   return (
     <div className="space-y-4">
+      <WAFCard uid={uid} />
       <Card className="space-y-4 p-5">
         <div>
           <h3 className="text-sm font-semibold text-fg">Resource limits</h3>
@@ -160,5 +161,42 @@ function CloneModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+// WAFCard toggles the per-site ModSecurity + OWASP CRS web application firewall.
+function WAFCard({ uid }: { uid: string }) {
+  const site = useSite(uid);
+  const setWAF = useSetWAF(uid);
+  const enabled = !!site.data?.waf_enabled;
+  return (
+    <Card className="space-y-3 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-fg">Web application firewall</h3>
+          <p className="text-xs text-muted">
+            ModSecurity with the OWASP Core Rule Set, applied to this site's vhost. Blocks common attacks
+            (SQL injection, XSS, path traversal) before they reach the app.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-fg">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={setWAF.isPending || site.isLoading}
+            onChange={(e) =>
+              setWAF.mutate(
+                { enabled: e.target.checked },
+                {
+                  onSuccess: () => toast.success(e.target.checked ? "WAF enabled" : "WAF disabled"),
+                  onError: (err) => toast.error(err instanceof ApiRequestError ? err.message : "Failed"),
+                },
+              )
+            }
+          />
+          {enabled ? "On" : "Off"}
+        </label>
+      </div>
+    </Card>
   );
 }

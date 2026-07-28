@@ -83,11 +83,64 @@ func newSSOSvc(t *testing.T) (*database.Service, *mockGateway, *repository.Datab
 	return svc, gw, store
 }
 
+func TestPostgresEngineRoutesToPGCapabilities(t *testing.T) {
+	svc, gw := newSvc(t)
+	ctx := context.Background()
+
+	dbi, err := svc.CreateDatabase(ctx, 1, "pg_db", "postgres")
+	if err != nil {
+		t.Fatalf("create pg db: %v", err)
+	}
+	if dbi.Engine != "postgres" {
+		t.Fatalf("engine = %q, want postgres", dbi.Engine)
+	}
+	if gw.last("pg.create") == nil || gw.last("db.create") != nil {
+		t.Fatalf("expected pg.create (not db.create): %+v", gw.calls)
+	}
+	usr, err := svc.CreateUser(ctx, 1, "pg_user", "", "password123", "postgres")
+	if err != nil {
+		t.Fatalf("create pg user: %v", err)
+	}
+	if gw.last("pg.user.create") == nil {
+		t.Fatal("expected pg.user.create")
+	}
+	if err := svc.Grant(ctx, dbi.UID, usr.UID, []string{"ALL"}); err != nil {
+		t.Fatalf("pg grant: %v", err)
+	}
+	if gw.last("pg.grant") == nil {
+		t.Fatal("expected pg.grant")
+	}
+	// Size + export route to pg.* too.
+	if _, err := svc.Size(ctx, dbi.UID); err != nil {
+		t.Fatalf("pg size: %v", err)
+	}
+	if gw.last("pg.size") == nil {
+		t.Fatal("expected pg.size")
+	}
+}
+
+func TestGrantAcrossEnginesRejected(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	mdb, _ := svc.CreateDatabase(ctx, 1, "m_db", "mariadb")
+	pguser, _ := svc.CreateUser(ctx, 1, "p_user", "", "password123", "postgres")
+	if err := svc.Grant(ctx, mdb.UID, pguser.UID, nil); !errx.IsKind(err, errx.KindValidation) {
+		t.Fatalf("granting a postgres user on a mariadb database must be refused, got %v", err)
+	}
+}
+
+func TestInvalidEngineRejected(t *testing.T) {
+	svc, _ := newSvc(t)
+	if _, err := svc.CreateDatabase(context.Background(), 1, "x_db", "mongodb"); !errx.IsKind(err, errx.KindValidation) {
+		t.Fatalf("an unknown engine must be rejected, got %v", err)
+	}
+}
+
 func TestCreateDatabaseAndUserAndGrant(t *testing.T) {
 	svc, gw := newSvc(t)
 	ctx := context.Background()
 
-	dbi, err := svc.CreateDatabase(ctx, 1, "acme_db")
+	dbi, err := svc.CreateDatabase(ctx, 1, "acme_db", "")
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}
@@ -95,7 +148,7 @@ func TestCreateDatabaseAndUserAndGrant(t *testing.T) {
 		t.Fatalf("unexpected db: %+v", dbi)
 	}
 
-	usr, err := svc.CreateUser(ctx, 1, "acme", "localhost", "password123")
+	usr, err := svc.CreateUser(ctx, 1, "acme", "localhost", "password123", "")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -125,7 +178,7 @@ func TestCreateDatabaseAndUserAndGrant(t *testing.T) {
 
 func TestCreateDatabaseValidatesName(t *testing.T) {
 	svc, gw := newSvc(t)
-	if _, err := svc.CreateDatabase(context.Background(), 1, "Bad-Name"); !errx.IsKind(err, errx.KindValidation) {
+	if _, err := svc.CreateDatabase(context.Background(), 1, "Bad-Name", ""); !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation, got %v", err)
 	}
 	if len(gw.calls) != 0 {
@@ -135,7 +188,7 @@ func TestCreateDatabaseValidatesName(t *testing.T) {
 
 func TestCreateUserWeakPassword(t *testing.T) {
 	svc, _ := newSvc(t)
-	if _, err := svc.CreateUser(context.Background(), 1, "acme", "localhost", "short"); !errx.IsKind(err, errx.KindValidation) {
+	if _, err := svc.CreateUser(context.Background(), 1, "acme", "localhost", "short", ""); !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation for weak password, got %v", err)
 	}
 }
@@ -143,7 +196,7 @@ func TestCreateUserWeakPassword(t *testing.T) {
 func TestDeleteDatabaseDropsAndRemoves(t *testing.T) {
 	svc, gw := newSvc(t)
 	ctx := context.Background()
-	dbi, _ := svc.CreateDatabase(ctx, 1, "gone_db")
+	dbi, _ := svc.CreateDatabase(ctx, 1, "gone_db", "")
 	if err := svc.DeleteDatabase(ctx, dbi.UID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}

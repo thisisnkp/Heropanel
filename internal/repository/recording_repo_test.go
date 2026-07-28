@@ -102,6 +102,52 @@ func TestRecordingListCarriesTheSiteItRanOn(t *testing.T) {
 	}
 }
 
+// Search filters across all history, not just the newest page — so "no such
+// session" is a real answer instead of "it fell off the page".
+func TestRecordingSearchAcrossHistory(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	store := repository.NewRecordingStore(db)
+	siteA := seedSite(t, db, "site-a", "Alpha", "alpha.test")
+	siteB := seedSite(t, db, "site-b", "Bravo", "bravo.test")
+
+	rA := newRecording(siteA, "alice@example.test")
+	rA.SystemUser = "hps1"
+	rB := newRecording(siteB, "bob@example.test")
+	rB.SystemUser = "hps2"
+	rB.ActorIP = "203.0.113.9"
+	for _, r := range []*terminal.Recording{rA, rB} {
+		if err := store.Create(ctx, r); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+	}
+
+	// By actor email (substring, case-insensitive).
+	got, err := store.Search(ctx, terminal.RecordingFilter{Query: "ALICE"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) != 1 || got[0].ActorEmail != "alice@example.test" {
+		t.Fatalf("query ALICE => %+v, want alice's session", got)
+	}
+	// By site name.
+	if got, _ := store.Search(ctx, terminal.RecordingFilter{Query: "bravo"}); len(got) != 1 || got[0].SiteUID != "site-b" {
+		t.Errorf("query bravo => %+v, want the site-b session", got)
+	}
+	// By actor IP.
+	if got, _ := store.Search(ctx, terminal.RecordingFilter{Query: "203.0.113"}); len(got) != 1 {
+		t.Errorf("query by IP => %d, want 1", len(got))
+	}
+	// A query that matches nothing is a real empty answer.
+	if got, _ := store.Search(ctx, terminal.RecordingFilter{Query: "nobody"}); len(got) != 0 {
+		t.Errorf("no-match query => %d, want 0", len(got))
+	}
+	// Scoped to a site.
+	if got, _ := store.Search(ctx, terminal.RecordingFilter{SiteID: siteA}); len(got) != 1 || got[0].SiteUID != "site-a" {
+		t.Errorf("site-scoped search => %+v", got)
+	}
+}
+
 // A site can be deleted while its recordings are still inside the retention
 // window. The transcript of what someone did on a site that no longer exists is
 // the *last* thing an audit trail should drop, so the listing must survive the

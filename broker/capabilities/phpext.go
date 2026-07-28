@@ -2,10 +2,7 @@ package capabilities
 
 import (
 	"encoding/json"
-	"fmt"
 	"regexp"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/thisisnkp/heropanel/broker/capability"
@@ -69,14 +66,18 @@ func (PHPListExtensions) Execute(c capability.Context, raw json.RawMessage) (cap
 		return capability.Result{}, err
 	}
 
-	available, err := listININames(c, fmt.Sprintf("%s/%s/%s", phpPoolBase, in.Version, phpModsAvailDir))
+	fam := detectPHPFamily(c)
+	// Available extensions are everything that exists for the version, disabled
+	// ones included (on RHEL a disabled ext is a `.ini.disabled` still in php.d).
+	available, err := listExtNames(c, fam.availDir(in.Version), true)
 	if err != nil {
 		return capability.Result{}, err
 	}
-	// What FPM has enabled is what is symlinked into its conf.d. Deliberately not
-	// `php -m`: that reports the *CLI* SAPI, which has its own conf.d and its own
-	// answer — a list that would be confidently wrong about the thing being asked.
-	enabled, err := listININames(c, fmt.Sprintf("%s/%s/%s/conf.d", phpPoolBase, in.Version, phpFPMSAPI))
+	// What FPM has enabled: on Debian, the symlinks in its conf.d; on RHEL, the
+	// non-disabled inis in the flat php.d. Deliberately not `php -m`: that reports
+	// the *CLI* SAPI, a different conf.d and a different answer — confidently wrong
+	// about the thing being asked.
+	enabled, err := listExtNames(c, fam.enabledDir(in.Version), false)
 	if err != nil {
 		return capability.Result{}, err
 	}
@@ -86,45 +87,6 @@ func (PHPListExtensions) Execute(c capability.Context, raw json.RawMessage) (cap
 		"available": available,
 		"enabled":   enabled,
 	}}, nil
-}
-
-// listININames lists a directory's *.ini entries, stripped of the priority
-// prefix Debian adds in conf.d ("20-gd.ini" -> "gd").
-func listININames(c capability.Context, dir string) ([]string, error) {
-	res, err := c.Runner.Run(c.Ctx, exec.Command{
-		Path:    lsPath,
-		Args:    []string{"-1", "--", dir},
-		Timeout: 10 * time.Second,
-	})
-	if err != nil {
-		return nil, errx.Upstream(err, "ext_list_failed", "Could not list PHP extensions.")
-	}
-	if res.ExitCode != 0 {
-		// A version whose directory is missing has no extensions, which is an
-		// answer rather than a fault.
-		return []string{}, nil
-	}
-
-	seen := map[string]bool{}
-	for _, line := range strings.Split(string(res.Stdout), "\n") {
-		name := strings.TrimSpace(line)
-		if !strings.HasSuffix(name, ".ini") {
-			continue
-		}
-		name = strings.TrimSuffix(name, ".ini")
-		if i := strings.Index(name, "-"); i >= 0 && isAllDigits(name[:i]) {
-			name = name[i+1:]
-		}
-		if name != "" {
-			seen[name] = true
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for n := range seen {
-		out = append(out, n)
-	}
-	sort.Strings(out)
-	return out, nil
 }
 
 func isAllDigits(s string) bool {
@@ -164,44 +126,58 @@ func (PHPSetExtension) Execute(c capability.Context, raw json.RawMessage) (capab
 		return capability.Result{}, err
 	}
 
-	tool := phpDismodPath
-	if in.Enabled {
-		tool = phpEnmodPath
-	}
-	// -s fpm scopes the change to the FPM SAPI. Without it phpenmod would also
-	// touch the CLI's conf.d, changing what a site's own `php` command sees as a
-	// side effect of a web-server setting.
-	res, err := c.Runner.Run(c.Ctx, exec.Command{
-		Path:    tool,
-		Args:    []string{"-v", in.Version, "-s", phpFPMSAPI, in.Extension},
-		Timeout: 30 * time.Second,
-	})
-	if err != nil {
-		return capability.Result{}, errx.Upstream(err, "ext_toggle_failed", "Could not change the PHP extension.")
-	}
-	if res.ExitCode != 0 {
-		return capability.Result{}, errx.New(errx.KindValidation, "ext_toggle_failed",
-			"PHP did not accept that extension change; the extension may not be installed.")
-	}
+	fam := detectPHPFamily(c)
 
-	// Config-test before reload, exactly as php.write_pool does: one master
-	// serves every site on this version.
-	res, err = c.Runner.Run(c.Ctx, exec.Command{
-		Path:    fmt.Sprintf("/usr/sbin/php-fpm%s", in.Version),
-		Args:    []string{"-t"},
-		Timeout: 20 * time.Second,
-	})
-	if err != nil || res.ExitCode != 0 {
-		// Put it back the way it was before reporting a failure.
+	// undo restores the prior extension state, so a failed config-test leaves the
+	// host exactly as it was found. Each family has its own inverse.
+	var undo func()
+	if fam == phpRHEL {
+		if _, err := toggleExtRHEL(c, in.Version, in.Extension, in.Enabled); err != nil {
+			return capability.Result{}, err
+		}
+		undo = func() { _, _ = toggleExtRHEL(c, in.Version, in.Extension, !in.Enabled) }
+	} else {
+		tool := phpDismodPath
+		if in.Enabled {
+			tool = phpEnmodPath
+		}
+		// -s fpm scopes the change to the FPM SAPI. Without it phpenmod would also
+		// touch the CLI's conf.d, changing what a site's own `php` command sees as a
+		// side effect of a web-server setting.
+		res, err := c.Runner.Run(c.Ctx, exec.Command{
+			Path:    tool,
+			Args:    []string{"-v", in.Version, "-s", phpFPMSAPI, in.Extension},
+			Timeout: 30 * time.Second,
+		})
+		if err != nil {
+			return capability.Result{}, errx.Upstream(err, "ext_toggle_failed", "Could not change the PHP extension.")
+		}
+		if res.ExitCode != 0 {
+			return capability.Result{}, errx.New(errx.KindValidation, "ext_toggle_failed",
+				"PHP did not accept that extension change; the extension may not be installed.")
+		}
 		back := phpEnmodPath
 		if in.Enabled {
 			back = phpDismodPath
 		}
-		_, _ = c.Runner.Run(c.Ctx, exec.Command{
-			Path:    back,
-			Args:    []string{"-v", in.Version, "-s", phpFPMSAPI, in.Extension},
-			Timeout: 30 * time.Second,
-		})
+		undo = func() {
+			_, _ = c.Runner.Run(c.Ctx, exec.Command{
+				Path:    back,
+				Args:    []string{"-v", in.Version, "-s", phpFPMSAPI, in.Extension},
+				Timeout: 30 * time.Second,
+			})
+		}
+	}
+
+	// Config-test before reload, exactly as php.write_pool does: one master
+	// serves every site on this version.
+	res, err := c.Runner.Run(c.Ctx, exec.Command{
+		Path:    fam.fpmBinary(in.Version),
+		Args:    []string{"-t"},
+		Timeout: 20 * time.Second,
+	})
+	if err != nil || res.ExitCode != 0 {
+		undo() // put it back the way it was before reporting a failure
 		return capability.Result{}, errx.New(errx.KindValidation, "fpm_config_invalid",
 			"PHP-FPM rejected the configuration with that extension change; it was rolled back.")
 	}
@@ -211,10 +187,9 @@ func (PHPSetExtension) Execute(c capability.Context, raw json.RawMessage) (capab
 	// process that has already started. Reloading here would report success and
 	// leave the extension exactly as it was — the same silent no-op this
 	// capability exists to avoid.
-	service := fmt.Sprintf("php%s-fpm", in.Version)
 	res, err = c.Runner.Run(c.Ctx, exec.Command{
 		Path:    systemctlPath,
-		Args:    []string{"restart", service},
+		Args:    []string{"restart", fam.fpmService(in.Version)},
 		Timeout: 60 * time.Second,
 	})
 	if err != nil || res.ExitCode != 0 {

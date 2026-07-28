@@ -178,3 +178,70 @@ func TestBadCredentialsAndForbidden(t *testing.T) {
 		t.Fatalf("second bootstrap = %d, want 409", rec.Code)
 	}
 }
+
+// TestSessionsEndToEnd drives the full session-management flow through the real
+// router: two logins make two sessions; the caller sees both (its own flagged);
+// revoke-others leaves only the current; the revoked session's cookie is dead.
+func TestSessionsEndToEnd(t *testing.T) {
+	h := newAuthRouter(t)
+	_ = postJSON(t, h, "/api/v1/auth/bootstrap",
+		map[string]string{"email": "admin@example.com", "username": "admin", "password": "supersecret1"}, nil)
+
+	login := func() *http.Cookie {
+		rec := postJSON(t, h, "/api/v1/auth/login",
+			map[string]string{"email": "admin@example.com", "password": "supersecret1"}, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("login = %d", rec.Code)
+		}
+		return sessionCookie(t, rec)
+	}
+	c1 := login() // "current" for the assertions below
+	c2 := login() // a second device
+
+	type sess struct {
+		UID     string `json:"uid"`
+		Current bool   `json:"current"`
+	}
+	list := func(c *http.Cookie) []sess {
+		rec := getWith(t, h, "/api/v1/auth/sessions", c)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list sessions = %d", rec.Code)
+		}
+		var out struct {
+			Data struct {
+				Sessions []sess `json:"sessions"`
+			} `json:"data"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return out.Data.Sessions
+	}
+
+	// Both sessions are visible; exactly one is flagged current (per caller).
+	s1 := list(c1)
+	if len(s1) != 2 {
+		t.Fatalf("want 2 sessions, got %d", len(s1))
+	}
+	current := 0
+	for _, s := range s1 {
+		if s.Current {
+			current++
+		}
+	}
+	if current != 1 {
+		t.Fatalf("want exactly 1 current session, got %d", current)
+	}
+
+	// Sign out everywhere else from c1: c2 must stop working, c1 keeps working.
+	if rec := postJSON(t, h, "/api/v1/auth/sessions/revoke-others", nil, c1); rec.Code != http.StatusOK {
+		t.Fatalf("revoke-others = %d", rec.Code)
+	}
+	if rec := getWith(t, h, "/api/v1/auth/me", c2); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked session still works = %d, want 401", rec.Code)
+	}
+	if rec := getWith(t, h, "/api/v1/auth/me", c1); rec.Code != http.StatusOK {
+		t.Fatalf("current session broke = %d, want 200", rec.Code)
+	}
+	if got := list(c1); len(got) != 1 {
+		t.Fatalf("after revoke-others, want 1 session, got %d", len(got))
+	}
+}

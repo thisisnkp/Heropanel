@@ -95,11 +95,94 @@ suspended mailbox refuses login while mail **still lands**; a genuinely
 deferred message (TEST-NET blackhole) appears in the queue view and is
 deleted by ID; every capability is on the broker's audit chain.
 
-Honest gaps: inbound SPF/DKIM/DMARC *verification* policy (what this host
-does to mail it receives) is Phase 8 security-suite territory; SMTP
-submission (587) + IMAPS with the panel's certificates ride on the SSL
-module and land with the security phase; webmail is deliberately out of
-scope for core.
+## Transport security (TLS)
+
+The mail host presents **one** certificate on every mail port — its own FQDN
+(`HP_MAIL_HOSTNAME`, e.g. `mail.example.com`), *not* a per-domain cert. A
+client connects to the mail host, not to each of the domains it carries, so
+one host certificate is the correct model (SNI per virtual domain is a
+deliberate non-goal).
+
+hpd delegates to the SSL module ([internal/ssl](../internal/ssl)) to make sure
+that certificate is installed: a real Let's Encrypt cert when the operator has
+issued one for the host, otherwise a **self-signed fallback** so TLS works out
+of the box (the same posture as every panel-served site). The broker's
+**`mail.tls`** capability then wires it in, keyed only by a validated hostname
+(the cert path is *derived* from it, so nothing outside `sslRoot` can be named):
+
+- **Postfix** — `main.cf` gets the host cert + opportunistic TLS on 25 both
+  ways; the **submission/587** and **smtps/465** services are defined via
+  idempotent `postconf -M`/`-P`. Both are **authenticated-relay-only**
+  (`permit_sasl_authenticated,reject`): the one mistake a mail server must
+  never make is being an open relay, so it is made unrepresentable rather than
+  merely discouraged. Submission requires STARTTLS (`encrypt`); smtps is
+  implicit TLS (`wrappermode`).
+- **Dovecot** — a `96-heropanel-ssl.conf` drop-in (`ssl = required`, the host
+  cert, TLS ≥ 1.2) plus the **postfix-private SASL socket** submission
+  authenticates against. imaps/993 (and pop3s/995 where `dovecot-pop3d` is
+  present) come up automatically once `ssl` is set.
+
+TLS is best-effort-wired when a domain is created (if `HP_MAIL_HOSTNAME` is
+set) and re-appliable from the UI's Mail-TLS card or `POST /api/v1/mail/tls`.
+
+Live proof (`run-mail.sh`): `openssl s_client` completes **STARTTLS on 587**
+and **implicit TLS on 993** against the host cert; an **authenticated**
+submission over 587 is delivered end-to-end; an **unauthenticated** relay to
+an external domain is **refused**; `mail.tls` and `cert.install` are on the
+broker's audit chain.
+
+## Webmail (Roundcube)
+
+Roundcube is served by the panel's **own** OpenLiteSpeed + PHP against the
+**local** Dovecot and Postfix — the same host the mailboxes live on, so the
+webmail talks to the MTAs over the loopback (TLS) rather than reaching out over
+a network. It is not a customer site: it renders as a *system vhost* into the
+one OLS config (`site.WithSystemVhosts`), on a configured hostname
+(`HP_WEBMAIL_HOSTNAME`, e.g. `webmail.example.com`), with a dedicated `webmail`
+Linux user and FPM pool.
+
+One API call (`POST /api/v1/webmail/install`) lays the whole runtime down: the
+broker's **`webmail.install`** creates the user, the writable data tree
+(temp/logs and a **sqlite** metadata db — Roundcube self-initialises the schema
+on first connect), and the rendered `config.inc.php` pointing at
+`tls://127.0.0.1:143` (IMAP) and `tls://127.0.0.1:587` (submission); hpd then
+writes the FPM pool through the same **`php.write_pool`** every site pool uses
+and re-applies the web server so the vhost serves. **No mailbox password is
+ever handled** — Roundcube authenticates each user against Dovecot at login;
+the panel only wires the client to the local MTAs. The application files
+themselves are provisioned out of band (package/installer) at the pinned path,
+so this is configuration, not a 40 MB download over the wire.
+
+Live proof (`run-webmail.sh`): the install lays down the user/pool/config/db,
+OpenLiteSpeed serves Roundcube's login page (PHP+FPM working), and a **real
+mailbox user logs in through Roundcube** — IMAP auth against Dovecot over TLS,
+the full OLS → PHP → Roundcube → Dovecot chain — while a **wrong password is
+refused**; `webmail.install`, `php.write_pool` and `webserver.apply` are all on
+the broker's audit chain.
+
+Honest gaps: **passwordless SSO** (a Dovecot master user + a signed one-time
+handoff so a signed-in panel user opens webmail without re-entering the mailbox
+password) is a follow-up — today the user signs in with their own mailbox
+credentials.
+
+## Inbound verification policy
+
+What the host does with mail it **receives**. DKIM is already verified inbound
+(OpenDKIM runs `Mode sv` and stamps an `Authentication-Results` header); on top
+of that, a three-level policy (`off` / `standard` / `strict`) applies Postfix's
+HELO, sender and recipient restrictions through the broker's **`mail.inbound`**
+capability. `standard` rejects non-FQDN and unknown-domain senders and
+open-relay attempts; `strict` adds HELO and sender verification. **Local
+submission stays exempt** — every level puts `permit_mynetworks` /
+`permit_sasl_authenticated` first. `mail.inbound.status` reads the effective
+sender-restriction line back from `postconf`.
+
+Live proof (`run-mail.sh`): with `standard` applied (the loopback client made
+untrusted for the test), mail from a **forged/unknown sender domain is
+rejected** while a real, resolvable sender still delivers; `off` lifts the
+sender-domain check; `mail.inbound` is on the broker's audit chain. Deeper
+follow-up: full **SPF** and **DMARC** *rejection with alignment*
+(`policyd-spf` / `OpenDMARC` daemons).
 
 ---
 Back to [index](README.md).

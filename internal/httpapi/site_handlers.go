@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -104,6 +105,27 @@ func suspendSiteHandler(d Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// setSiteWAFHandler toggles the per-site ModSecurity + OWASP CRS web
+// application firewall. Gated by "site.write".
+func setSiteWAFHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uid := chi.URLParam(r, "uid")
+		var in struct {
+			Enabled bool `json:"enabled"`
+		}
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		audit.AddDetail(r.Context(), "site", uid)
+		audit.AddDetail(r.Context(), "waf_enabled", strconv.FormatBool(in.Enabled))
+		if err := d.Sites.SetWAF(r.Context(), uid, in.Enabled); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "waf_enabled": in.Enabled})
 	}
 }
 

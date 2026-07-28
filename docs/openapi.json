@@ -214,10 +214,42 @@
         },
         "type": "object"
       },
+      "DNSSECStatus": {
+        "properties": {
+          "dnskey": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ds": {
+            "items": {
+              "description": "DS record to hand the registrar.",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "signed": {
+            "description": "Keys generated and the zone is signed.",
+            "type": "boolean"
+          },
+          "zone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "DNSZone": {
         "properties": {
           "admin_email": {
             "type": "string"
+          },
+          "dnssec_enabled": {
+            "description": "Whether BIND inline-signs the zone.",
+            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -599,6 +631,24 @@
         },
         "type": "object"
       },
+      "KeyringStatus": {
+        "properties": {
+          "active_generation": {
+            "description": "0 =\u003e legacy single-key (hp1) mode.",
+            "type": "integer"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "key_count": {
+            "type": "integer"
+          },
+          "legacy_key_in_use": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "LoginResult": {
         "properties": {
           "authenticated": {
@@ -755,6 +805,34 @@
           },
           "opcache": {
             "$ref": "#/components/schemas/OPcache"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PHPVersionOPcache": {
+        "properties": {
+          "interned_strings_buffer_mb": {
+            "type": "integer"
+          },
+          "jit_buffer_size_mb": {
+            "description": "0 disables the JIT buffer.",
+            "type": "integer"
+          },
+          "max_accelerated_files": {
+            "type": "integer"
+          },
+          "memory_consumption_mb": {
+            "description": "Shared-memory segment size (PHP_INI_SYSTEM).",
+            "type": "integer"
+          },
+          "revalidate_freq_sec": {
+            "type": "integer"
+          },
+          "validate_timestamps": {
+            "type": "boolean"
           },
           "version": {
             "type": "string"
@@ -1180,6 +1258,226 @@
         "summary": "Revoke an API key",
         "tags": [
           "Account"
+        ]
+      }
+    },
+    "/api/v1/account/passkeys": {
+      "get": {
+        "operationId": "api_v1_account_passkeys_list_my_passkeys",
+        "responses": {
+          "200": {
+            "description": "The signed-in user's registered passkeys."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List my passkeys",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/account/passkeys/register/begin": {
+      "post": {
+        "operationId": "api_v1_account_passkeys_register_begin_begin_passkey_registration",
+        "responses": {
+          "200": {
+            "description": "Returns WebAuthn creation options for the signed-in user (excluding already-registered credentials)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Begin passkey registration",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/account/passkeys/register/finish": {
+      "post": {
+        "operationId": "api_v1_account_passkeys_register_finish_finish_passkey_registration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "attestation_object": {
+                    "description": "base64url attestationObject.",
+                    "type": "string"
+                  },
+                  "client_data_json": {
+                    "description": "base64url clientDataJSON.",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "base64url credential id.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "A label for the passkey.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "client_data_json",
+                  "attestation_object"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Verifies the attestation, extracts the public key, and stores the passkey."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Finish passkey registration",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/account/passkeys/{uid}": {
+      "delete": {
+        "operationId": "api_v1_account_passkeys_uid_delete_a_passkey",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes one of the signed-in user's passkeys."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a passkey",
+        "tags": [
+          "Auth"
         ]
       }
     },
@@ -2427,6 +2725,149 @@
         ]
       }
     },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "api_v1_auth_sessions_list_my_sessions",
+        "responses": {
+          "200": {
+            "description": "The caller's active sessions (one per login/device) with IP, user agent and timestamps; the current session is flagged. Never includes a token."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List my sessions",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "api_v1_auth_sessions_revoke_others_sign_out_everywhere_else",
+        "responses": {
+          "200": {
+            "description": "Revokes every active session of the caller except the current one."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Sign out everywhere else",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{uid}": {
+      "delete": {
+        "operationId": "api_v1_auth_sessions_uid_revoke_a_session",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revokes one of the caller's own sessions by UID."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Revoke a session",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/v1/auth/status": {
       "get": {
         "operationId": "api_v1_auth_status_bootstrap_auth_status",
@@ -2476,6 +2917,152 @@
         },
         "security": [],
         "summary": "Bootstrap / auth status",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/webauthn/login/begin": {
+      "post": {
+        "operationId": "api_v1_auth_webauthn_login_begin_begin_a_passkey_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "description": "The account email.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Returns WebAuthn assertion options and an opaque login token. The response shape is uniform whether or not the account exists, so it does not reveal which emails are registered."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Begin a passkey login",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/webauthn/login/finish": {
+      "post": {
+        "operationId": "api_v1_auth_webauthn_login_finish_finish_a_passkey_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "authenticator_data": {
+                    "description": "base64url authenticatorData.",
+                    "type": "string"
+                  },
+                  "client_data_json": {
+                    "description": "base64url clientDataJSON.",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "base64url credential id.",
+                    "type": "string"
+                  },
+                  "login_token": {
+                    "description": "The token from login/begin.",
+                    "type": "string"
+                  },
+                  "signature": {
+                    "description": "base64url assertion signature.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "login_token",
+                  "id",
+                  "client_data_json",
+                  "authenticator_data",
+                  "signature"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Verifies the assertion signature against the stored passkey and issues a session — passwordless, with no shared secret that could be phished."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Finish a passkey login",
         "tags": [
           "Auth"
         ]
@@ -2629,8 +3216,15 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "engine": {
+                    "enum": [
+                      "mariadb",
+                      "postgres"
+                    ],
+                    "type": "string"
+                  },
                   "host": {
-                    "description": "Host the user may connect from.",
+                    "description": "Host the user may connect from (MariaDB; ignored for PostgreSQL).",
                     "type": "string"
                   },
                   "password": {
@@ -2873,6 +3467,13 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "engine": {
+                    "enum": [
+                      "mariadb",
+                      "postgres"
+                    ],
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   }
@@ -3907,6 +4508,376 @@
           "DNS"
         ],
         "x-required-permission": "dns.read"
+      }
+    },
+    "/api/v1/dns/zones/{uid}/dnssec": {
+      "get": {
+        "description": "Requires the `dns.read` permission.",
+        "operationId": "api_v1_dns_zones_uid_dnssec_get_dnssec_status",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DNSSECStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get DNSSEC status",
+        "tags": [
+          "DNS"
+        ],
+        "x-required-permission": "dns.read"
+      },
+      "put": {
+        "description": "Requires the `dns.write` permission.",
+        "operationId": "api_v1_dns_zones_uid_dnssec_enable_disable_dnssec",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DNSZone"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Enable/disable DNSSEC",
+        "tags": [
+          "DNS"
+        ],
+        "x-required-permission": "dns.write"
+      }
+    },
+    "/api/v1/dns/zones/{uid}/export": {
+      "get": {
+        "description": "Requires the `dns.read` permission.",
+        "operationId": "api_v1_dns_zones_uid_export_export_a_zone_rfc_1035_master_file",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The zone as a text/plain master file."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Export a zone (RFC 1035 master file)",
+        "tags": [
+          "DNS"
+        ],
+        "x-required-permission": "dns.read"
+      }
+    },
+    "/api/v1/dns/zones/{uid}/import": {
+      "post": {
+        "description": "Requires the `dns.write` permission.",
+        "operationId": "api_v1_dns_zones_uid_import_import_records_from_a_master_file",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "zone_file": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "zone_file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "imported": {
+                          "type": "integer"
+                        },
+                        "skipped": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Import records from a master file",
+        "tags": [
+          "DNS"
+        ],
+        "x-required-permission": "dns.write"
       }
     },
     "/api/v1/dns/zones/{uid}/records": {
@@ -6070,6 +7041,867 @@
         "x-required-permission": "docker.read"
       }
     },
+    "/api/v1/firewall": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_firewall_list_firewall_rules",
+        "responses": {
+          "200": {
+            "description": "The ordered nftables ruleset (default-drop with established/related + loopback always allowed) plus whether a change is pending confirmation and its deadline."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List firewall rules",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
+    "/api/v1/firewall/apply": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_apply_apply_the_firewall_with_auto_revert",
+        "responses": {
+          "200": {
+            "description": "Snapshots the live ruleset, applies the rendered one, and arms a revert timer. Returns a token and deadline: send the token to /firewall/confirm before the deadline or the change **reverts itself**. This is the safety net for a rule that locks the operator out of the box."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Apply the firewall (with auto-revert)",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/confirm": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_confirm_confirm_the_firewall_change",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "token": {
+                    "description": "The token returned by /firewall/apply.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Discards the rollback snapshot, making the applied ruleset permanent. A stale token (from an earlier, already-reverted apply) is refused."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Confirm the firewall change",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/countries": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_firewall_countries_list_imported_geo_countries",
+        "responses": {
+          "200": {
+            "description": "The countries whose CIDR ranges have been bulk-imported, each with its entry count and mode, plus whether country import is configured."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List imported geo countries",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      },
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_countries_import_a_country_s_cidr_ranges",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "country": {
+                    "description": "ISO 3166-1 alpha-2 country code (e.g. CN).",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "description": "block (default) | allow.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "country"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Fetches the country's published CIDR ranges from the configured geo source and stores them as one allow/block set, replacing any previous import of that country. Applied at the next firewall apply."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Import a country's CIDR ranges",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/countries/{cc}": {
+      "delete": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_countries_cc_remove_an_imported_country",
+        "parameters": [
+          {
+            "description": "cc path parameter.",
+            "in": "path",
+            "name": "cc",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes every entry imported from the country (applied at the next firewall apply)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove an imported country",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/iplist": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_firewall_iplist_list_allow_block_entries",
+        "responses": {
+          "200": {
+            "description": "The geo/IP allow-block entries (CIDRs) enforced as nftables sets ahead of the ordinary rules."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List allow/block entries",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      },
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_iplist_add_an_allow_block_entry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "cidr": {
+                    "description": "IPv4/IPv6 address or CIDR.",
+                    "type": "string"
+                  },
+                  "comment": {
+                    "description": "Optional label (e.g. a country name).",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "description": "block | allow.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "cidr"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Adds an allow (always let in) or block (always dropped) CIDR. Applied at the next firewall apply. A country block is a bulk import of that country's CIDRs."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Add an allow/block entry",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/iplist/{uid}": {
+      "delete": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_iplist_uid_remove_an_allow_block_entry",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes the entry (applied at the next firewall apply)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Remove an allow/block entry",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/rollback": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_rollback_revert_the_firewall_change_now",
+        "responses": {
+          "200": {
+            "description": "Restores the snapshot immediately, for an operator who realises the mistake before the timer fires."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Revert the firewall change now",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/rules": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_rules_add_a_firewall_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "description": "accept | drop.",
+                    "type": "string"
+                  },
+                  "comment": {
+                    "description": "Operator note (not rendered into the ruleset).",
+                    "type": "string"
+                  },
+                  "port": {
+                    "description": "0–65535; 0 = any (a port needs an explicit tcp/udp).",
+                    "type": "integer"
+                  },
+                  "protocol": {
+                    "description": "tcp | udp | any (default tcp).",
+                    "type": "string"
+                  },
+                  "source": {
+                    "description": "IPv4 address or CIDR; empty = any.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stores the rule. It is NOT applied — applying is a separate, self-reverting act, so editing the list never changes the live firewall by surprise."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Add a firewall rule",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/rules/{uid}": {
+      "delete": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_firewall_rules_uid_delete_a_firewall_rule",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removes the rule from the desired ruleset (unapplied until the next apply)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a firewall rule",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/firewall/status": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_firewall_status_live_firewall_status",
+        "responses": {
+          "200": {
+            "description": "The ruleset actually loaded in the kernel (nft list ruleset) and whether nft is answering — the truth, not the panel's stored intent."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Live firewall status",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "api_v1_jobs_list_jobs",
@@ -6462,6 +8294,202 @@
           }
         },
         "summary": "Suspend or reactivate a mailbox",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.write"
+      }
+    },
+    "/api/v1/mail/accounts/{uid}/webmail-sso": {
+      "post": {
+        "description": "Requires the `mail.write` permission.",
+        "operationId": "api_v1_mail_accounts_uid_webmail_sso_passwordless_webmail_sign_on",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mints a one-time, short-lived Dovecot master credential bound to this mailbox and returns the hand-off (url, user as `mailbox*master`, one-time password) for the browser to POST at Roundcube's login form. The mailbox password is never exposed; the credential expires in minutes and is swept."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Passwordless webmail sign-on",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.write"
+      }
+    },
+    "/api/v1/mail/authverify": {
+      "get": {
+        "description": "Requires the `mail.read` permission.",
+        "operationId": "api_v1_mail_authverify_spf_dmarc_verification_status",
+        "responses": {
+          "200": {
+            "description": "The SPF/DMARC verification posture (off/monitor/enforce) inferred from the effective postfix milter chain, recipient restrictions and the OpenDMARC/policyd-spf reject settings."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "SPF/DMARC verification status",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.read"
+      },
+      "post": {
+        "description": "Requires the `mail.write` permission.",
+        "operationId": "api_v1_mail_authverify_set_spf_dmarc_verification",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mode": {
+                    "description": "off (neither daemon in the path) | monitor (evaluate + stamp results, never reject) | enforce (reject a hard SPF fail and a DMARC failure the domain's policy asks to reject).",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Wires policyd-spf into the recipient restrictions and OpenDMARC (after OpenDKIM) into the milter chain, and (de)activates OpenDMARC. Composed read-modify-write so the inbound level and DKIM settings are preserved. Local/authenticated submission is exempt."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Set SPF/DMARC verification",
         "tags": [
           "Mail"
         ],
@@ -7201,6 +9229,135 @@
         "x-required-permission": "mail.read"
       }
     },
+    "/api/v1/mail/inbound": {
+      "get": {
+        "description": "Requires the `mail.read` permission.",
+        "operationId": "api_v1_mail_inbound_inbound_policy_status",
+        "responses": {
+          "200": {
+            "description": "The inbound verification policy (off/standard/strict) inferred from the effective postfix sender restrictions. DKIM is verified inbound regardless (OpenDKIM Mode sv)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Inbound policy status",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.read"
+      },
+      "post": {
+        "description": "Requires the `mail.write` permission.",
+        "operationId": "api_v1_mail_inbound_set_inbound_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "level": {
+                    "description": "off | standard | strict.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "level"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Applies postfix HELO/sender/recipient restrictions for received mail (reject non-FQDN/unknown-domain senders, open-relay attempts). Local submission is exempt."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Set inbound policy",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.write"
+      }
+    },
     "/api/v1/mail/queue": {
       "get": {
         "description": "Requires the `mail.read` permission.",
@@ -7385,6 +9542,116 @@
           }
         },
         "summary": "Flush the mail queue",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.write"
+      }
+    },
+    "/api/v1/mail/tls": {
+      "get": {
+        "description": "Requires the `mail.read` permission.",
+        "operationId": "api_v1_mail_tls_mail_tls_status",
+        "responses": {
+          "200": {
+            "description": "The mail host FQDN and the submission/imaps/smtps ports it serves. ready=false means no hostname is configured (HP_MAIL_HOSTNAME); enabled=false means TLS has not been wired yet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Mail TLS status",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.read"
+      },
+      "post": {
+        "description": "Requires the `mail.write` permission.",
+        "operationId": "api_v1_mail_tls_enable_mail_tls",
+        "responses": {
+          "200": {
+            "description": "Ensures the mail host's certificate is installed (a real Let's Encrypt cert if issued for it, otherwise a self-signed fallback) and wires it into Postfix + Dovecot, opening submission/587, imaps/993 and smtps/465."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Enable mail TLS",
         "tags": [
           "Mail"
         ],
@@ -8255,6 +10522,1190 @@
           "PHP"
         ],
         "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/php/opcache": {
+      "get": {
+        "description": "Requires the `system.read` permission.",
+        "operationId": "api_v1_php_opcache_get_per_version_opcache_tuning",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PHPVersionOPcache"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get per-version OPcache tuning",
+        "tags": [
+          "PHP"
+        ],
+        "x-required-permission": "system.read"
+      },
+      "put": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_php_opcache_set_per_version_opcache_tuning",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PHPVersionOPcache"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PHPVersionOPcache"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Set per-version OPcache tuning",
+        "tags": [
+          "PHP"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/security/audit/{tool}": {
+      "post": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_audit_tool_run_a_host_audit_scan",
+        "parameters": [
+          {
+            "description": "tool path parameter.",
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs rkhunter (rootkit hunter) or lynis (system auditor) and returns the parsed findings: rkhunter's warning count, or lynis's hardening index + warning/suggestion counts, plus the report."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Run a host audit scan",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
+    "/api/v1/security/fail2ban": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_fail2ban_list_jails_and_bans",
+        "responses": {
+          "200": {
+            "description": "Every fail2ban jail with its currently-banned IPs, parsed from fail2ban-client. running=false means the fail2ban server is down — an answer, not an error."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List jails and bans",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
+    "/api/v1/security/fail2ban/ban": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_fail2ban_ban_ban_an_ip",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ip": {
+                    "description": "The IP to ban.",
+                    "type": "string"
+                  },
+                  "jail": {
+                    "description": "The jail name.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "jail",
+                  "ip"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Manually bans an IP in a jail via fail2ban-client."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Ban an IP",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/fail2ban/unban": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_fail2ban_unban_unban_an_ip",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ip": {
+                    "description": "The IP to unban.",
+                    "type": "string"
+                  },
+                  "jail": {
+                    "description": "The jail name.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "jail",
+                  "ip"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Lifts a ban."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Unban an IP",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/fim": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_fim_fim_status",
+        "responses": {
+          "200": {
+            "description": "Whether a file-integrity baseline exists, at what scope (panel | host), and whether AIDE is installed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "FIM status",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
+    "/api/v1/security/fim/check": {
+      "post": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_fim_check_run_a_fim_check",
+        "responses": {
+          "200": {
+            "description": "Compares the filesystem against the baseline and reports added/removed/changed files."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Run a FIM check",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
+    "/api/v1/security/fim/init": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_fim_init_build_the_fim_baseline",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "scope": {
+                    "description": "panel (default; the panel's own security-critical paths) | host (extends to /etc and the system binary/library trees).",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Builds (or rebuilds) the AIDE baseline database. The scope is recorded so a later check compares against the same set."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Build the FIM baseline",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/quarantine": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_quarantine_list_quarantined_files",
+        "responses": {
+          "200": {
+            "description": "Files moved out of their site tree into the root-only quarantine area, where they can neither be served nor run — with their original path, signature and status."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List quarantined files",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      },
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_quarantine_quarantine_a_detected_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "path": {
+                    "description": "The detected file's path (must be within the site).",
+                    "type": "string"
+                  },
+                  "signature": {
+                    "description": "The detection's signature, for the record.",
+                    "type": "string"
+                  },
+                  "site_uid": {
+                    "description": "The site the file belongs to.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "site_uid",
+                  "path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Moves the file into root-only quarantine (0600 root, outside every site tree). The path must lie within the named site — quarantine cannot be aimed at an arbitrary file."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Quarantine a detected file",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/quarantine/{uid}": {
+      "delete": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_quarantine_uid_delete_a_quarantined_file",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permanently removes the quarantined file and its record."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Delete a quarantined file",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/quarantine/{uid}/restore": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_quarantine_uid_restore_restore_a_quarantined_file",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns the file to its original path and owner — the deliberate escape hatch for a false positive."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Restore a quarantined file",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/ssh": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_ssh_ssh_hardening_status",
+        "responses": {
+          "200": {
+            "description": "The effective sshd configuration (from `sshd -T`) for the keys the panel manages: port, PermitRootLogin, PasswordAuthentication, PubkeyAuthentication, MaxAuthTries, AllowUsers."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "SSH hardening status",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      },
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_ssh_harden_ssh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "allow_users": {
+                    "items": {
+                      "description": "Optional login allow-list.",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "max_auth_tries": {
+                    "description": "Auth attempts per connection (1–10; default 4).",
+                    "type": "integer"
+                  },
+                  "password_authentication": {
+                    "description": "Allow password auth (default false = key-only).",
+                    "type": "boolean"
+                  },
+                  "permit_root_login": {
+                    "description": "no | prohibit-password | yes.",
+                    "type": "string"
+                  },
+                  "port": {
+                    "description": "SSH port (1–65535; default 22).",
+                    "type": "integer"
+                  },
+                  "pubkey_authentication": {
+                    "description": "Allow public-key auth (default true).",
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Renders and applies a panel-owned sshd drop-in after an `sshd -t` config test, reloading (not restarting) so live sessions survive. Refuses to disable both password and key auth (self-lockout)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Harden SSH",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/updates": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_updates_automatic_update_status",
+        "responses": {
+          "200": {
+            "description": "The effective automatic-security-update state: whether the panel's unattended-upgrades drop-in is present, whether the tool is installed, and the merged `apt-config` value."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Automatic-update status",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      },
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_updates_configure_automatic_updates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "automatic_reboot": {
+                    "description": "Reboot when an update requires it (default false).",
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "description": "Run unattended upgrades (default true).",
+                    "type": "boolean"
+                  },
+                  "reboot_time": {
+                    "description": "HH:MM for the automatic reboot.",
+                    "type": "string"
+                  },
+                  "security_only": {
+                    "description": "Security origin only (default true).",
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Writes the panel's unattended-upgrades apt drop-in (validated by `apt-config dump`) and enables the apt timers. Debian/Ubuntu; dnf-automatic (Rocky/Alma) follows."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Configure automatic updates",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
       }
     },
     "/api/v1/sites": {
@@ -11078,6 +14529,73 @@
         "x-required-permission": "file.read"
       }
     },
+    "/api/v1/sites/{uid}/files/upload-archive": {
+      "post": {
+        "description": "Requires the `file.write` permission.",
+        "operationId": "api_v1_sites_uid_files_upload_archive_upload_an_archive_and_extract_it",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Extracted into the destination directory."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Upload an archive and extract it",
+        "tags": [
+          "Files"
+        ],
+        "x-required-permission": "file.write"
+      }
+    },
     "/api/v1/sites/{uid}/force-https": {
       "put": {
         "description": "Requires the `site.write` permission.",
@@ -12766,6 +16284,73 @@
         "x-required-permission": "site.write"
       }
     },
+    "/api/v1/sites/{uid}/scan": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_sites_uid_scan_scan_a_site_for_malware",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs ClamAV over the site's tree and returns each detection (path + signature). A scan is read-only; quarantining a detection is a separate, deliberate act."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Scan a site for malware",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
     "/api/v1/sites/{uid}/suspend": {
       "post": {
         "description": "Requires the `site.write` permission.",
@@ -12986,6 +16571,92 @@
         "x-required-permission": "terminal.recordings.read"
       }
     },
+    "/api/v1/sites/{uid}/waf": {
+      "put": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_uid_waf_toggle_the_site_waf",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "description": "Turn the ModSecurity + OWASP CRS firewall on/off.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Enables or disables the per-site ModSecurity + OWASP CRS web application firewall and re-applies the vhost. Enabling first writes the pinned rules file (the module + CRS must be installed on the host)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Toggle the site WAF",
+        "tags": [
+          "Sites"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
     "/api/v1/ssl/certificates": {
       "get": {
         "description": "Requires the `ssl.read` permission.",
@@ -13067,7 +16738,7 @@
     "/api/v1/ssl/issue": {
       "post": {
         "description": "Requires the `ssl.write` permission.",
-        "operationId": "api_v1_ssl_issue_issue_via_let_s_encrypt",
+        "operationId": "api_v1_ssl_issue_issue_via_acme_let_s_encrypt_or_zerossl",
         "requestBody": {
           "content": {
             "application/json": {
@@ -13080,6 +16751,13 @@
                     "enum": [
                       "http-01",
                       "dns-01"
+                    ],
+                    "type": "string"
+                  },
+                  "provider": {
+                    "enum": [
+                      "letsencrypt",
+                      "zerossl"
                     ],
                     "type": "string"
                   },
@@ -13161,7 +16839,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Issue via Let's Encrypt",
+        "summary": "Issue via ACME (Let's Encrypt or ZeroSSL)",
         "tags": [
           "SSL"
         ],
@@ -13591,6 +17269,156 @@
         ]
       }
     },
+    "/api/v1/system/keyring": {
+      "get": {
+        "description": "Requires the `system.read` permission.",
+        "operationId": "api_v1_system_keyring_data_key_envelope_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/KeyringStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Data-key envelope status",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.read"
+      }
+    },
+    "/api/v1/system/keyring/rotate": {
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_keyring_rotate_rotate_the_active_data_key",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/KeyringStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Mints a new active data key; new sealed values use it, existing values keep opening under their own generation."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Rotate the active data key",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
     "/api/v1/terminal/recordings": {
       "get": {
         "description": "Requires the `terminal.recordings.read` permission.",
@@ -13922,6 +17750,118 @@
           "Users"
         ],
         "x-required-permission": "user.read"
+      }
+    },
+    "/api/v1/webmail": {
+      "get": {
+        "description": "Requires the `mail.read` permission.",
+        "operationId": "api_v1_webmail_webmail_status",
+        "responses": {
+          "200": {
+            "description": "Whether Roundcube webmail is enabled (a hostname configured) and installed, plus its URL."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Webmail status",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.read"
+      }
+    },
+    "/api/v1/webmail/install": {
+      "post": {
+        "description": "Requires the `mail.write` permission.",
+        "operationId": "api_v1_webmail_install_install_webmail",
+        "responses": {
+          "200": {
+            "description": "Lays down Roundcube's runtime (dedicated user, FPM pool, config against the local Dovecot/Postfix over TLS, sqlite schema) and serves it on the webmail hostname through the panel's OpenLiteSpeed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Install webmail",
+        "tags": [
+          "Mail"
+        ],
+        "x-required-permission": "mail.write"
       }
     },
     "/healthz": {

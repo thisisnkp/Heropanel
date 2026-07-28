@@ -16,7 +16,9 @@ import (
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/runtime"
+	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/terminal"
 	"github.com/thisisnkp/heropanel/internal/ws"
 )
@@ -262,6 +264,24 @@ func (a backupDBAdapter) ImportStagePath(gzipped bool) (path, file string) {
 	return a.svc.ImportStagePath(gzipped)
 }
 
+// malwareSiteAdapter adapts the site repository to the malware module's
+// resolver (it needs a site's home to scan and its user to re-own a restore).
+type malwareSiteAdapter struct {
+	repo *repository.SiteStore
+}
+
+func (a malwareSiteAdapter) Resolve(ctx context.Context, siteUID string) (*security.SiteRef, error) {
+	rec, err := a.repo.GetByUID(ctx, siteUID)
+	if err != nil {
+		return nil, err
+	}
+	return &security.SiteRef{
+		UID:       rec.UID,
+		LinuxUser: rec.LinuxUser.String,
+		HomeDir:   rec.HomeDir.String,
+	}, nil
+}
+
 // mailDNSAdapter adapts the DNS module to the mail module's record-wiring
 // contract (fixed 1h TTL for mail records).
 type mailDNSAdapter struct {
@@ -270,6 +290,31 @@ type mailDNSAdapter struct {
 
 func (a mailDNSAdapter) EnsureRecord(ctx context.Context, fqdn, typ, value string, priority int, replace bool) (bool, error) {
 	return a.svc.EnsureRecord(ctx, fqdn, typ, value, priority, 3600, replace)
+}
+
+// mailCertAdapter adapts the SSL module to the mail module's cert provider: it
+// makes sure a certificate is installed for the mail host's FQDN before the
+// broker wires it into Postfix/Dovecot. A real Let's Encrypt cert is used when
+// the operator has already issued one for the hostname; otherwise a self-signed
+// fallback gives immediate working TLS (browsers/clients warn until replaced —
+// the same posture as every other panel-served site).
+type mailCertAdapter struct {
+	ssl *ssl.Service
+}
+
+func (a mailCertAdapter) EnsureCert(ctx context.Context, hostname string) error {
+	if a.ssl == nil {
+		return nil // no SSL module; mail.tls fails cleanly if no cert is on disk
+	}
+	if certs, err := a.ssl.List(ctx, 0, 500, 0); err == nil {
+		for i := range certs {
+			if certs[i].CommonName == hostname {
+				return nil // already installed on disk for this host
+			}
+		}
+	}
+	_, err := a.ssl.IssueSelfSigned(ctx, 0, hostname)
+	return err
 }
 
 // channelAuthorizer authorizes WebSocket channel subscriptions by family:
@@ -302,4 +347,12 @@ func channelAuthorizer(jobs *job.Dispatcher) ws.Authorizer {
 		}
 		return false // unknown channel family -> deny
 	})
+}
+
+// firstNonEmpty returns a if it is non-empty, else b.
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

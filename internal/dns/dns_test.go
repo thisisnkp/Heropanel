@@ -85,4 +85,26 @@ func TestRenderNamedConf(t *testing.T) {
 			t.Fatalf("named conf missing %q:\n%s", want, out)
 		}
 	}
+	// A plain zone carries no signing directives.
+	if strings.Contains(out, "dnssec-policy") {
+		t.Fatalf("an unsigned zone must not get a dnssec-policy:\n%s", out)
+	}
+}
+
+func TestRenderNamedConfDNSSEC(t *testing.T) {
+	out := dns.RenderNamedConf([]dns.ZoneRow{
+		{Name: "signed.test", DNSSECEnabled: true},
+		{Name: "plain.test"},
+	})
+	// Only the enabled zone gets inline signing + a key-directory.
+	signedBlock := out[strings.Index(out, `zone "signed.test"`):strings.Index(out, `zone "plain.test"`)]
+	for _, want := range []string{"dnssec-policy default;", "inline-signing yes;", `key-directory "/etc/bind/keys";`} {
+		if !strings.Contains(signedBlock, want) {
+			t.Fatalf("signed zone missing %q:\n%s", want, out)
+		}
+	}
+	plainBlock := out[strings.Index(out, `zone "plain.test"`):]
+	if strings.Contains(plainBlock, "dnssec-policy") {
+		t.Fatalf("the plain zone must not be signed:\n%s", out)
+	}
 }

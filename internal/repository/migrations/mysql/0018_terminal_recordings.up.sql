@@ -2,10 +2,12 @@
 -- See the SQLite copy for the table's purpose and the redaction rule; the only
 -- differences here are column types and the explicit InnoDB/utf8mb4 clause.
 CREATE TABLE terminal_recordings (
-    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     uid           VARCHAR(64) NOT NULL UNIQUE,
-    site_id       BIGINT NOT NULL,
-    actor_user_id BIGINT NOT NULL DEFAULT 0,
+    -- site_id must match sites.id (BIGINT UNSIGNED); a signed/unsigned mismatch
+    -- is rejected by stricter MariaDB as an incorrectly-formed foreign key.
+    site_id       BIGINT UNSIGNED NOT NULL,
+    actor_user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
     actor_email   VARCHAR(320) NOT NULL DEFAULT '',
     actor_ip      VARCHAR(64) NOT NULL DEFAULT '',
     system_user   VARCHAR(64) NOT NULL DEFAULT '',

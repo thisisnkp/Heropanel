@@ -8,7 +8,8 @@ export function useCertificates() {
 export function useIssueCert() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { domain: string; method: string; webroot?: string }) => api.post<Certificate>("/ssl/issue", v),
+    mutationFn: (v: { domain: string; method: string; webroot?: string; provider?: string }) =>
+      api.post<Certificate>("/ssl/issue", v),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ssl"] }),
   });
 }

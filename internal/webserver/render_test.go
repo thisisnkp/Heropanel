@@ -253,3 +253,51 @@ func TestRenderConfigActiveSiteHasNo503(t *testing.T) {
 		t.Fatalf("an active site rendered a 503 wall:\n%s", cfg)
 	}
 }
+
+// The ModSecurity module block is emitted only when the WAF is enabled and the
+// site is not suspended, and it references the pinned rules file.
+func TestRenderConfigWAF(t *testing.T) {
+	off := staticSite()
+	cfg, err := webserver.RenderConfig([]webserver.Site{off})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(cfg, "mod_security") {
+		t.Error("WAF block emitted for a site with the WAF off")
+	}
+
+	on := staticSite()
+	on.WAFEnabled = true
+	cfg, err = webserver.RenderConfig([]webserver.Site{on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cfg, "module mod_security {") || !strings.Contains(cfg, "modsecurity           on") {
+		t.Errorf("WAF block missing:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, webserver.WAFRulesFile) {
+		t.Error("WAF block does not reference the pinned rules file")
+	}
+
+	// A suspended WAF site renders the 503 wall, not the WAF block.
+	susp := staticSite()
+	susp.WAFEnabled, susp.Suspended = true, true
+	cfg, _ = webserver.RenderConfig([]webserver.Site{susp})
+	if strings.Contains(cfg, "mod_security") {
+		t.Error("WAF block emitted for a suspended site")
+	}
+}
+
+// The rendered WAF rules file forces the engine on and pulls in the CRS.
+func TestRenderWAFConfig(t *testing.T) {
+	c := webserver.RenderWAFConfig()
+	for _, want := range []string{"SecRuleEngine On", "crs-setup.conf", "modsecurity-crs/rules/"} {
+		if !strings.Contains(c, want) {
+			t.Errorf("WAF config missing %q", want)
+		}
+	}
+	// libmodsecurity v3 rejects IncludeOptional — it must never appear.
+	if strings.Contains(c, "IncludeOptional") {
+		t.Error("WAF config uses IncludeOptional, which libmodsecurity v3 rejects")
+	}
+}

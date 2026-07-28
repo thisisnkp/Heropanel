@@ -71,6 +71,18 @@ var apiDocs = map[string]opMeta{
 	"GET /api/v1/auth/me": {
 		Summary: "Current principal", Tags: []string{"Auth"}, RespSchema: ref("Principal"),
 	},
+	"GET /api/v1/auth/sessions": {
+		Summary: "List my sessions", Tags: []string{"Auth"},
+		RespDesc: "The caller's active sessions (one per login/device) with IP, user agent and timestamps; the current session is flagged. Never includes a token.",
+	},
+	"DELETE /api/v1/auth/sessions/{uid}": {
+		Summary: "Revoke a session", Tags: []string{"Auth"},
+		RespDesc: "Revokes one of the caller's own sessions by UID.",
+	},
+	"POST /api/v1/auth/sessions/revoke-others": {
+		Summary: "Sign out everywhere else", Tags: []string{"Auth"},
+		RespDesc: "Revokes every active session of the caller except the current one.",
+	},
 	"POST /api/v1/auth/mfa/setup": {
 		Summary: "Begin MFA enrolment", Tags: []string{"Auth"}, RespSchema: ref("MFASetup"),
 	},
@@ -141,6 +153,16 @@ var apiDocs = map[string]opMeta{
 		}, "version", "extension", "enabled"),
 		RespSchema: ref("PHPExtensions"),
 	},
+	"GET /api/v1/php/opcache": {
+		Summary: "Get per-version OPcache tuning", Tags: []string{"PHP"}, Permission: "system.read",
+		RespSchema: ref("PHPVersionOPcache"),
+	},
+	"PUT /api/v1/php/opcache": {
+		Summary: "Set per-version OPcache tuning", Tags: []string{"PHP"}, Permission: "system.write",
+		ReqDesc:    "Server-scope PHP_INI_SYSTEM shared-memory tuning: restarts FPM for every site on this version.",
+		ReqSchema:  ref("PHPVersionOPcache"),
+		RespSchema: ref("PHPVersionOPcache"),
+	},
 
 	// ── databases ─────────────────────────────────────────────────────────────
 	"GET /api/v1/databases": {
@@ -149,7 +171,10 @@ var apiDocs = map[string]opMeta{
 	},
 	"POST /api/v1/databases": {
 		Summary: "Create a database", Tags: []string{"Databases"}, Permission: "database.write",
-		ReqSchema:  object(map[string]any{"name": prop("string", "")}, "name"),
+		ReqSchema: object(map[string]any{
+			"name":   prop("string", ""),
+			"engine": map[string]any{"type": "string", "enum": []any{"mariadb", "postgres"}},
+		}, "name"),
 		RespSchema: ref("Database"), RespStatus: 201,
 	},
 	"DELETE /api/v1/databases/{uid}": {
@@ -198,8 +223,9 @@ var apiDocs = map[string]opMeta{
 		Summary: "Create a database user", Tags: []string{"Databases"}, Permission: "database.write",
 		ReqSchema: object(map[string]any{
 			"username": prop("string", ""),
-			"host":     prop("string", "Host the user may connect from."),
+			"host":     prop("string", "Host the user may connect from (MariaDB; ignored for PostgreSQL)."),
 			"password": prop("string", ""),
+			"engine":   map[string]any{"type": "string", "enum": []any{"mariadb", "postgres"}},
 		}, "username", "password"),
 		RespSchema: ref("DatabaseUser"), RespStatus: 201,
 	},
@@ -227,11 +253,12 @@ var apiDocs = map[string]opMeta{
 		RespSchema: ref("Certificate"), RespStatus: 201,
 	},
 	"POST /api/v1/ssl/issue": {
-		Summary: "Issue via Let's Encrypt", Tags: []string{"SSL"}, Permission: "ssl.write",
+		Summary: "Issue via ACME (Let's Encrypt or ZeroSSL)", Tags: []string{"SSL"}, Permission: "ssl.write",
 		ReqSchema: object(map[string]any{
-			"domain":  prop("string", ""),
-			"webroot": prop("string", "For HTTP-01."),
-			"method":  map[string]any{"type": "string", "enum": []any{"http-01", "dns-01"}},
+			"domain":   prop("string", ""),
+			"webroot":  prop("string", "For HTTP-01."),
+			"method":   map[string]any{"type": "string", "enum": []any{"http-01", "dns-01"}},
+			"provider": map[string]any{"type": "string", "enum": []any{"letsencrypt", "zerossl"}},
 		}, "domain"),
 		RespSchema: ref("Certificate"), RespStatus: 201, RespDesc: "Certificate issued (supports wildcards via dns-01).",
 	},
@@ -288,6 +315,13 @@ var apiDocs = map[string]opMeta{
 	"POST /api/v1/sites/{uid}/suspend": {
 		Summary: "Suspend a site", Tags: []string{"Sites"}, Permission: "site.write",
 		RespSchema: ref("Site"), RespDesc: "Site walled off behind a 503 while keeping its domain mapping.",
+	},
+	"PUT /api/v1/sites/{uid}/waf": {
+		Summary: "Toggle the site WAF", Tags: []string{"Sites"}, Permission: "site.write",
+		ReqSchema: object(map[string]any{
+			"enabled": prop("boolean", "Turn the ModSecurity + OWASP CRS firewall on/off."),
+		}, "enabled"),
+		RespDesc: "Enables or disables the per-site ModSecurity + OWASP CRS web application firewall and re-applies the vhost. Enabling first writes the pinned rules file (the module + CRS must be installed on the host).",
 	},
 	"POST /api/v1/sites/{uid}/resume": {
 		Summary: "Resume a site", Tags: []string{"Sites"}, Permission: "site.write", RespSchema: ref("Site"),
@@ -436,6 +470,226 @@ var apiDocs = map[string]opMeta{
 		Summary: "Delete a panel self-backup", Tags: []string{"Backups"}, Permission: "system.write",
 		RespDesc: "Removes one snapshot, row and stored object. No chains here — each snapshot stands alone.",
 	},
+	"GET /api/v1/system/keyring": {
+		Summary: "Data-key envelope status", Tags: []string{"System"}, Permission: "system.read",
+		RespSchema: ref("KeyringStatus"),
+	},
+	"POST /api/v1/system/keyring/rotate": {
+		Summary: "Rotate the active data key", Tags: []string{"System"}, Permission: "system.write",
+		RespDesc:   "Mints a new active data key; new sealed values use it, existing values keep opening under their own generation.",
+		RespSchema: ref("KeyringStatus"),
+	},
+
+	// ── passkeys (WebAuthn) ─────────────────────────────────────────────────────
+	"POST /api/v1/auth/webauthn/login/begin": {
+		Summary: "Begin a passkey login", Tags: []string{"Auth"},
+		ReqSchema: object(map[string]any{"email": prop("string", "The account email.")}, "email"),
+		RespDesc:  "Returns WebAuthn assertion options and an opaque login token. The response shape is uniform whether or not the account exists, so it does not reveal which emails are registered.",
+	},
+	"POST /api/v1/auth/webauthn/login/finish": {
+		Summary: "Finish a passkey login", Tags: []string{"Auth"},
+		ReqSchema: object(map[string]any{
+			"login_token":        prop("string", "The token from login/begin."),
+			"id":                 prop("string", "base64url credential id."),
+			"client_data_json":   prop("string", "base64url clientDataJSON."),
+			"authenticator_data": prop("string", "base64url authenticatorData."),
+			"signature":          prop("string", "base64url assertion signature."),
+		}, "login_token", "id", "client_data_json", "authenticator_data", "signature"),
+		RespDesc: "Verifies the assertion signature against the stored passkey and issues a session — passwordless, with no shared secret that could be phished.",
+	},
+	"GET /api/v1/account/passkeys": {
+		Summary: "List my passkeys", Tags: []string{"Auth"}, Permission: "",
+		RespDesc: "The signed-in user's registered passkeys.",
+	},
+	"POST /api/v1/account/passkeys/register/begin": {
+		Summary: "Begin passkey registration", Tags: []string{"Auth"},
+		RespDesc: "Returns WebAuthn creation options for the signed-in user (excluding already-registered credentials).",
+	},
+	"POST /api/v1/account/passkeys/register/finish": {
+		Summary: "Finish passkey registration", Tags: []string{"Auth"},
+		ReqSchema: object(map[string]any{
+			"name":               prop("string", "A label for the passkey."),
+			"id":                 prop("string", "base64url credential id."),
+			"client_data_json":   prop("string", "base64url clientDataJSON."),
+			"attestation_object": prop("string", "base64url attestationObject."),
+		}, "id", "client_data_json", "attestation_object"),
+		RespDesc: "Verifies the attestation, extracts the public key, and stores the passkey.",
+	},
+	"DELETE /api/v1/account/passkeys/{uid}": {
+		Summary: "Delete a passkey", Tags: []string{"Auth"},
+		RespDesc: "Removes one of the signed-in user's passkeys.",
+	},
+
+	// ── firewall ────────────────────────────────────────────────────────────────
+	"GET /api/v1/firewall": {
+		Summary: "List firewall rules", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "The ordered nftables ruleset (default-drop with established/related + loopback always allowed) plus whether a change is pending confirmation and its deadline.",
+	},
+	"GET /api/v1/firewall/status": {
+		Summary: "Live firewall status", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "The ruleset actually loaded in the kernel (nft list ruleset) and whether nft is answering — the truth, not the panel's stored intent.",
+	},
+	"POST /api/v1/firewall/rules": {
+		Summary: "Add a firewall rule", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"action":   prop("string", "accept | drop."),
+			"protocol": prop("string", "tcp | udp | any (default tcp)."),
+			"port":     prop("integer", "0–65535; 0 = any (a port needs an explicit tcp/udp)."),
+			"source":   prop("string", "IPv4 address or CIDR; empty = any."),
+			"comment":  prop("string", "Operator note (not rendered into the ruleset)."),
+		}, "action"),
+		RespDesc: "Stores the rule. It is NOT applied — applying is a separate, self-reverting act, so editing the list never changes the live firewall by surprise.",
+	},
+	"DELETE /api/v1/firewall/rules/{uid}": {
+		Summary: "Delete a firewall rule", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Removes the rule from the desired ruleset (unapplied until the next apply).",
+	},
+	"POST /api/v1/firewall/apply": {
+		Summary: "Apply the firewall (with auto-revert)", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Snapshots the live ruleset, applies the rendered one, and arms a revert timer. Returns a token and deadline: send the token to /firewall/confirm before the deadline or the change **reverts itself**. This is the safety net for a rule that locks the operator out of the box.",
+	},
+	"POST /api/v1/firewall/confirm": {
+		Summary: "Confirm the firewall change", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"token": prop("string", "The token returned by /firewall/apply."),
+		}, "token"),
+		RespDesc: "Discards the rollback snapshot, making the applied ruleset permanent. A stale token (from an earlier, already-reverted apply) is refused.",
+	},
+	"POST /api/v1/firewall/rollback": {
+		Summary: "Revert the firewall change now", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Restores the snapshot immediately, for an operator who realises the mistake before the timer fires.",
+	},
+
+	// ── malware ───────────────────────────────────────────────────────────────
+	"POST /api/v1/sites/{uid}/scan": {
+		Summary: "Scan a site for malware", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Runs ClamAV over the site's tree and returns each detection (path + signature). A scan is read-only; quarantining a detection is a separate, deliberate act.",
+	},
+	"GET /api/v1/security/quarantine": {
+		Summary: "List quarantined files", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "Files moved out of their site tree into the root-only quarantine area, where they can neither be served nor run — with their original path, signature and status.",
+	},
+	"POST /api/v1/security/quarantine": {
+		Summary: "Quarantine a detected file", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"site_uid":  prop("string", "The site the file belongs to."),
+			"path":      prop("string", "The detected file's path (must be within the site)."),
+			"signature": prop("string", "The detection's signature, for the record."),
+		}, "site_uid", "path"),
+		RespDesc: "Moves the file into root-only quarantine (0600 root, outside every site tree). The path must lie within the named site — quarantine cannot be aimed at an arbitrary file.",
+	},
+	"POST /api/v1/security/quarantine/{uid}/restore": {
+		Summary: "Restore a quarantined file", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Returns the file to its original path and owner — the deliberate escape hatch for a false positive.",
+	},
+	"DELETE /api/v1/security/quarantine/{uid}": {
+		Summary: "Delete a quarantined file", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Permanently removes the quarantined file and its record.",
+	},
+
+	// ── fail2ban ──────────────────────────────────────────────────────────────
+	"GET /api/v1/security/fail2ban": {
+		Summary: "List jails and bans", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "Every fail2ban jail with its currently-banned IPs, parsed from fail2ban-client. running=false means the fail2ban server is down — an answer, not an error.",
+	},
+	"POST /api/v1/security/fail2ban/ban": {
+		Summary: "Ban an IP", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"jail": prop("string", "The jail name."),
+			"ip":   prop("string", "The IP to ban."),
+		}, "jail", "ip"),
+		RespDesc: "Manually bans an IP in a jail via fail2ban-client.",
+	},
+	"POST /api/v1/security/fail2ban/unban": {
+		Summary: "Unban an IP", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"jail": prop("string", "The jail name."),
+			"ip":   prop("string", "The IP to unban."),
+		}, "jail", "ip"),
+		RespDesc: "Lifts a ban.",
+	},
+	"GET /api/v1/firewall/iplist": {
+		Summary: "List allow/block entries", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "The geo/IP allow-block entries (CIDRs) enforced as nftables sets ahead of the ordinary rules.",
+	},
+	"POST /api/v1/firewall/iplist": {
+		Summary: "Add an allow/block entry", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"cidr":    prop("string", "IPv4/IPv6 address or CIDR."),
+			"mode":    prop("string", "block | allow."),
+			"comment": prop("string", "Optional label (e.g. a country name)."),
+		}, "cidr"),
+		RespDesc: "Adds an allow (always let in) or block (always dropped) CIDR. Applied at the next firewall apply. A country block is a bulk import of that country's CIDRs.",
+	},
+	"DELETE /api/v1/firewall/iplist/{uid}": {
+		Summary: "Remove an allow/block entry", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Removes the entry (applied at the next firewall apply).",
+	},
+	"GET /api/v1/firewall/countries": {
+		Summary: "List imported geo countries", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "The countries whose CIDR ranges have been bulk-imported, each with its entry count and mode, plus whether country import is configured.",
+	},
+	"POST /api/v1/firewall/countries": {
+		Summary: "Import a country's CIDR ranges", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"country": prop("string", "ISO 3166-1 alpha-2 country code (e.g. CN)."),
+			"mode":    prop("string", "block (default) | allow."),
+		}, "country"),
+		RespDesc: "Fetches the country's published CIDR ranges from the configured geo source and stores them as one allow/block set, replacing any previous import of that country. Applied at the next firewall apply.",
+	},
+	"DELETE /api/v1/firewall/countries/{cc}": {
+		Summary: "Remove an imported country", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Removes every entry imported from the country (applied at the next firewall apply).",
+	},
+	"GET /api/v1/security/ssh": {
+		Summary: "SSH hardening status", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "The effective sshd configuration (from `sshd -T`) for the keys the panel manages: port, PermitRootLogin, PasswordAuthentication, PubkeyAuthentication, MaxAuthTries, AllowUsers.",
+	},
+	"POST /api/v1/security/ssh": {
+		Summary: "Harden SSH", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"port":                    prop("integer", "SSH port (1–65535; default 22)."),
+			"permit_root_login":       prop("string", "no | prohibit-password | yes."),
+			"password_authentication": prop("boolean", "Allow password auth (default false = key-only)."),
+			"pubkey_authentication":   prop("boolean", "Allow public-key auth (default true)."),
+			"max_auth_tries":          prop("integer", "Auth attempts per connection (1–10; default 4)."),
+			"allow_users":             arrayOf(prop("string", "Optional login allow-list.")),
+		}),
+		RespDesc: "Renders and applies a panel-owned sshd drop-in after an `sshd -t` config test, reloading (not restarting) so live sessions survive. Refuses to disable both password and key auth (self-lockout).",
+	},
+	"GET /api/v1/security/fim": {
+		Summary: "FIM status", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "Whether a file-integrity baseline exists, at what scope (panel | host), and whether AIDE is installed.",
+	},
+	"POST /api/v1/security/fim/init": {
+		Summary: "Build the FIM baseline", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"scope": prop("string", "panel (default; the panel's own security-critical paths) | host (extends to /etc and the system binary/library trees)."),
+		}),
+		RespDesc: "Builds (or rebuilds) the AIDE baseline database. The scope is recorded so a later check compares against the same set.",
+	},
+	"POST /api/v1/security/fim/check": {
+		Summary: "Run a FIM check", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "Compares the filesystem against the baseline and reports added/removed/changed files.",
+	},
+	"POST /api/v1/security/audit/{tool}": {
+		Summary: "Run a host audit scan", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "Runs rkhunter (rootkit hunter) or lynis (system auditor) and returns the parsed findings: rkhunter's warning count, or lynis's hardening index + warning/suggestion counts, plus the report.",
+	},
+	"GET /api/v1/security/updates": {
+		Summary: "Automatic-update status", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "The effective automatic-security-update state: whether the panel's unattended-upgrades drop-in is present, whether the tool is installed, and the merged `apt-config` value.",
+	},
+	"POST /api/v1/security/updates": {
+		Summary: "Configure automatic updates", Tags: []string{"Security"}, Permission: "security.write",
+		ReqSchema: object(map[string]any{
+			"enabled":          prop("boolean", "Run unattended upgrades (default true)."),
+			"security_only":    prop("boolean", "Security origin only (default true)."),
+			"automatic_reboot": prop("boolean", "Reboot when an update requires it (default false)."),
+			"reboot_time":      prop("string", "HH:MM for the automatic reboot."),
+		}),
+		RespDesc: "Writes the panel's unattended-upgrades apt drop-in (validated by `apt-config dump`) and enables the apt timers. Debian/Ubuntu; dnf-automatic (Rocky/Alma) follows.",
+	},
 
 	// ── mail ──────────────────────────────────────────────────────────────────
 	"GET /api/v1/mail/domains": {
@@ -514,6 +768,48 @@ var apiDocs = map[string]opMeta{
 		}, "ids"),
 		RespDesc: "Removes the named messages. Explicit IDs only — there is deliberately no delete-all.",
 	},
+	"GET /api/v1/mail/tls": {
+		Summary: "Mail TLS status", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "The mail host FQDN and the submission/imaps/smtps ports it serves. ready=false means no hostname is configured (HP_MAIL_HOSTNAME); enabled=false means TLS has not been wired yet.",
+	},
+	"POST /api/v1/mail/tls": {
+		Summary: "Enable mail TLS", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Ensures the mail host's certificate is installed (a real Let's Encrypt cert if issued for it, otherwise a self-signed fallback) and wires it into Postfix + Dovecot, opening submission/587, imaps/993 and smtps/465.",
+	},
+	"GET /api/v1/mail/inbound": {
+		Summary: "Inbound policy status", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "The inbound verification policy (off/standard/strict) inferred from the effective postfix sender restrictions. DKIM is verified inbound regardless (OpenDKIM Mode sv).",
+	},
+	"POST /api/v1/mail/inbound": {
+		Summary: "Set inbound policy", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"level": prop("string", "off | standard | strict."),
+		}, "level"),
+		RespDesc: "Applies postfix HELO/sender/recipient restrictions for received mail (reject non-FQDN/unknown-domain senders, open-relay attempts). Local submission is exempt.",
+	},
+	"GET /api/v1/mail/authverify": {
+		Summary: "SPF/DMARC verification status", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "The SPF/DMARC verification posture (off/monitor/enforce) inferred from the effective postfix milter chain, recipient restrictions and the OpenDMARC/policyd-spf reject settings.",
+	},
+	"POST /api/v1/mail/authverify": {
+		Summary: "Set SPF/DMARC verification", Tags: []string{"Mail"}, Permission: "mail.write",
+		ReqSchema: object(map[string]any{
+			"mode": prop("string", "off (neither daemon in the path) | monitor (evaluate + stamp results, never reject) | enforce (reject a hard SPF fail and a DMARC failure the domain's policy asks to reject)."),
+		}, "mode"),
+		RespDesc: "Wires policyd-spf into the recipient restrictions and OpenDMARC (after OpenDKIM) into the milter chain, and (de)activates OpenDMARC. Composed read-modify-write so the inbound level and DKIM settings are preserved. Local/authenticated submission is exempt.",
+	},
+	"GET /api/v1/webmail": {
+		Summary: "Webmail status", Tags: []string{"Mail"}, Permission: "mail.read",
+		RespDesc: "Whether Roundcube webmail is enabled (a hostname configured) and installed, plus its URL.",
+	},
+	"POST /api/v1/webmail/install": {
+		Summary: "Install webmail", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Lays down Roundcube's runtime (dedicated user, FPM pool, config against the local Dovecot/Postfix over TLS, sqlite schema) and serves it on the webmail hostname through the panel's OpenLiteSpeed.",
+	},
+	"POST /api/v1/mail/accounts/{uid}/webmail-sso": {
+		Summary: "Passwordless webmail sign-on", Tags: []string{"Mail"}, Permission: "mail.write",
+		RespDesc: "Mints a one-time, short-lived Dovecot master credential bound to this mailbox and returns the hand-off (url, user as `mailbox*master`, one-time password) for the browser to POST at Roundcube's login form. The mailbox password is never exposed; the credential expires in minutes and is swept.",
+	},
 	"POST /api/v1/mail/domains/{uid}/aliases": {
 		Summary: "Create an alias or forwarder", Tags: []string{"Mail"}, Permission: "mail.write",
 		ReqSchema: object(map[string]any{
@@ -575,6 +871,12 @@ var apiDocs = map[string]opMeta{
 		Summary: "Download a directory as a .zip", Tags: []string{"Files"}, Permission: "file.read",
 		RespDesc: "Streams a zip of the directory (application/zip). Query: path=<site-relative directory>; empty means the site root. " +
 			"The archive is built server-side and deleted once the response completes, so nothing is left in the site's tree.",
+	},
+	"POST /api/v1/sites/{uid}/files/upload-archive": {
+		Summary: "Upload an archive and extract it", Tags: []string{"Files"}, Permission: "file.write",
+		ReqDesc: "One archive (.zip/.tar.gz) as the request body, unpacked into ?path — a multi-file upload as a single transfer. " +
+			"?filename selects the format; the staged archive is deleted afterward.",
+		RespDesc: "Extracted into the destination directory.",
 	},
 	"PUT /api/v1/sites/{uid}/files/content": {
 		Summary: "Write (save/upload) a file", Tags: []string{"Files"}, Permission: "file.write",
@@ -952,6 +1254,24 @@ var apiDocs = map[string]opMeta{
 	},
 	"DELETE /api/v1/dns/zones/{uid}": {
 		Summary: "Delete a zone", Tags: []string{"DNS"}, Permission: "dns.write", RespDesc: "Zone deleted.",
+	},
+	"GET /api/v1/dns/zones/{uid}/export": {
+		Summary: "Export a zone (RFC 1035 master file)", Tags: []string{"DNS"}, Permission: "dns.read",
+		RespDesc: "The zone as a text/plain master file.",
+	},
+	"POST /api/v1/dns/zones/{uid}/import": {
+		Summary: "Import records from a master file", Tags: []string{"DNS"}, Permission: "dns.write",
+		ReqDesc:    "Additive: adds the parsed records; does not delete existing ones.",
+		ReqSchema:  object(map[string]any{"zone_file": prop("string", "")}, "zone_file"),
+		RespSchema: object(map[string]any{"imported": prop("integer", ""), "skipped": arrayOf(prop("string", ""))}),
+	},
+	"GET /api/v1/dns/zones/{uid}/dnssec": {
+		Summary: "Get DNSSEC status", Tags: []string{"DNS"}, Permission: "dns.read", RespSchema: ref("DNSSECStatus"),
+	},
+	"PUT /api/v1/dns/zones/{uid}/dnssec": {
+		Summary: "Enable/disable DNSSEC", Tags: []string{"DNS"}, Permission: "dns.write",
+		ReqSchema:  object(map[string]any{"enabled": prop("boolean", "")}, "enabled"),
+		RespSchema: ref("DNSZone"),
 	},
 	"GET /api/v1/dns/zones/{uid}/records": {
 		Summary: "List records", Tags: []string{"DNS"}, Permission: "dns.read", RespSchema: arrayOf(ref("DNSRecord")),

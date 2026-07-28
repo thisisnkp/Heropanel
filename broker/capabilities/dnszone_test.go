@@ -1,6 +1,7 @@
 package capabilities_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/thisisnkp/heropanel/broker/capabilities"
@@ -35,6 +36,67 @@ func TestDNSWriteZoneWritesAndReloads(t *testing.T) {
 	}
 	if _, ok := findCall(fr.Calls, "reload"); !ok {
 		t.Fatalf("rndc reload not run: %+v", fr.Calls)
+	}
+}
+
+func TestDNSSECStatusReadsKSKAndDS(t *testing.T) {
+	ff := fsys.NewFake()
+	// A KSK (flags 257) and a ZSK (256) in the key directory.
+	_ = ff.WriteFile("/etc/bind/keys/Ksigned.test.+013+11111.key",
+		[]byte("; comment\nsigned.test. IN DNSKEY 257 3 13 AAAAKSK==\n"), 0o644)
+	_ = ff.WriteFile("/etc/bind/keys/Ksigned.test.+013+22222.key",
+		[]byte("; comment\nsigned.test. IN DNSKEY 256 3 13 AAAAZSK==\n"), 0o644)
+	fr := &exec.FakeRunner{Fn: func(cmd exec.Command) (exec.Result, error) {
+		if cmd.Path == "/bin/ls" {
+			return exec.Result{Stdout: []byte("Ksigned.test.+013+11111.key\nKsigned.test.+013+11111.private\nKsigned.test.+013+22222.key\n")}, nil
+		}
+		if cmd.Path == "/usr/bin/dnssec-dsfromkey" {
+			return exec.Result{Stdout: []byte("signed.test. IN DS 11111 13 2 ABCDEF\n")}, nil
+		}
+		return exec.Result{}, nil
+	}}
+	res, err := (capabilities.DNSSECStatus{}).Execute(appCtx(fr, ff), raw(t, map[string]any{"zone": "signed.test"}))
+	if err != nil {
+		t.Fatalf("dnssec_status: %v", err)
+	}
+	if res.Data["signed"] != true {
+		t.Errorf("want signed=true, got %+v", res.Data)
+	}
+	ds, _ := res.Data["ds"].([]string)
+	if len(ds) != 1 || ds[0] != "signed.test. IN DS 11111 13 2 ABCDEF" {
+		t.Errorf("DS = %v, want the KSK's DS only", ds)
+	}
+	dnskey, _ := res.Data["dnskey"].([]string)
+	// Only the KSK (257) yields a DNSKEY entry; the ZSK is skipped.
+	if len(dnskey) != 1 || !strings.Contains(dnskey[0], "257") {
+		t.Errorf("DNSKEY = %v, want only the KSK", dnskey)
+	}
+	// dnssec-dsfromkey must be run only against the KSK, not the ZSK.
+	dsCalls := 0
+	for _, c := range fr.Calls {
+		if c.Path == "/usr/bin/dnssec-dsfromkey" {
+			dsCalls++
+		}
+	}
+	if dsCalls != 1 {
+		t.Errorf("dnssec-dsfromkey called %d times, want once (KSK only)", dsCalls)
+	}
+}
+
+func TestDNSSECStatusUnsignedWhenNoKeys(t *testing.T) {
+	ff := fsys.NewFake()
+	fr := &exec.FakeRunner{Fn: func(cmd exec.Command) (exec.Result, error) {
+		if cmd.Path == "/bin/ls" {
+			return exec.Result{ExitCode: 2, Stderr: []byte("no such dir")}, nil
+		}
+		return exec.Result{}, nil
+	}}
+	res, err := (capabilities.DNSSECStatus{}).Execute(appCtx(fr, ff), raw(t, map[string]any{"zone": "signed.test"}))
+	if err != nil {
+		t.Fatalf("dnssec_status: %v", err)
+	}
+	if res.Data["signed"] != false {
+		t.Errorf("a zone with no keys must report signed=false, got %+v", res.Data)
 	}
 }
 

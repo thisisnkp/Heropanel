@@ -52,6 +52,16 @@ export function useSetForceHTTPS(uid: string) {
   });
 }
 
+// ── WAF (ModSecurity + OWASP CRS) ────────────────────────────────────────────
+
+export function useSetWAF(uid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { enabled: boolean }) => api.put(`/sites/${uid}/waf`, v),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["site", uid] }),
+  });
+}
+
 // ── PHP ─────────────────────────────────────────────────────────────────────
 
 export function usePHP(uid: string, enabled: boolean) {

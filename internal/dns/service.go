@@ -173,6 +173,82 @@ func (s *Service) DeleteRecord(ctx context.Context, recordUID string) error {
 	return s.reapply(ctx, z)
 }
 
+// DNSSECStatus is the signing state of a zone plus the delegation material the
+// operator must hand the registrar to complete the chain of trust.
+type DNSSECStatus struct {
+	Zone    string   `json:"zone"`
+	Enabled bool     `json:"enabled"`
+	Signed  bool     `json:"signed"`
+	DS      []string `json:"ds"`
+	DNSKEY  []string `json:"dnskey"`
+}
+
+// SetDNSSEC turns inline signing on or off for a zone. Enabling re-renders
+// named.conf with the zone's dnssec-policy and reloads BIND, which then generates
+// keys and signs the zone; the DS to give the registrar is fetched separately
+// with DNSSECStatus once signing has completed.
+func (s *Service) SetDNSSEC(ctx context.Context, zoneUID string, enabled bool) (*Zone, error) {
+	z, err := s.repo.GetZoneByUID(ctx, zoneUID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireBroker(); err != nil {
+		return nil, err
+	}
+	if err := s.repo.SetDNSSEC(ctx, z.ID, enabled); err != nil {
+		return nil, err
+	}
+	z.DNSSECEnabled = enabled
+	// Re-apply so named.conf reflects the policy change (no serial bump needed —
+	// the zone data is unchanged; only its signing configuration is).
+	if err := s.apply(ctx, z); err != nil {
+		// Roll the flag back so the DB never claims a state BIND did not accept.
+		_ = s.repo.SetDNSSEC(ctx, z.ID, !enabled)
+		return nil, err
+	}
+	return toZoneView(z), nil
+}
+
+// DNSSECStatus reads a zone's signing state and delegation records from BIND.
+func (s *Service) DNSSECStatus(ctx context.Context, zoneUID string) (*DNSSECStatus, error) {
+	z, err := s.repo.GetZoneByUID(ctx, zoneUID)
+	if err != nil {
+		return nil, err
+	}
+	st := &DNSSECStatus{Zone: z.Name, Enabled: z.DNSSECEnabled}
+	if !z.DNSSECEnabled {
+		return st, nil
+	}
+	if err := s.requireBroker(); err != nil {
+		return nil, err
+	}
+	out, err := s.broker.Invoke(ctx, "dns.dnssec_status", map[string]any{"zone": z.Name})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := out["signed"].(bool); ok {
+		st.Signed = v
+	}
+	st.DS = stringSlice(out["ds"])
+	st.DNSKEY = stringSlice(out["dnskey"])
+	return st, nil
+}
+
+// stringSlice converts a broker envelope's []any of strings.
+func stringSlice(v any) []string {
+	raw, ok := v.([]any)
+	if !ok {
+		return []string{}
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // challengeTTL keeps ACME DNS-01 records short-lived so a retry is not served a
 // stale answer from a resolver cache.
 const challengeTTL = 60
@@ -347,7 +423,8 @@ func nextSerial(prev int64) int64 {
 func toZoneView(z *ZoneRow) *Zone {
 	return &Zone{
 		UID: z.UID, Name: z.Name, PrimaryNS: z.PrimaryNS, AdminEmail: z.AdminEmail,
-		Serial: z.Serial, TTL: z.TTL, Status: z.Status, CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
+		Serial: z.Serial, TTL: z.TTL, Status: z.Status, DNSSEC: z.DNSSECEnabled,
+		CreatedAt: z.CreatedAt, UpdatedAt: z.UpdatedAt,
 	}
 }
 
