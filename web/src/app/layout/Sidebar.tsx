@@ -1,10 +1,11 @@
-import { NavLink } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { cn } from "@/components/ui";
 import { can } from "@/lib/api";
 import { useMe } from "@/features/auth/auth";
 
-interface NavItem {
+interface NavLeaf {
   to: string;
   label: string;
   icon: string;
@@ -18,11 +19,35 @@ interface NavItem {
   perm?: string;
 }
 
+// A NavGroup is a collapsible parent with child links (e.g. Domain → domain /
+// DNS / nameserver management). The group is shown only when at least one child
+// is visible to the caller, and it opens automatically when one of its children
+// is the active route.
+interface NavGroup {
+  label: string;
+  icon: string;
+  children: NavLeaf[];
+}
+
+type NavItem = NavLeaf | NavGroup;
+
+function isGroup(item: NavItem): item is NavGroup {
+  return "children" in item;
+}
+
 const items: NavItem[] = [
   { to: "/", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   { to: "/sites", label: "Websites", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M2 12a10 10 0 0120 0" },
+  {
+    label: "Domain",
+    icon: "M3 9l1.5-5h15L21 9M3 9h18M4 9v10a1 1 0 001 1h14a1 1 0 001-1V9M9 20v-6h6v6",
+    children: [
+      { to: "/domains", label: "Domain management", icon: "", perm: "site.read" },
+      { to: "/dns", label: "DNS management", icon: "", perm: "dns.read" },
+      { to: "/nameservers", label: "Nameserver management", icon: "", perm: "dns.read" },
+    ],
+  },
   { to: "/databases", label: "Databases", icon: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" },
-  { to: "/dns", label: "DNS", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M12 2a10 10 0 010 20" },
   { to: "/ssl", label: "SSL", icon: "M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6zM9 12l2 2 4-4" },
   {
     to: "/docker",
@@ -84,32 +109,90 @@ function Icon({ path }: { path: string }) {
   );
 }
 
+const leafClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+    isActive ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+  );
+
+function Leaf({ item }: { item: NavLeaf }) {
+  return (
+    <NavLink to={item.to} end={item.to === "/"} className={leafClass}>
+      <Icon path={item.icon} />
+      {item.label}
+    </NavLink>
+  );
+}
+
+function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["data"] }) {
+  const { pathname } = useLocation();
+  const children = group.children.filter((c) => !c.perm || can(me, c.perm));
+  const hasActiveChild = children.some((c) => pathname === c.to || pathname.startsWith(c.to + "/"));
+  const [open, setOpen] = useState(hasActiveChild);
+  if (children.length === 0) return null;
+  const expanded = open || hasActiveChild;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={expanded}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          hasActiveChild ? "text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+        )}
+      >
+        <Icon path={group.icon} />
+        <span className="flex-1 text-left">{group.label}</span>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          className={cn("h-4 w-4 transition-transform", expanded ? "rotate-90" : "")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="mt-1 space-y-1 border-l border-border/60 pl-3">
+          {children.map((c) => (
+            <NavLink
+              key={c.to}
+              to={c.to}
+              className={({ isActive }) =>
+                cn(
+                  "block rounded-lg px-3 py-1.5 text-sm transition-colors",
+                  isActive ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+                )
+              }
+            >
+              {c.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const { data: me } = useMe();
-  const visible = items.filter((it) => !it.perm || can(me, it.perm));
+  const visible = items.filter((it) => (isGroup(it) ? true : !it.perm || can(me, it.perm)));
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-panel">
       <div className="flex h-14 items-center gap-2 px-4">
         <Logo className="h-7 w-7" />
         <span className="text-sm font-semibold tracking-tight text-fg">HeroPanel</span>
       </div>
-      <nav aria-label="Primary" className="flex-1 space-y-1 px-3 py-2">
-        {visible.map((it) => (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            end={it.to === "/"}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                isActive ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
-              )
-            }
-          >
-            <Icon path={it.icon} />
-            {it.label}
-          </NavLink>
-        ))}
+      <nav aria-label="Primary" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+        {visible.map((it) =>
+          isGroup(it) ? <Group key={it.label} group={it} me={me} /> : <Leaf key={it.to} item={it} />,
+        )}
       </nav>
       <div className="border-t border-border px-4 py-3 text-xs text-muted">v0 · single-node</div>
     </aside>

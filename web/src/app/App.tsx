@@ -29,6 +29,8 @@ const SitesPage = page(() => import("@/features/sites/SitesPage"), "SitesPage");
 const SiteDetailPage = page(() => import("@/features/sites/SiteDetailPage"), "SiteDetailPage");
 const DatabasesPage = page(() => import("@/features/databases/DatabasesPage"), "DatabasesPage");
 const DNSPage = page(() => import("@/features/dns/DNSPage"), "DNSPage");
+const DomainsPage = page(() => import("@/features/domains/DomainsPage"), "DomainsPage");
+const NameserversPage = page(() => import("@/features/domains/NameserversPage"), "NameserversPage");
 const SSLPage = page(() => import("@/features/ssl/SSLPage"), "SSLPage");
 const AuditPage = page(() => import("@/features/audit/AuditPage"), "AuditPage");
 const RecordingsPage = page(() => import("@/features/recordings/RecordingsPage"), "RecordingsPage");
@@ -103,7 +105,9 @@ export function App() {
             <Route path="/sites" element={<SitesPage />} />
             <Route path="/sites/:uid" element={<SiteDetailPage />} />
             <Route path="/databases" element={<DatabasesPage />} />
+            <Route path="/domains" element={<DomainsPage />} />
             <Route path="/dns" element={<DNSPage />} />
+            <Route path="/nameservers" element={<NameserversPage />} />
             <Route path="/ssl" element={<SSLPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/recordings" element={<RecordingsPage />} />
