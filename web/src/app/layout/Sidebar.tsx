@@ -19,13 +19,19 @@ interface NavLeaf {
   perm?: string;
 }
 
-// A NavGroup is a collapsible parent with child links (e.g. Domain → domain /
-// DNS / nameserver management). The group is shown only when at least one child
-// is visible to the caller, and it opens automatically when one of its children
-// is the active route.
+// A NavGroup is a collapsible parent with child links (e.g. Websites → its
+// related tools, Domain → domain / DNS / nameserver management). The group is
+// shown only when at least one child is visible to the caller (or it has its own
+// `to`), and it opens automatically when the group or one of its children is the
+// active route.
+//
+// `to` is optional: when set, the group header is itself a link (clicking the
+// label navigates there — e.g. Websites opens the site list) and a separate
+// chevron toggles the children. Without `to` the whole header is the toggle.
 interface NavGroup {
   label: string;
   icon: string;
+  to?: string;
   children: NavLeaf[];
 }
 
@@ -35,20 +41,31 @@ function isGroup(item: NavItem): item is NavGroup {
   return "children" in item;
 }
 
+// Primary navigation. The shape follows the layout the operator asked for: a
+// small set of top-level destinations, with the rest folded into the group they
+// belong to (site tooling under Websites; DNS under Domains) and the
+// panel-administration screens under a pinned Settings group at the bottom.
 const items: NavItem[] = [
   { to: "/", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
-  { to: "/sites", label: "Websites", icon: "M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20M2 12a10 10 0 0120 0" },
   {
-    label: "Domain",
-    icon: "M3 9l1.5-5h15L21 9M3 9h18M4 9v10a1 1 0 001 1h14a1 1 0 001-1V9M9 20v-6h6v6",
+    label: "Websites",
+    to: "/sites",
+    icon: "M4 5h16v11H4zM4 9h16M8 20h8M12 16v4",
+    children: [
+      { to: "/databases", label: "Databases", icon: "" },
+      { to: "/ssl", label: "SSL", icon: "" },
+      { to: "/security", label: "Security", icon: "", perm: "security.read" },
+    ],
+  },
+  {
+    label: "Domains",
+    icon: "M12 2a10 10 0 100 20 10 10 0 000-20M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20",
     children: [
       { to: "/domains", label: "Domain management", icon: "", perm: "site.read" },
       { to: "/dns", label: "DNS management", icon: "", perm: "dns.read" },
       { to: "/nameservers", label: "Nameserver management", icon: "", perm: "dns.read" },
     ],
   },
-  { to: "/databases", label: "Databases", icon: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" },
-  { to: "/ssl", label: "SSL", icon: "M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6zM9 12l2 2 4-4" },
   {
     to: "/docker",
     label: "Docker",
@@ -62,31 +79,11 @@ const items: NavItem[] = [
     perm: "docker.read",
   },
   {
-    to: "/monitor",
-    label: "Monitoring",
-    icon: "M3 12h4l3 8 4-16 3 8h4",
-    perm: "monitor.read",
-  },
-  {
     to: "/mail",
     label: "Mail",
     icon: "M3 6h18v12H3zM3 7l9 6 9-6",
     perm: "mail.read",
   },
-  {
-    to: "/security",
-    label: "Security",
-    icon: "M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z",
-    perm: "security.read",
-  },
-  { to: "/audit", label: "Audit log", icon: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5" },
-  {
-    to: "/recordings",
-    label: "Recordings",
-    icon: "M2 6h20v12H2zM6 10v4M10 8v8M14 10v4M18 9v6",
-    perm: "terminal.recordings.read",
-  },
-  { to: "/modules", label: "Modules", icon: "M4 4h7v7H4zM13 4h7v7h-7zM13 13h7v7h-7zM4 13h7v7H4z" },
   {
     to: "/marketplace",
     label: "Marketplace",
@@ -94,12 +91,22 @@ const items: NavItem[] = [
     perm: "module.read",
   },
   { to: "/users", label: "Users", icon: "M16 14a4 4 0 10-8 0M12 7a3 3 0 100 6 3 3 0 000-6M4 20a8 8 0 0116 0" },
-  {
-    to: "/help",
-    label: "Help",
-    icon: "M12 2a10 10 0 100 20 10 10 0 000-20M9.5 9a2.5 2.5 0 013.5-2.3c1 .4 1.5 1.3 1.5 2.3 0 1.5-2 2-2.5 3M12 17h.01",
-  },
 ];
+
+// Settings is pinned to the bottom of the sidebar (rendered outside the
+// scrolling nav) and gathers the panel-administration screens.
+const settingsGroup: NavGroup = {
+  label: "Settings",
+  icon:
+    "M12 9a3 3 0 100 6 3 3 0 000-6M19.4 13a7.9 7.9 0 000-2l2-1.5-2-3.5-2.4 1a8 8 0 00-1.7-1L15 3H9l-.3 2.5a8 8 0 00-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 000 2l-2 1.5 2 3.5 2.4-1a8 8 0 001.7 1L9 21h6l.3-2.5a8 8 0 001.7-1l2.4 1 2-3.5z",
+  children: [
+    { to: "/monitor", label: "Monitoring", icon: "", perm: "monitor.read" },
+    { to: "/audit", label: "Audit logs", icon: "" },
+    { to: "/recordings", label: "Recordings", icon: "", perm: "terminal.recordings.read" },
+    { to: "/modules", label: "Modules", icon: "" },
+    { to: "/help", label: "Help", icon: "" },
+  ],
+};
 
 function Icon({ path }: { path: string }) {
   return (
@@ -124,41 +131,77 @@ function Leaf({ item }: { item: NavLeaf }) {
   );
 }
 
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={cn("h-4 w-4 transition-transform", expanded ? "rotate-90" : "")}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["data"] }) {
   const { pathname } = useLocation();
   const children = group.children.filter((c) => !c.perm || can(me, c.perm));
+  const selfActive = group.to != null && (pathname === group.to || pathname.startsWith(group.to + "/"));
   const hasActiveChild = children.some((c) => pathname === c.to || pathname.startsWith(c.to + "/"));
-  const [open, setOpen] = useState(hasActiveChild);
-  if (children.length === 0) return null;
+  const [open, setOpen] = useState(hasActiveChild || selfActive);
+  // A group with no visible children and no destination of its own has nothing
+  // to show.
+  if (children.length === 0 && !group.to) return null;
   const expanded = open || hasActiveChild;
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={expanded}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-          hasActiveChild ? "text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
-        )}
-      >
-        <Icon path={group.icon} />
-        <span className="flex-1 text-left">{group.label}</span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          className={cn("h-4 w-4 transition-transform", expanded ? "rotate-90" : "")}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      {group.to ? (
+        // Linkable group: the label navigates, the chevron toggles.
+        <div
+          className={cn(
+            "flex items-center rounded-lg text-sm transition-colors",
+            selfActive || hasActiveChild ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+          )}
         >
-          <path d="M9 6l6 6-6 6" />
-        </svg>
-      </button>
-      {expanded && (
+          <NavLink to={group.to} className="flex flex-1 items-center gap-3 px-3 py-2">
+            <Icon path={group.icon} />
+            <span className="flex-1 text-left">{group.label}</span>
+          </NavLink>
+          {children.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={expanded}
+              aria-label={`Toggle ${group.label}`}
+              className="rounded-lg px-2 py-2 hover:text-fg"
+            >
+              <Chevron expanded={expanded} />
+            </button>
+          )}
+        </div>
+      ) : (
+        // Pure group: the whole header toggles.
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={expanded}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            hasActiveChild ? "text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+          )}
+        >
+          <Icon path={group.icon} />
+          <span className="flex-1 text-left">{group.label}</span>
+          <Chevron expanded={expanded} />
+        </button>
+      )}
+      {expanded && children.length > 0 && (
         <div className="mt-1 space-y-1 border-l border-border/60 pl-3">
           {children.map((c) => (
             <NavLink
@@ -194,7 +237,12 @@ export function Sidebar() {
           isGroup(it) ? <Group key={it.label} group={it} me={me} /> : <Leaf key={it.to} item={it} />,
         )}
       </nav>
-      <div className="border-t border-border px-4 py-3 text-xs text-muted">v0 · single-node</div>
+      {/* Settings is pinned to the bottom, always reachable regardless of how
+          far the primary nav has scrolled. */}
+      <div className="border-t border-border px-3 py-2">
+        <Group group={settingsGroup} me={me} />
+      </div>
+      <div className="border-t border-border px-4 py-2 text-xs text-muted">v0 · single-node</div>
     </aside>
   );
 }
