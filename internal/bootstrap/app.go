@@ -34,6 +34,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/keyring"
 	mailpkg "github.com/thisisnkp/heropanel/internal/mail"
+	"github.com/thisisnkp/heropanel/internal/marketplace"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
@@ -42,7 +43,10 @@ import (
 	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/heropanel/internal/tenancy"
 	"github.com/thisisnkp/heropanel/internal/terminal"
+	usermgmt "github.com/thisisnkp/heropanel/internal/users"
+	"github.com/thisisnkp/heropanel/internal/webhook"
 	"github.com/thisisnkp/heropanel/internal/webmail"
 	"github.com/thisisnkp/heropanel/internal/webserver"
 	"github.com/thisisnkp/heropanel/internal/ws"
@@ -184,6 +188,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var authSvc *auth.Service
 	var auditSvc *audit.Service
 	var userDir httpapi.UserDirectory
+	var userMgmt *usermgmt.Service
+	var tenancyResolver *tenancy.Resolver
+	var webhookSvc *webhook.Service
+	var webhookStore *repository.WebhookStore
+	var marketplaceSvc *marketplace.Service
 	var siteSvc *site.Service
 	var phpSvc *php.Service
 	var dbSvc *database.Service
@@ -230,6 +239,37 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		auditSvc = audit.NewService(repository.NewAuditRepository(db))
 		userDir = &userDirectoryAdapter{repo: users}
+		userMgmt = usermgmt.NewService(users, rbac, sessions)
+		tenancyResolver = tenancy.NewResolver(users, repository.NewResourceOwnerStore(db))
+		// Outbound webhooks tap the audit stream. They need the data key to seal
+		// signing secrets, so they are only enabled when a cipher is configured.
+		if cipher.Configured() {
+			webhookStore = repository.NewWebhookStore(db, cipher)
+			webhookSvc = webhook.NewService(webhookStore, tenancyResolver, rbac, log)
+			auditSvc = auditSvc.WithObserver(webhookSvc.OnAuditEntry)
+		}
+		// Module marketplace: a signed catalog + a pinned publisher keyring over
+		// the installed-module store. Keys and the catalog path come from config;
+		// an empty keyring trusts nothing, so install stays refused until the
+		// operator pins a key. Invalid config degrades to inert rather than fatal —
+		// a bad key must not keep the panel from booting.
+		mktKeyring, kerr := marketplace.NewKeyring(cfg.Marketplace.Keys...)
+		if kerr != nil {
+			log.Warn("marketplace: ignoring invalid publisher key(s)", "err", kerr)
+			mktKeyring, _ = marketplace.NewKeyring()
+		}
+		var mktCatalog *marketplace.Catalog
+		if cfg.Marketplace.Catalog != "" {
+			if c, cerr := marketplace.LoadCatalog(cfg.Marketplace.Catalog); cerr != nil {
+				log.Warn("marketplace: could not load catalog", "path", cfg.Marketplace.Catalog, "err", cerr)
+			} else {
+				mktCatalog = c
+			}
+		}
+		marketplaceSvc = marketplace.NewService(mktKeyring, mktCatalog, repository.NewModuleStore(db), log)
+		if ids := mktKeyring.IDs(); len(ids) > 0 {
+			log.Info("module marketplace ready", "publisher_keys", ids)
+		}
 		siteStore := repository.NewSiteStore(db)
 		runtimeSvc = runtime.NewService(repository.NewRuntimeStore(db), runtimeSiteAdapter{repo: siteStore}, gw)
 		domainSvc = domain.NewService(repository.NewDomainStore(db), domainSiteAdapter{repo: siteStore})
@@ -612,6 +652,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		go mailSvc.RunWebmailSSOSweeper(ctx, log)
 		log.Info("webmail sign-on sweeper enabled", "ttl", mailpkg.WebmailSSOTTL.String())
 	}
+	// Drain the outbound webhook delivery queue (sign + POST + retry/backoff).
+	if webhookStore != nil {
+		go webhook.NewDispatcher(webhookStore, log).Run(ctx)
+		log.Info("webhook dispatcher enabled")
+	}
 
 	// Node metrics. Needs no datastore or broker — /proc is world-readable — so
 	// the monitor exists whenever hpd does. Per-site and service metrics are wired
@@ -679,46 +724,50 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	}
 
 	handler := httpapi.NewRouter(httpapi.Deps{
-		Ctx:        ctx,
-		Config:     cfg,
-		Logger:     log,
-		Version:    version,
-		StartedAt:  time.Now(),
-		DB:         dbHealth,
-		Redis:      redisHealth,
-		Broker:     brokerHealth,
-		Auth:       authSvc,
-		Audit:      auditSvc,
-		Users:      userDir,
-		Keyring:    keyringSvc,
-		Sites:      siteSvc,
-		PHP:        phpSvc,
-		Databases:  dbSvc,
-		SSL:        sslSvc,
-		DNS:        dnsSvc,
-		Domains:    domainSvc,
-		Git:        gitSvc,
-		Docker:     dockerSvc,
-		Apps:       appsSvc,
-		Files:      filesSvc,
-		Terminal:   terminalSvc,
-		Recordings: recordings,
-		Runtime:    runtimeSvc,
-		Cron:       cronSvc,
-		Backups:    backupSvc,
-		Mail:       mailSvc,
-		Webmail:    webmailSvc,
-		Firewall:   firewallSvc,
-		Malware:    malwareSvc,
-		Fail2Ban:   fail2banSvc,
-		SSH:        sshSvc,
-		Updates:    updatesSvc,
-		FIM:        fimSvc,
-		AuditScan:  auditScanSvc,
-		Monitor:    monitorSvc,
-		Jobs:       jobs,
-		Registry:   reg,
-		WS:         wsHub,
+		Ctx:         ctx,
+		Config:      cfg,
+		Logger:      log,
+		Version:     version,
+		StartedAt:   time.Now(),
+		DB:          dbHealth,
+		Redis:       redisHealth,
+		Broker:      brokerHealth,
+		Auth:        authSvc,
+		Audit:       auditSvc,
+		Users:       userDir,
+		UserMgmt:    userMgmt,
+		Tenancy:     tenancyResolver,
+		Webhooks:    webhookSvc,
+		Marketplace: marketplaceSvc,
+		Keyring:     keyringSvc,
+		Sites:       siteSvc,
+		PHP:         phpSvc,
+		Databases:   dbSvc,
+		SSL:         sslSvc,
+		DNS:         dnsSvc,
+		Domains:     domainSvc,
+		Git:         gitSvc,
+		Docker:      dockerSvc,
+		Apps:        appsSvc,
+		Files:       filesSvc,
+		Terminal:    terminalSvc,
+		Recordings:  recordings,
+		Runtime:     runtimeSvc,
+		Cron:        cronSvc,
+		Backups:     backupSvc,
+		Mail:        mailSvc,
+		Webmail:     webmailSvc,
+		Firewall:    firewallSvc,
+		Malware:     malwareSvc,
+		Fail2Ban:    fail2banSvc,
+		SSH:         sshSvc,
+		Updates:     updatesSvc,
+		FIM:         fimSvc,
+		AuditScan:   auditScanSvc,
+		Monitor:     monitorSvc,
+		Jobs:        jobs,
+		Registry:    reg,
+		WS:          wsHub,
 	})
 
 	srv := &http.Server{

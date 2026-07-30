@@ -171,10 +171,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		}
 	}
 
-	userID, err := s.sessions.UserIDForActiveToken(ctx, hash, s.now())
+	as, err := s.sessions.ActiveSessionForToken(ctx, hash, s.now())
 	if err != nil {
 		return nil, err
 	}
+	userID := as.UserID
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, errx.Unauthorized("invalid_session", "Session is no longer valid.")
@@ -194,6 +195,15 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		DisplayName: u.DisplayName,
 		Kind:        KindUser,
 		Permissions: perms,
+	}
+	// An impersonation session acts as the target (above) but records the real
+	// admin so every request can be attributed to an accountable human.
+	if as.ImpersonatorUserID.Valid && as.ImpersonatorUserID.Int64 != 0 {
+		if imp, err := s.users.GetByID(ctx, as.ImpersonatorUserID.Int64); err == nil {
+			p.ImpersonatorUserID = imp.ID
+			p.ImpersonatorUID = imp.UID
+			p.ImpersonatorEmail = imp.Email
+		}
 	}
 	if s.cache != nil {
 		_ = pcache.SetJSON(ctx, s.cache, principalCacheKey(hash), *p, s.cfg.PrincipalCacheTTL)

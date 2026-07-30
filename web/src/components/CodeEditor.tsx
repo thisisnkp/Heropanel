@@ -2,14 +2,6 @@ import { useEffect, useRef } from "react";
 import { EditorState, Compartment, Prec } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { EditorView, basicSetup } from "codemirror";
-import { php } from "@codemirror/lang-php";
-import { html } from "@codemirror/lang-html";
-import { javascript } from "@codemirror/lang-javascript";
-import { css } from "@codemirror/lang-css";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { python } from "@codemirror/lang-python";
-import { yaml } from "@codemirror/lang-yaml";
 import type { Extension } from "@codemirror/state";
 
 // CodeEditor wraps CodeMirror 6. basicSetup already gives line numbers, an undo
@@ -22,37 +14,43 @@ import type { Extension } from "@codemirror/state";
 // inline <style> element, so it works under the app's strict `default-src
 // 'self'` CSP without needing `'unsafe-inline'`.
 
-// languageFor picks a language extension from the filename suffix. Unknown
-// suffixes get no language (plain text with all the editing niceties).
-function languageFor(filename: string): Extension {
+// loadLanguage resolves the CodeMirror grammar for a filename suffix, importing
+// it on demand. Each `@codemirror/lang-*` package is a sizeable grammar, and
+// statically importing all eight bundled every one into the editor chunk whether
+// a session ever opened that file type or not. Dynamic import splits each grammar
+// into its own chunk, so opening a `.py` file fetches only the Python grammar and
+// the editor's base bundle carries none of them. An unknown suffix resolves to no
+// language — plain text with all the editing niceties.
+async function loadLanguage(filename: string): Promise<Extension> {
   const ext = filename.toLowerCase().split(".").pop() ?? "";
   switch (ext) {
     case "php":
     case "phtml":
-      return php();
+      return (await import("@codemirror/lang-php")).php();
     case "html":
     case "htm":
-      return html();
+      return (await import("@codemirror/lang-html")).html();
     case "js":
     case "jsx":
     case "mjs":
     case "cjs":
-      return javascript();
+      return (await import("@codemirror/lang-javascript")).javascript();
     case "ts":
+      return (await import("@codemirror/lang-javascript")).javascript({ typescript: true });
     case "tsx":
-      return javascript({ typescript: true, jsx: ext === "tsx" });
+      return (await import("@codemirror/lang-javascript")).javascript({ typescript: true, jsx: true });
     case "css":
-      return css();
+      return (await import("@codemirror/lang-css")).css();
     case "json":
-      return json();
+      return (await import("@codemirror/lang-json")).json();
     case "md":
     case "markdown":
-      return markdown();
+      return (await import("@codemirror/lang-markdown")).markdown();
     case "py":
-      return python();
+      return (await import("@codemirror/lang-python")).python();
     case "yml":
     case "yaml":
-      return yaml();
+      return (await import("@codemirror/lang-yaml")).yaml();
     default:
       return [];
   }
@@ -115,6 +113,17 @@ export function CodeEditor({
   const host = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
+  // Monotonic token so a slow grammar import that resolves after the file has
+  // already changed (or the editor was torn down) is ignored rather than swapping
+  // in a stale language.
+  const langReq = useRef(0);
+  const applyLanguage = useRef((filename: string) => {
+    const token = ++langReq.current;
+    void loadLanguage(filename).then((ext) => {
+      if (token !== langReq.current || !view.current) return;
+      view.current.dispatch({ effects: language.current.reconfigure(ext) });
+    });
+  });
   // Keep the latest callbacks without re-creating the editor on every render.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -146,7 +155,10 @@ export function CodeEditor({
           ]),
         ),
         basicSetup,
-        language.current.of(languageFor(filename)),
+        // Start with no grammar; the on-demand import swaps the real one in as
+        // soon as it resolves (usually within a frame or two of the editor
+        // mounting), so the first paint never blocks on a grammar download.
+        language.current.of([]),
         panelTheme,
         EditorView.lineWrapping,
         EditorState.readOnly.of(readOnly),
@@ -157,6 +169,7 @@ export function CodeEditor({
     });
     const v = new EditorView({ state, parent: host.current });
     view.current = v;
+    applyLanguage.current(filename); // load the initial grammar on demand
     return () => {
       v.destroy();
       view.current = null;
@@ -164,9 +177,9 @@ export function CodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reconfigure the language when the open file changes.
+  // Reconfigure the language when the open file changes (loaded on demand).
   useEffect(() => {
-    view.current?.dispatch({ effects: language.current.reconfigure(languageFor(filename)) });
+    if (view.current) applyLanguage.current(filename);
   }, [filename]);
 
   // If the parent swaps in a different file's contents, replace the document.

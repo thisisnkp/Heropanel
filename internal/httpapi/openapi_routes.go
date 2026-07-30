@@ -83,6 +83,10 @@ var apiDocs = map[string]opMeta{
 		Summary: "Sign out everywhere else", Tags: []string{"Auth"},
 		RespDesc: "Revokes every active session of the caller except the current one.",
 	},
+	"POST /api/v1/auth/impersonation/stop": {
+		Summary: "Stop impersonating", Tags: []string{"Auth"},
+		RespDesc: "Ends the current impersonation session and restores the administrator's own session. Errors if the session is not impersonating anyone.",
+	},
 	"POST /api/v1/auth/mfa/setup": {
 		Summary: "Begin MFA enrolment", Tags: []string{"Auth"}, RespSchema: ref("MFASetup"),
 	},
@@ -113,10 +117,129 @@ var apiDocs = map[string]opMeta{
 		Summary: "Revoke an API key", Tags: []string{"Account"}, RespDesc: "Key revoked.",
 	},
 
+	// ── webhooks ──────────────────────────────────────────────────────────────
+	"GET /api/v1/webhooks": {
+		Summary: "List webhooks", Tags: []string{"Webhooks"}, Permission: "webhook.read",
+		RespDesc: "Outbound webhook subscriptions visible to the caller (all for an admin; their tenant subtree otherwise).",
+	},
+	"POST /api/v1/webhooks": {
+		Summary: "Create a webhook", Tags: []string{"Webhooks"}, Permission: "webhook.write",
+		ReqSchema: object(map[string]any{
+			"url":    prop("string", "The http(s) endpoint to POST signed events to."),
+			"events": arrayOf(prop("string", "Resource types to subscribe to (e.g. \"sites\", \"dns\"), or \"*\" for all. Defaults to [\"*\"].")),
+		}, "url"),
+		RespStatus: 201,
+		RespDesc:   "Registers the subscription and returns the signing secret once. Deliveries are HMAC-signed: X-HeroPanel-Signature = \"sha256=\" + HMAC-SHA256(secret, timestamp + \".\" + body).",
+	},
+	"DELETE /api/v1/webhooks/{uid}": {
+		Summary: "Delete a webhook", Tags: []string{"Webhooks"}, Permission: "webhook.write",
+		RespDesc: "Removes the subscription and its delivery history.",
+	},
+	"GET /api/v1/webhooks/{uid}/deliveries": {
+		Summary: "List webhook deliveries", Tags: []string{"Webhooks"}, Permission: "webhook.read",
+		RespDesc: "Recent delivery attempts (event, status, response code, attempts) for the subscription.",
+	},
+
+	// ── module marketplace ──────────────────────────────────────────────────────
+	"GET /api/v1/marketplace/catalog": {
+		Summary: "Browse the module marketplace", Tags: []string{"Marketplace"}, Permission: "module.read",
+		RespDesc: "Offered modules, each with a trust verdict (verified + publisher key, or the reason it is not) and its install state. Also reports whether a trusted publisher key is configured at all.",
+	},
+	"GET /api/v1/marketplace/installed": {
+		Summary: "List installed modules", Tags: []string{"Marketplace"}, Permission: "module.read",
+		RespDesc: "The operator's installed-module inventory, independent of what the catalog currently offers.",
+	},
+	"POST /api/v1/marketplace/modules/{slug}/install": {
+		Summary: "Install a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
+		RespStatus: 201,
+		RespDesc:   "Verifies the module's manifest against a trusted publisher key and records it as installed. Refused (403) for any module a trusted key has not signed.",
+	},
+	"POST /api/v1/marketplace/modules/{slug}/enable": {
+		Summary: "Enable a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
+		RespDesc: "Activates an installed module.",
+	},
+	"POST /api/v1/marketplace/modules/{slug}/disable": {
+		Summary: "Disable a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
+		RespDesc: "Parks an installed module without removing it.",
+	},
+	"DELETE /api/v1/marketplace/modules/{slug}": {
+		Summary: "Uninstall a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
+		RespDesc: "Removes the installed-module record.",
+	},
+
 	// ── users ─────────────────────────────────────────────────────────────────
 	"GET /api/v1/users": {
 		Summary: "List users", Tags: []string{"Users"}, Permission: "user.read",
-		RespSchema: arrayOf(ref("Principal")),
+		RespDesc: "Users with their role assignments and whether each is a superuser.",
+	},
+	"GET /api/v1/users/{uid}": {
+		Summary: "Get a user", Tags: []string{"Users"}, Permission: "user.read",
+		RespDesc: "One user with their roles and superuser flag.",
+	},
+	"POST /api/v1/users": {
+		Summary: "Create a user", Tags: []string{"Users"}, Permission: "user.write",
+		ReqSchema: object(map[string]any{
+			"email":        prop("string", "Login email."),
+			"username":     prop("string", "2–64 letters, digits, dot, dash or underscore."),
+			"display_name": prop("string", "Optional display name (defaults to the username)."),
+			"password":     prop("string", "8–200 characters."),
+			"roles":        arrayOf(prop("string", "Role slugs to assign.")),
+		}, "email", "username", "password"),
+		RespDesc: "Creates a user and assigns the given roles.",
+	},
+	"POST /api/v1/users/{uid}/status": {
+		Summary: "Activate or suspend a user", Tags: []string{"Users"}, Permission: "user.write",
+		ReqSchema: object(map[string]any{"status": prop("string", "active | suspended.")}, "status"),
+		RespDesc:  "Suspending ends the user's sessions. Refused for the last administrator or your own account.",
+	},
+	"PUT /api/v1/users/{uid}/roles": {
+		Summary: "Set a user's roles", Tags: []string{"Users"}, Permission: "user.write",
+		ReqSchema: object(map[string]any{"roles": arrayOf(prop("string", "Role slugs."))}, "roles"),
+		RespDesc:  "Replaces the user's role set. Refused if it would remove the last administrator's superuser role.",
+	},
+	"PUT /api/v1/users/{uid}/password": {
+		Summary: "Reset a user's password", Tags: []string{"Users"}, Permission: "user.write",
+		ReqSchema: object(map[string]any{"password": prop("string", "8–200 characters.")}, "password"),
+		RespDesc:  "Sets a new password and ends the user's sessions, forcing a re-login.",
+	},
+	"DELETE /api/v1/users/{uid}": {
+		Summary: "Delete a user", Tags: []string{"Users"}, Permission: "user.write",
+		RespDesc: "Soft-deletes the user and ends their sessions. Refused for the last administrator or your own account.",
+	},
+	"POST /api/v1/users/{uid}/impersonate": {
+		Summary: "Impersonate a user", Tags: []string{"Users"}, Permission: "user.impersonate",
+		RespDesc: "Starts a short-lived, fully audited session acting as the target user (with the target's permissions) and swaps the caller's session cookie to it. Refused for yourself, an inactive user, or an administrator.",
+	},
+	"GET /api/v1/roles": {
+		Summary: "List roles", Tags: []string{"Users"}, Permission: "user.read",
+		RespDesc: "Every role (system and custom) with its permission set.",
+	},
+	"GET /api/v1/permissions": {
+		Summary: "List permissions", Tags: []string{"Users"}, Permission: "user.read",
+		RespDesc: "The permission catalog (slug, resource, action, description).",
+	},
+	"POST /api/v1/roles": {
+		Summary: "Create a custom role", Tags: []string{"Users"}, Permission: "user.write",
+		ReqSchema: object(map[string]any{
+			"slug":        prop("string", "2–32 lowercase letters, digits, dash or underscore."),
+			"name":        prop("string", "Display name."),
+			"description": prop("string", "Optional description."),
+			"permissions": arrayOf(prop("string", "Permission slugs (the full-access '*' is not allowed).")),
+		}, "slug", "name"),
+		RespDesc: "Creates a custom (non-system) role with the given permissions.",
+	},
+	"PUT /api/v1/roles/{slug}": {
+		Summary: "Update a role", Tags: []string{"Users"}, Permission: "user.write",
+		ReqSchema: object(map[string]any{
+			"name":        prop("string", "Display name."),
+			"description": prop("string", "Description."),
+			"permissions": arrayOf(prop("string", "Permission slugs — custom roles only; omit to leave unchanged.")),
+		}),
+		RespDesc: "Edits a role's name/description; a custom role's permissions may also be replaced. A system role's permissions are fixed.",
+	},
+	"DELETE /api/v1/roles/{slug}": {
+		Summary: "Delete a custom role", Tags: []string{"Users"}, Permission: "user.write",
+		RespDesc: "Removes a custom role (system roles cannot be deleted); assignments fall away.",
 	},
 
 	// ── modules / capabilities ────────────────────────────────────────────────

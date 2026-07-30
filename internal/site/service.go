@@ -517,6 +517,20 @@ func (s *Service) List(ctx context.Context, ownerID int64, limit, offset int) ([
 	return out, nil
 }
 
+// ListForOwners returns the sites owned by any of ownerIDs — the tenant-scoped
+// listing the HTTP edge uses for a non-superuser principal.
+func (s *Service) ListForOwners(ctx context.Context, ownerIDs []int64, limit, offset int) ([]Site, error) {
+	recs, err := s.repo.ListForOwners(ctx, ownerIDs, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Site, len(recs))
+	for i := range recs {
+		out[i] = *toView(&recs[i])
+	}
+	return out, nil
+}
+
 // Suspend takes a site offline without destroying anything.
 //
 // It is the lever an operator pulls for non-payment or abuse, so it has to be

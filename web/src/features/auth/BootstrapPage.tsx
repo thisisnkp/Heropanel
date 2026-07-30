@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { ApiRequestError } from "@/lib/api";
 import { Alert, Button, Card, Field, Input } from "@/components/ui";
+import { useT } from "@/lib/i18n";
 import { AuthShell } from "./AuthShell";
 import { useBootstrap, useLogin } from "./auth";
 
 // First-run: create the administrator, then log them straight in.
 export function BootstrapPage() {
+  const t = useT();
   const bootstrap = useBootstrap();
   const login = useLogin();
   const [email, setEmail] = useState("");
@@ -19,25 +21,25 @@ export function BootstrapPage() {
   };
 
   const err = bootstrap.error ?? login.error;
-  const errorMessage = err instanceof ApiRequestError ? err.message : err ? "Setup failed." : null;
+  const errorMessage = err instanceof ApiRequestError ? err.message : err ? t("auth.bootstrap.failed") : null;
   const pending = bootstrap.isPending || login.isPending;
 
   return (
-    <AuthShell title="Welcome to HeroPanel" subtitle="Create the first administrator account">
+    <AuthShell title={t("auth.bootstrap.title")} subtitle={t("auth.bootstrap.subtitle")}>
       <Card className="p-6">
         <form className="space-y-4" onSubmit={onSubmit}>
           {errorMessage && <Alert>{errorMessage}</Alert>}
-          <Field label="Email">
+          <Field label={t("auth.field.email")}>
             <Input type="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
           </Field>
-          <Field label="Username">
+          <Field label={t("auth.field.username")}>
             <Input required value={username} onChange={(e) => setUsername(e.target.value)} />
           </Field>
-          <Field label="Password" hint="At least 8 characters.">
+          <Field label={t("auth.field.password")} hint={t("auth.bootstrap.passwordHint")}>
             <Input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
           <Button type="submit" className="w-full" loading={pending}>
-            Create administrator
+            {t("auth.bootstrap.submit")}
           </Button>
         </form>
       </Card>

@@ -12,12 +12,15 @@ import (
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
 	"github.com/thisisnkp/heropanel/internal/database"
+	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
 func listDatabasesHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := d.Databases.ListDatabases(r.Context(), 0, 50, 0)
+		out, err := listForTenant(d, r, func(ownerID int64) ([]database.Instance, error) {
+			return d.Databases.ListDatabases(r.Context(), ownerID, 50, 0)
+		})
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -63,7 +66,9 @@ func deleteDatabaseHandler(d Deps) http.HandlerFunc {
 
 func listDBUsersHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := d.Databases.ListUsers(r.Context(), 0, 50, 0)
+		out, err := listForTenant(d, r, func(ownerID int64) ([]database.User, error) {
+			return d.Databases.ListUsers(r.Context(), ownerID, 50, 0)
+		})
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -112,6 +117,13 @@ func grantDatabaseHandler(d Deps) http.HandlerFunc {
 		}
 		audit.AddDetail(r.Context(), "user_uid", req.UserUID)
 		audit.AddDetail(r.Context(), "privileges", req.Privileges)
+		// The {uid} path (the instance) is tenant-guarded by the middleware; the
+		// db_user in the body is a second owned resource it never sees, so guard it
+		// here — otherwise a reseller could grant a foreign tenant's user.
+		if err := assertBodyResourceInTenant(d, r, repository.KindDBUser, req.UserUID); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		if err := d.Databases.Grant(r.Context(), chi.URLParam(r, "uid"), req.UserUID, req.Privileges); err != nil {
 			writeError(w, r, err)
 			return
@@ -131,6 +143,10 @@ func revokeDatabaseHandler(d Deps) http.HandlerFunc {
 		}
 		audit.AddDetail(r.Context(), "user_uid", req.UserUID)
 		audit.AddDetail(r.Context(), "privileges", req.Privileges)
+		if err := assertBodyResourceInTenant(d, r, repository.KindDBUser, req.UserUID); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		if err := d.Databases.Revoke(r.Context(), chi.URLParam(r, "uid"), req.UserUID, req.Privileges); err != nil {
 			writeError(w, r, err)
 			return

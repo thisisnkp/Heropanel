@@ -66,6 +66,9 @@ type Repo interface {
 	GetByAppProject(ctx context.Context, project string) (*Record, error)
 	// List returns sites ordered by id. ownerID 0 lists all.
 	List(ctx context.Context, ownerID int64, limit, offset int) ([]Record, error)
+	// ListForOwners returns sites owned by any of ownerIDs — the tenant-scoped
+	// listing for a non-superuser principal. An empty set returns no sites.
+	ListForOwners(ctx context.Context, ownerIDs []int64, limit, offset int) ([]Record, error)
 	// SoftDelete marks a site deleted.
 	SoftDelete(ctx context.Context, uid string) error
 	// GetLimits returns a site's resource limits. A site that has never been

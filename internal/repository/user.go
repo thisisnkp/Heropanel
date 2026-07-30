@@ -120,6 +120,63 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]User, e
 	return users, nil
 }
 
+// SetStatus updates a user's status (active | suspended). A suspended user
+// cannot log in; existing sessions are revoked by the caller.
+func (r *UserRepository) SetStatus(ctx context.Context, uid, status string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET status = ? WHERE uid = ? AND deleted_at IS NULL`, status, uid)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errx.NotFound("user_not_found", "No such user.")
+	}
+	return nil
+}
+
+// UpdateProfile updates a user's display name.
+func (r *UserRepository) UpdateProfile(ctx context.Context, uid, displayName string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET display_name = ? WHERE uid = ? AND deleted_at IS NULL`, displayName, uid)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errx.NotFound("user_not_found", "No such user.")
+	}
+	return nil
+}
+
+// SetPasswordByUID replaces a user's password hash (admin reset).
+func (r *UserRepository) SetPasswordByUID(ctx context.Context, uid, hash string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE uid = ? AND deleted_at IS NULL`, hash, uid)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errx.NotFound("user_not_found", "No such user.")
+	}
+	return nil
+}
+
+// SoftDelete marks a user deleted (kept for audit-log foreign references),
+// setting the freed email/username (computed by the caller so the query stays
+// dialect-neutral) so a new account can reuse the originals.
+func (r *UserRepository) SoftDelete(ctx context.Context, uid, freedEmail, freedUsername string, now time.Time) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET deleted_at = ?, status = 'deleted', email = ?, username = ?
+		  WHERE uid = ? AND deleted_at IS NULL`,
+		now.UTC().Format("2006-01-02 15:04:05"), freedEmail, freedUsername, uid)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errx.NotFound("user_not_found", "No such user.")
+	}
+	return nil
+}
+
 // AuthUser carries the fields the login flow needs, including a computed Locked
 // flag (1 when the account is currently locked out).
 type AuthUser struct {

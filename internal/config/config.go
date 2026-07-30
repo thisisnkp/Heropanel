@@ -16,17 +16,29 @@ import (
 
 // Config is the full hpd configuration.
 type Config struct {
-	Server   Server   `yaml:"server"`
-	Database Database `yaml:"database"`
-	Redis    Redis    `yaml:"redis"`
-	Broker   Broker   `yaml:"broker"`
-	SSL      SSL      `yaml:"ssl"`
-	Terminal Terminal `yaml:"terminal"`
-	Log      Log      `yaml:"log"`
-	Security Security `yaml:"security"`
-	Backup   Backup   `yaml:"backup"`
-	Mail     Mail     `yaml:"mail"`
-	Webmail  Webmail  `yaml:"webmail"`
+	Server      Server      `yaml:"server"`
+	Database    Database    `yaml:"database"`
+	Redis       Redis       `yaml:"redis"`
+	Broker      Broker      `yaml:"broker"`
+	SSL         SSL         `yaml:"ssl"`
+	Terminal    Terminal    `yaml:"terminal"`
+	Log         Log         `yaml:"log"`
+	Security    Security    `yaml:"security"`
+	Backup      Backup      `yaml:"backup"`
+	Mail        Mail        `yaml:"mail"`
+	Webmail     Webmail     `yaml:"webmail"`
+	Marketplace Marketplace `yaml:"marketplace"`
+}
+
+// Marketplace configures the module marketplace. Catalog is a path to the module
+// feed (a JSON index of signed manifests); empty leaves the catalog empty. Keys
+// are the ed25519 publisher public keys the panel pins to decide which modules it
+// trusts to install — base64, hex, or a "@/path/to/key" reference. These are
+// public keys, so unlike credentials they may live in the yaml file;
+// HP_MARKETPLACE_KEYS (comma-separated) and HP_MARKETPLACE_CATALOG override them.
+type Marketplace struct {
+	Catalog string   `yaml:"catalog"`
+	Keys    []string `yaml:"keys"`
 }
 
 // Webmail configures the Roundcube webmail integration. Hostname is the FQDN it
@@ -425,6 +437,17 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("HP_WEBMAIL_PHP_VERSION"); v != "" {
 		c.Webmail.PHPVersion = v
+	}
+	if v := os.Getenv("HP_MARKETPLACE_CATALOG"); v != "" {
+		c.Marketplace.Catalog = v
+	}
+	if v := os.Getenv("HP_MARKETPLACE_KEYS"); v != "" {
+		c.Marketplace.Keys = c.Marketplace.Keys[:0]
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				c.Marketplace.Keys = append(c.Marketplace.Keys, p)
+			}
+		}
 	}
 	if v := os.Getenv("HP_PANEL_IP_ALLOWLIST"); v != "" {
 		parts := strings.Split(v, ",")

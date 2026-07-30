@@ -11,12 +11,26 @@ import (
 	"github.com/thisisnkp/heropanel/internal/site"
 )
 
-// listSitesHandler returns sites. Gated by "site.read".
+// listSitesHandler returns sites. Gated by "site.read". A superuser sees every
+// site; any other principal sees only their own tenant subtree (themselves plus
+// the clients below them in the ownership tree).
 func listSitesHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Admins (site.read via "*") see all; owner-scoping arrives with
-		// reseller/client roles.
-		sites, err := d.Sites.List(r.Context(), 0, 50, 0)
+		p, _ := auth.FromContext(r.Context())
+		var (
+			sites []site.Site
+			err   error
+		)
+		if p != nil && !p.Can("*") && d.Tenancy.Enabled() {
+			owners, verr := d.Tenancy.VisibleOwnerIDs(r.Context(), p.UserID)
+			if verr != nil {
+				writeError(w, r, verr)
+				return
+			}
+			sites, err = d.Sites.ListForOwners(r.Context(), owners, 50, 0)
+		} else {
+			sites, err = d.Sites.List(r.Context(), 0, 50, 0)
+		}
 		if err != nil {
 			writeError(w, r, err)
 			return

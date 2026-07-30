@@ -36,3 +36,17 @@ body,
 body {
   @apply bg-surface text-fg antialiased;
 }
+
+/* Respect a reduced-motion preference: some users get motion sickness or
+   distraction from transitions and animations. Collapse them to near-instant
+   rather than removing them outright, so state changes still register. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

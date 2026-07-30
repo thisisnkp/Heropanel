@@ -38,14 +38,26 @@ type Filter struct {
 // SELECT ... FOR UPDATE on MariaDB — and this comment is the marker for that
 // work.
 type Service struct {
-	mu     sync.Mutex
-	repo   Repo
-	prev   string
-	loaded bool
+	mu       sync.Mutex
+	repo     Repo
+	prev     string
+	loaded   bool
+	observer func(Entry)
 }
 
 // NewService constructs a Service over repo.
 func NewService(repo Repo) *Service { return &Service{repo: repo} }
+
+// WithObserver registers a callback invoked once per successfully committed
+// entry. It is how the outbound-webhook dispatcher taps the canonical "what
+// happened" stream without the audit package depending on it: the observer is a
+// plain function, so the coupling points the other way. The callback runs on its
+// own goroutine (a slow or panicking observer must never stall or fail an audit
+// write), and is handed a copy of the entry. Returns the service for chaining.
+func (s *Service) WithObserver(o func(Entry)) *Service {
+	s.observer = o
+	return s
+}
 
 // Record commits r to the chain.
 func (s *Service) Record(ctx context.Context, r Record) (Entry, error) {
@@ -106,6 +118,13 @@ func (s *Service) Record(ctx context.Context, r Record) (Entry, error) {
 		return Entry{}, err
 	}
 	s.prev = e.RowHash
+	if s.observer != nil {
+		entry := e // copy; the observer must not see later mutations
+		go func() {
+			defer func() { _ = recover() }() // an observer must never crash the writer
+			s.observer(entry)
+		}()
+	}
 	return e, nil
 }
 

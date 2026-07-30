@@ -21,6 +21,12 @@ const (
 
 // Principal is the authenticated identity attached to a request. It is safe to
 // cache (JSON-serializable) for the short lifetime of a session lookup.
+//
+// During impersonation the principal is that of the *target* user — same
+// UserID, same permission set — so the acting admin genuinely operates with the
+// target's rights, never more. The Impersonator* fields name the real human
+// behind the session; they are what the audit log attributes every mutation to,
+// so an impersonated action is never mistaken for the target acting alone.
 type Principal struct {
 	UserID      int64    `json:"user_id"`
 	UserUID     string   `json:"user_uid"`
@@ -29,7 +35,16 @@ type Principal struct {
 	DisplayName string   `json:"display_name"`
 	Kind        Kind     `json:"kind"`
 	Permissions []string `json:"permissions"`
+
+	// Impersonation context (zero/empty when the session is an ordinary self
+	// session).
+	ImpersonatorUserID int64  `json:"impersonator_user_id,omitempty"`
+	ImpersonatorUID    string `json:"impersonator_uid,omitempty"`
+	ImpersonatorEmail  string `json:"impersonator_email,omitempty"`
 }
+
+// Impersonated reports whether this principal is an admin acting as another user.
+func (p *Principal) Impersonated() bool { return p != nil && p.ImpersonatorUserID != 0 }
 
 // Can reports whether the principal holds permission (or the "*" superuser
 // permission).

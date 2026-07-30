@@ -124,6 +124,217 @@ func (r *RBACRepository) AssignRole(ctx context.Context, userID int64, roleSlug 
 	return nil
 }
 
+// RoleRow is a role in a management view.
+type RoleRow struct {
+	ID          int64  `db:"id"`
+	UID         string `db:"uid"`
+	Name        string `db:"name"`
+	Slug        string `db:"slug"`
+	IsSystem    int    `db:"is_system"`
+	Description string `db:"description"`
+}
+
+// PermissionRow is a permission in the catalog.
+type PermissionRow struct {
+	Slug        string `db:"slug"`
+	Resource    string `db:"resource"`
+	Action      string `db:"action"`
+	Description string `db:"description"`
+}
+
+// ListRoles returns every role, system roles first then alphabetically.
+func (r *RBACRepository) ListRoles(ctx context.Context) ([]RoleRow, error) {
+	var rows []RoleRow
+	if err := r.db.SelectContext(ctx, &rows,
+		`SELECT id, uid, name, slug, is_system, description FROM roles ORDER BY is_system DESC, slug ASC`); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return rows, nil
+}
+
+// GetRole returns one role by slug.
+func (r *RBACRepository) GetRole(ctx context.Context, slug string) (*RoleRow, error) {
+	var row RoleRow
+	err := r.db.GetContext(ctx, &row,
+		`SELECT id, uid, name, slug, is_system, description FROM roles WHERE slug = ?`, slug)
+	if isNoRows(err) {
+		return nil, errx.NotFound("role_not_found", "No such role.")
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &row, nil
+}
+
+// ListPermissions returns the full permission catalog.
+func (r *RBACRepository) ListPermissions(ctx context.Context) ([]PermissionRow, error) {
+	var rows []PermissionRow
+	if err := r.db.SelectContext(ctx, &rows,
+		`SELECT slug, resource, action, description FROM permissions ORDER BY resource ASC, action ASC`); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return rows, nil
+}
+
+// PermissionsForRole returns the permission slugs granted to a role.
+func (r *RBACRepository) PermissionsForRole(ctx context.Context, roleSlug string) ([]string, error) {
+	var slugs []string
+	if err := r.db.SelectContext(ctx, &slugs,
+		`SELECT p.slug FROM permissions p
+		   JOIN role_permissions rp ON rp.permission_id = p.id
+		   JOIN roles ro ON ro.id = rp.role_id
+		  WHERE ro.slug = ? ORDER BY p.slug ASC`, roleSlug); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return slugs, nil
+}
+
+// RolesForUser returns the role slugs assigned to a user (global scope).
+func (r *RBACRepository) RolesForUser(ctx context.Context, userID int64) ([]string, error) {
+	var slugs []string
+	if err := r.db.SelectContext(ctx, &slugs,
+		`SELECT ro.slug FROM roles ro
+		   JOIN user_roles ur ON ur.role_id = ro.id
+		  WHERE ur.user_id = ? ORDER BY ro.slug ASC`, userID); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return slugs, nil
+}
+
+// CreateCustomRole inserts a non-system role. It errors if the slug is taken.
+func (r *RBACRepository) CreateCustomRole(ctx context.Context, slug, name, description string) error {
+	if _, err := r.roleID(ctx, slug); err == nil {
+		return errx.Conflict("role_exists", "A role with that slug already exists.")
+	}
+	if _, err := r.db.ExecContext(ctx,
+		`INSERT INTO roles (uid, name, slug, is_system, description) VALUES (?, ?, ?, 0, ?)`,
+		idgen.NewULID(), name, slug, description); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// UpdateRoleMeta updates a role's display name and description.
+func (r *RBACRepository) UpdateRoleMeta(ctx context.Context, slug, name, description string) error {
+	if _, err := r.db.ExecContext(ctx,
+		`UPDATE roles SET name = ?, description = ? WHERE slug = ?`, name, description, slug); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// DeleteRole removes a role and (via ON DELETE CASCADE) its permission grants
+// and user assignments.
+func (r *RBACRepository) DeleteRole(ctx context.Context, slug string) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM roles WHERE slug = ?`, slug); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// SetRolePermissions replaces a role's permission set with permSlugs, in one
+// transaction so the role is never briefly missing its permissions.
+func (r *RBACRepository) SetRolePermissions(ctx context.Context, roleSlug string, permSlugs []string) error {
+	roleID, err := r.roleID(ctx, roleSlug)
+	if err != nil {
+		return err
+	}
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM role_permissions WHERE role_id = ?`, roleID); err != nil {
+		return errx.Internal(err)
+	}
+	for _, slug := range permSlugs {
+		var permID int64
+		if err := tx.GetContext(ctx, &permID, `SELECT id FROM permissions WHERE slug = ?`, slug); err != nil {
+			if isNoRows(err) {
+				return errx.Validation("permission_not_found", "No such permission: "+slug)
+			}
+			return errx.Internal(err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)`, roleID, permID); err != nil {
+			return errx.Internal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// SetUserRoles replaces a user's global role assignments with roleSlugs, in one
+// transaction.
+func (r *RBACRepository) SetUserRoles(ctx context.Context, userID int64, roleSlugs []string) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM user_roles WHERE user_id = ? AND scope_type = 'global'`, userID); err != nil {
+		return errx.Internal(err)
+	}
+	for _, slug := range roleSlugs {
+		var roleID int64
+		if err := tx.GetContext(ctx, &roleID, `SELECT id FROM roles WHERE slug = ?`, slug); err != nil {
+			if isNoRows(err) {
+				return errx.Validation("role_not_found", "No such role: "+slug)
+			}
+			return errx.Internal(err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO user_roles (user_id, role_id, scope_type, scope_id) VALUES (?, ?, 'global', 0)`,
+			userID, roleID); err != nil {
+			return errx.Internal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errx.Internal(err)
+	}
+	return nil
+}
+
+// CountActiveSuperusers returns how many non-deleted, active users hold the
+// wildcard permission. The management layer uses it to refuse an action that
+// would remove the last administrator and lock everyone out.
+func (r *RBACRepository) CountActiveSuperusers(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.GetContext(ctx, &n,
+		`SELECT COUNT(DISTINCT u.id)
+		   FROM users u
+		   JOIN user_roles ur ON ur.user_id = u.id
+		   JOIN role_permissions rp ON rp.role_id = ur.role_id
+		   JOIN permissions p ON p.id = rp.permission_id
+		  WHERE p.slug = ? AND u.status = 'active' AND u.deleted_at IS NULL`, wildcardPerm)
+	if err != nil {
+		return 0, errx.Internal(err)
+	}
+	return n, nil
+}
+
+// UserHoldsWildcard reports whether a user holds the superuser permission.
+func (r *RBACRepository) UserHoldsWildcard(ctx context.Context, userID int64) (bool, error) {
+	var n int
+	err := r.db.GetContext(ctx, &n,
+		`SELECT COUNT(*)
+		   FROM user_roles ur
+		   JOIN role_permissions rp ON rp.role_id = ur.role_id
+		   JOIN permissions p ON p.id = rp.permission_id
+		  WHERE ur.user_id = ? AND p.slug = ?`, userID, wildcardPerm)
+	if err != nil {
+		return false, errx.Internal(err)
+	}
+	return n > 0, nil
+}
+
+// wildcardPerm is the superuser permission slug (mirrors auth.PermWildcard;
+// duplicated to avoid an import cycle between repository and auth).
+const wildcardPerm = "*"
+
 func (r *RBACRepository) roleID(ctx context.Context, slug string) (int64, error) {
 	var id int64
 	err := r.db.GetContext(ctx, &id, `SELECT id FROM roles WHERE slug = ?`, slug)

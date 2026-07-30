@@ -30,6 +30,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/keyring"
 	"github.com/thisisnkp/heropanel/internal/mail"
+	"github.com/thisisnkp/heropanel/internal/marketplace"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
@@ -37,7 +38,10 @@ import (
 	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/heropanel/internal/tenancy"
 	"github.com/thisisnkp/heropanel/internal/terminal"
+	"github.com/thisisnkp/heropanel/internal/users"
+	"github.com/thisisnkp/heropanel/internal/webhook"
 	"github.com/thisisnkp/heropanel/internal/webmail"
 	"github.com/thisisnkp/heropanel/internal/ws"
 )
@@ -232,34 +236,38 @@ func fullRouterDeps(t *testing.T) Deps {
 	cfg.Security.RateLimit.Enabled = false
 	dockerStub := docker.New(stubDockerBroker{}).WithStreams(stubStreamGateway{})
 	return Deps{
-		Ctx:       context.Background(),
-		Config:    cfg,
-		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Version:   "test",
-		StartedAt: time.Now(),
-		Auth:      &auth.Service{},
-		Audit:     &audit.Service{},
-		Users:     stubUsers{},
-		Keyring:   keyring.NewService(nil, nil),
-		Sites:     &site.Service{},
-		PHP:       &php.Service{},
-		Databases: &database.Service{},
-		SSL:       &ssl.Service{},
-		DNS:       &dns.Service{},
-		Domains:   &domain.Service{},
-		Git:       &git.Service{},
-		Runtime:   &runtime.Service{},
-		Cron:      cron.NewService(nil, nil, nil),
-		Backups:   backup.NewService(nil, nil, nil, nil, nil),
-		Mail:      mail.NewService(nil, nil),
-		Webmail:   webmail.NewService(stubDockerBroker{}, "webmail.example.com", "8.3"),
-		Firewall:  security.NewFirewall(stubFirewallRepo{}, stubDockerBroker{}),
-		Malware:   security.NewMalware(stubMalwareRepo{}, stubDockerBroker{}, stubMalwareSites{}),
-		Fail2Ban:  security.NewFail2Ban(stubDockerBroker{}),
-		SSH:       security.NewSSH(stubDockerBroker{}),
-		Updates:   security.NewUpdates(stubDockerBroker{}),
-		FIM:       security.NewFIM(stubDockerBroker{}),
-		AuditScan: security.NewAudit(stubDockerBroker{}),
+		Ctx:         context.Background(),
+		Config:      cfg,
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Version:     "test",
+		StartedAt:   time.Now(),
+		Auth:        &auth.Service{},
+		Audit:       &audit.Service{},
+		Users:       stubUsers{},
+		UserMgmt:    users.NewService(nil, nil, nil),
+		Tenancy:     tenancy.NewResolver(nil, nil), // present for the wiring check; disabled (no repo) so it imposes no scoping
+		Webhooks:    webhook.NewService(nil, nil, nil, nil),
+		Marketplace: marketplace.NewService(nil, nil, nil, nil),
+		Keyring:     keyring.NewService(nil, nil),
+		Sites:       &site.Service{},
+		PHP:         &php.Service{},
+		Databases:   &database.Service{},
+		SSL:         &ssl.Service{},
+		DNS:         &dns.Service{},
+		Domains:     &domain.Service{},
+		Git:         &git.Service{},
+		Runtime:     &runtime.Service{},
+		Cron:        cron.NewService(nil, nil, nil),
+		Backups:     backup.NewService(nil, nil, nil, nil, nil),
+		Mail:        mail.NewService(nil, nil),
+		Webmail:     webmail.NewService(stubDockerBroker{}, "webmail.example.com", "8.3"),
+		Firewall:    security.NewFirewall(stubFirewallRepo{}, stubDockerBroker{}),
+		Malware:     security.NewMalware(stubMalwareRepo{}, stubDockerBroker{}, stubMalwareSites{}),
+		Fail2Ban:    security.NewFail2Ban(stubDockerBroker{}),
+		SSH:         security.NewSSH(stubDockerBroker{}),
+		Updates:     security.NewUpdates(stubDockerBroker{}),
+		FIM:         security.NewFIM(stubDockerBroker{}),
+		AuditScan:   security.NewAudit(stubDockerBroker{}),
 		// (stubDockerBroker is a broker.Gateway; the walk never invokes it.)
 		Monitor:  monitor.New().WithHistory(stubMetricRepo{}).WithAlertAdmin(stubAlertAdmin{}),
 		Jobs:     &job.Dispatcher{},

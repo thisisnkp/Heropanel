@@ -27,6 +27,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/job"
 	"github.com/thisisnkp/heropanel/internal/keyring"
 	"github.com/thisisnkp/heropanel/internal/mail"
+	"github.com/thisisnkp/heropanel/internal/marketplace"
 	"github.com/thisisnkp/heropanel/internal/monitor"
 	"github.com/thisisnkp/heropanel/internal/php"
 	"github.com/thisisnkp/heropanel/internal/registry"
@@ -34,7 +35,10 @@ import (
 	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/heropanel/internal/tenancy"
 	"github.com/thisisnkp/heropanel/internal/terminal"
+	"github.com/thisisnkp/heropanel/internal/users"
+	"github.com/thisisnkp/heropanel/internal/webhook"
 	"github.com/thisisnkp/heropanel/internal/webmail"
 	"github.com/thisisnkp/heropanel/internal/ws"
 	"github.com/thisisnkp/heropanel/web"
@@ -53,12 +57,18 @@ type Deps struct {
 	Logger    *slog.Logger
 	Version   string
 	StartedAt time.Time
-	DB        HealthChecker     // nil when no datastore is configured
-	Redis     HealthChecker     // nil when Redis is disabled
-	Broker    HealthChecker     // nil when the broker is not configured
-	Auth      *auth.Service     // nil when no datastore is configured
-	Audit     *audit.Service    // nil when no datastore is configured
-	Users     UserDirectory     // nil when no datastore is configured
+	DB        HealthChecker  // nil when no datastore is configured
+	Redis     HealthChecker  // nil when Redis is disabled
+	Broker    HealthChecker  // nil when the broker is not configured
+	Auth      *auth.Service  // nil when no datastore is configured
+	Audit     *audit.Service // nil when no datastore is configured
+	Users     UserDirectory  // nil when no datastore is configured
+	// UserMgmt is the multi-user administration module (user CRUD, roles,
+	// impersonation). Nil when no datastore is configured.
+	UserMgmt *users.Service
+	// Tenancy resolves reseller-tenant visibility from the ownership tree. Nil
+	// leaves resources unscoped (admins-only), preserving pre-tenancy behavior.
+	Tenancy   *tenancy.Resolver
 	Keyring   *keyring.Service  // rotating data-key envelope; nil without a datastore
 	Sites     *site.Service     // nil when no datastore is configured
 	PHP       *php.Service      // nil when no datastore is configured
@@ -110,6 +120,12 @@ type Deps struct {
 	Jobs     *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
 	WS       *ws.Hub            // nil when the realtime hub is disabled (no Redis)
 	Registry *registry.Registry // module capability set; never nil (may be empty)
+	// Webhooks is the outbound event-webhook module. Nil without a datastore or a
+	// configured data key (its signing secrets are sealed at rest).
+	Webhooks *webhook.Service
+	// Marketplace is the module catalog + trust layer. Present but inert (Enabled
+	// false) without a datastore; browsing and install gate on it.
+	Marketplace *marketplace.Service
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -176,6 +192,7 @@ func NewRouter(d Deps) http.Handler {
 				// never run, because CSRF short-circuits the chain.
 				r.Use(auditor(d.Audit, d.Logger))
 				r.Use(csrf(d.Config.Security.CSRF.Enabled)) // double-submit CSRF (opt-in)
+				r.Use(tenantGuard(d))                       // reseller-tenant isolation on site routes
 
 				r.Get("/auth/status", statusHandler(d))
 				r.Post("/auth/bootstrap", bootstrapHandler(d))
@@ -186,6 +203,7 @@ func NewRouter(d Deps) http.Handler {
 				r.With(requireAuth).Get("/auth/sessions", listSessionsHandler(d))
 				r.With(requireAuth).Delete("/auth/sessions/{uid}", revokeSessionHandler(d))
 				r.With(requireAuth).Post("/auth/sessions/revoke-others", revokeOtherSessionsHandler(d))
+				r.With(requireAuth).Post("/auth/impersonation/stop", stopImpersonationHandler(d))
 				r.With(requireAuth).Post("/auth/mfa/setup", mfaSetupHandler(d))
 				r.With(requireAuth).Post("/auth/mfa/enable", mfaEnableHandler(d))
 				r.With(requireAuth).Post("/auth/mfa/disable", mfaDisableHandler(d))
@@ -204,7 +222,42 @@ func NewRouter(d Deps) http.Handler {
 				r.With(requireAuth).Post("/account/api-keys", createAPIKeyHandler(d))
 				r.With(requireAuth).Delete("/account/api-keys/{uid}", revokeAPIKeyHandler(d))
 
-				if d.Users != nil {
+				// Outbound event webhooks.
+				if d.Webhooks != nil {
+					r.With(requirePermission("webhook.read")).Get("/webhooks", listWebhooksHandler(d))
+					r.With(requirePermission("webhook.write")).Post("/webhooks", createWebhookHandler(d))
+					r.With(requirePermission("webhook.write")).Delete("/webhooks/{uid}", deleteWebhookHandler(d))
+					r.With(requirePermission("webhook.read")).Get("/webhooks/{uid}/deliveries", listWebhookDeliveriesHandler(d))
+				}
+
+				// Module marketplace. Browsing is a read; install/enable/disable/
+				// remove is host-wide management that runs third-party code. The
+				// service is non-nil exactly when a datastore backs it (so its store
+				// is always present here).
+				if d.Marketplace != nil {
+					r.With(requirePermission("module.read")).Get("/marketplace/catalog", listMarketplaceHandler(d))
+					r.With(requirePermission("module.read")).Get("/marketplace/installed", listInstalledModulesHandler(d))
+					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/install", installModuleHandler(d))
+					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/enable", enableModuleHandler(d))
+					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/disable", disableModuleHandler(d))
+					r.With(requirePermission("module.manage")).Delete("/marketplace/modules/{slug}", uninstallModuleHandler(d))
+				}
+
+				if d.UserMgmt != nil {
+					r.With(requirePermission("user.read")).Get("/users", listUsersMgmtHandler(d))
+					r.With(requirePermission("user.read")).Get("/users/{uid}", getUserHandler(d))
+					r.With(requirePermission("user.write")).Post("/users", createUserHandler(d))
+					r.With(requirePermission("user.write")).Post("/users/{uid}/status", setUserStatusHandler(d))
+					r.With(requirePermission("user.write")).Put("/users/{uid}/roles", setUserRolesHandler(d))
+					r.With(requirePermission("user.write")).Put("/users/{uid}/password", setUserPasswordHandler(d))
+					r.With(requirePermission("user.write")).Delete("/users/{uid}", deleteUserHandler(d))
+					r.With(requirePermission("user.impersonate")).Post("/users/{uid}/impersonate", impersonateHandler(d))
+					r.With(requirePermission("user.read")).Get("/roles", listRolesHandler(d))
+					r.With(requirePermission("user.read")).Get("/permissions", listPermissionsHandler(d))
+					r.With(requirePermission("user.write")).Post("/roles", createRoleHandler(d))
+					r.With(requirePermission("user.write")).Put("/roles/{slug}", updateRoleHandler(d))
+					r.With(requirePermission("user.write")).Delete("/roles/{slug}", deleteRoleHandler(d))
+				} else if d.Users != nil {
 					r.With(requirePermission("user.read")).Get("/users", listUsersHandler(d))
 				}
 				// The module/capability set. The UI reads this at login to decide

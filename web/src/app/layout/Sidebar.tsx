@@ -62,12 +62,23 @@ const items: NavItem[] = [
     perm: "terminal.recordings.read",
   },
   { to: "/modules", label: "Modules", icon: "M4 4h7v7H4zM13 4h7v7h-7zM13 13h7v7h-7zM4 13h7v7H4z" },
+  {
+    to: "/marketplace",
+    label: "Marketplace",
+    icon: "M3 9l1.5-5h15L21 9M3 9h18M3 9v10a1 1 0 001 1h16a1 1 0 001-1V9M8 13h8",
+    perm: "module.read",
+  },
   { to: "/users", label: "Users", icon: "M16 14a4 4 0 10-8 0M12 7a3 3 0 100 6 3 3 0 000-6M4 20a8 8 0 0116 0" },
+  {
+    to: "/help",
+    label: "Help",
+    icon: "M12 2a10 10 0 100 20 10 10 0 000-20M9.5 9a2.5 2.5 0 013.5-2.3c1 .4 1.5 1.3 1.5 2.3 0 1.5-2 2-2.5 3M12 17h.01",
+  },
 ];
 
 function Icon({ path }: { path: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d={path} />
     </svg>
   );
@@ -82,7 +93,7 @@ export function Sidebar() {
         <Logo className="h-7 w-7" />
         <span className="text-sm font-semibold tracking-tight text-fg">HeroPanel</span>
       </div>
-      <nav className="flex-1 space-y-1 px-3 py-2">
+      <nav aria-label="Primary" className="flex-1 space-y-1 px-3 py-2">
         {visible.map((it) => (
           <NavLink
             key={it.to}

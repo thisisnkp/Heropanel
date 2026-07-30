@@ -20,6 +20,11 @@ var basePermissions = []seedPermission{
 	{PermWildcard, "*", "*", "Full administrative access"},
 	{"user.read", "user", "read", "View users"},
 	{"user.write", "user", "write", "Create and modify users"},
+	// Impersonation is a grant apart from user.write: editing a user is acting on
+	// their record, while impersonating one is acting *as* them, with their
+	// permissions, in a fully audited session. It is deliberately not implied by
+	// user.write so "can manage users" and "can become a user" stay separable.
+	{"user.impersonate", "user", "impersonate", "Start an audited session acting as another user"},
 	{"site.read", "site", "read", "View sites"},
 	{"site.write", "site", "write", "Create and modify sites"},
 	{"dns.read", "dns", "read", "View DNS zones and records"},
@@ -47,6 +52,12 @@ var basePermissions = []seedPermission{
 	{"system.read", "system", "read", "View system status"},
 	{"system.write", "system", "write", "Change system configuration"},
 	{"audit.read", "audit", "read", "View the audit log"},
+	// Webhooks turn the audit stream into outbound notifications. Reading and
+	// managing them is its own grant: a webhook receives a feed of what happened
+	// (tenant-filtered for non-admins), so subscribing is a bigger act than any
+	// single read.
+	{"webhook.read", "webhook", "read", "View outbound webhooks and their deliveries"},
+	{"webhook.write", "webhook", "write", "Create, edit and delete outbound webhooks"},
 	// Monitoring is host-wide, like Docker: viewing live node/site/container
 	// metrics is a read; configuring alert thresholds and notification targets is
 	// a write. Live dashboards are subscription-gated, so this read also gates the
@@ -61,6 +72,11 @@ var basePermissions = []seedPermission{
 	// A firewall change can lock the whole box out, so it carries its own pair.
 	{"security.read", "security", "read", "View firewall rules, scans and quarantine"},
 	{"security.write", "security", "write", "Change the firewall, run scans, manage quarantine"},
+	// The module marketplace. Browsing what is offered is a read; installing,
+	// enabling, or removing a module is host-wide and runs third-party code, so
+	// managing carries its own grant apart from any single resource's write.
+	{"module.read", "module", "read", "Browse the module marketplace and installed modules"},
+	{"module.manage", "module", "manage", "Install, enable, disable and remove marketplace modules"},
 }
 
 // seedRole is a role to ensure exists.

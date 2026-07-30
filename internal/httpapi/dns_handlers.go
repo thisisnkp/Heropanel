@@ -13,7 +13,9 @@ import (
 // listZonesHandler returns DNS zones. Gated by "dns.read".
 func listZonesHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		zones, err := d.DNS.ListZones(r.Context(), 0, 50, 0)
+		zones, err := listForTenant(d, r, func(ownerID int64) ([]dns.Zone, error) {
+			return d.DNS.ListZones(r.Context(), ownerID, 50, 0)
+		})
 		if err != nil {
 			writeError(w, r, err)
 			return

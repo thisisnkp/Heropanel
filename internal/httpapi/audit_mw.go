@@ -47,7 +47,6 @@ func auditor(svc *audit.Service, log *slog.Logger) mw {
 				ActorIP:   clientIP(r),
 				Action:    auditAction(r),
 				Outcome:   outcomeFor(ww.Status()),
-				Detail:    ann.DetailJSON(),
 				ActorKind: audit.ActorAnonymous,
 			}
 			resType, resID := ann.Resource()
@@ -64,7 +63,18 @@ func auditor(svc *audit.Service, log *slog.Logger) mw {
 			} else if p, ok := auth.FromContext(r.Context()); ok {
 				rec.ActorUserID = p.UserID
 				rec.ActorKind = actorKindOf(p.Kind)
+				// During impersonation the request runs with the target's identity,
+				// but the accountable human is the admin behind it. Attribute the
+				// action to that admin and note whom they acted as, so an
+				// impersonated mutation is never filed as the target acting alone.
+				if p.Impersonated() {
+					rec.ActorUserID = p.ImpersonatorUserID
+					rec.ActorKind = audit.ActorUser
+					audit.AddDetail(r.Context(), "impersonated_user", p.UserUID)
+				}
 			}
+			// Computed last so the impersonation note above is included.
+			rec.Detail = ann.DetailJSON()
 
 			// The mutation already happened and the response is already on the
 			// wire, so a failed audit write cannot fail the request — by the time

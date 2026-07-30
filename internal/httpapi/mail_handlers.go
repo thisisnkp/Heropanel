@@ -8,6 +8,7 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/mail"
 )
 
 // The mail HTTP edge. Mail is its own resource (mail.read / mail.write): a
@@ -17,7 +18,9 @@ import (
 // listMailDomainsHandler returns all mail domains. Gated by "mail.read".
 func listMailDomainsHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := d.Mail.ListDomains(r.Context(), 0)
+		out, err := listForTenant(d, r, func(ownerID int64) ([]mail.Domain, error) {
+			return d.Mail.ListDomains(r.Context(), ownerID)
+		})
 		if err != nil {
 			writeError(w, r, err)
 			return

@@ -3,10 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError } from "@/lib/api";
 import { Alert, Button, Card, Field, Input } from "@/components/ui";
 import { loginPasskey, supportsWebAuthn } from "@/lib/webauthn";
+import { useT } from "@/lib/i18n";
 import { AuthShell } from "./AuthShell";
 import { useLogin } from "./auth";
 
 export function LoginPage() {
+  const t = useT();
   const login = useLogin();
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
@@ -22,7 +24,7 @@ export function LoginPage() {
   const onPasskey = async () => {
     setPasskeyErr(null);
     if (!email) {
-      setPasskeyErr("Enter your email first.");
+      setPasskeyErr(t("auth.login.enterEmailFirst"));
       return;
     }
     setPasskeyBusy(true);
@@ -31,7 +33,7 @@ export function LoginPage() {
       qc.setQueryData(["me"], principal);
       qc.invalidateQueries({ queryKey: ["auth-status"] });
     } catch (e: unknown) {
-      setPasskeyErr(e instanceof Error ? e.message : "Passkey sign-in failed.");
+      setPasskeyErr(e instanceof Error ? e.message : t("auth.login.passkeyFailed"));
     } finally {
       setPasskeyBusy(false);
     }
@@ -39,14 +41,14 @@ export function LoginPage() {
 
   const errorMessage =
     passkeyErr ??
-    (login.error instanceof ApiRequestError ? login.error.message : login.error ? "Login failed." : null);
+    (login.error instanceof ApiRequestError ? login.error.message : login.error ? t("auth.login.failed") : null);
 
   return (
-    <AuthShell title="Sign in" subtitle="Welcome back to HeroPanel">
+    <AuthShell title={t("auth.login.title")} subtitle={t("auth.login.subtitle")}>
       <Card className="p-6">
         <form className="space-y-4" onSubmit={onSubmit}>
           {errorMessage && <Alert>{errorMessage}</Alert>}
-          <Field label="Email">
+          <Field label={t("auth.field.email")}>
             <Input
               type="email"
               autoComplete="username webauthn"
@@ -57,7 +59,7 @@ export function LoginPage() {
               placeholder="you@example.com"
             />
           </Field>
-          <Field label="Password">
+          <Field label={t("auth.field.password")}>
             <Input
               type="password"
               autoComplete="current-password"
@@ -68,18 +70,18 @@ export function LoginPage() {
             />
           </Field>
           <Button type="submit" className="w-full" loading={login.isPending}>
-            Sign in
+            {t("auth.login.submit")}
           </Button>
         </form>
         {supportsWebAuthn() && (
           <>
             <div className="my-4 flex items-center gap-3 text-xs text-muted">
               <span className="h-px flex-1 bg-border" />
-              or
+              {t("auth.login.or")}
               <span className="h-px flex-1 bg-border" />
             </div>
             <Button variant="ghost" className="w-full" loading={passkeyBusy} onClick={onPasskey}>
-              Sign in with a passkey
+              {t("auth.login.passkey")}
             </Button>
           </>
         )}

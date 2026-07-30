@@ -224,6 +224,11 @@ export interface Principal {
   username: string;
   display_name: string;
   permissions: string[];
+  /** Present only while impersonating: the real administrator behind the
+   *  session. The UI shows a banner and the "stop" control when set. */
+  impersonator_user_id?: number;
+  impersonator_uid?: string;
+  impersonator_email?: string;
 }
 
 export interface AuthStatus {

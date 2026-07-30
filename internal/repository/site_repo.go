@@ -156,6 +156,28 @@ func (s *SiteStore) List(ctx context.Context, ownerID int64, limit, offset int) 
 	return recs, nil
 }
 
+// ListForOwners implements site.Repo: sites owned by any of ownerIDs (the
+// tenant-scoped listing). An empty set yields no rows.
+func (s *SiteStore) ListForOwners(ctx context.Context, ownerIDs []int64, limit, offset int) ([]site.Record, error) {
+	if len(ownerIDs) == 0 {
+		return []site.Record{}, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q := siteSelect + ` WHERE s.deleted_at IS NULL AND s.owner_id IN (?) ORDER BY s.id LIMIT ? OFFSET ?`
+	query, args, err := sqlx.In(q, ownerIDs, limit, offset)
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	query = s.db.Rebind(query)
+	var recs []site.Record
+	if err := s.db.SelectContext(ctx, &recs, query, args...); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return recs, nil
+}
+
 // SoftDelete implements site.Repo.
 func (s *SiteStore) SoftDelete(ctx context.Context, uid string) error {
 	if _, err := s.db.ExecContext(ctx,

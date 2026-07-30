@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/thisisnkp/heropanel/pkg/errx"
@@ -17,6 +18,16 @@ type Session struct {
 	IP        string
 	UserAgent string
 	ExpiresAt time.Time
+	// ImpersonatorUserID is the real admin behind an impersonation session, or 0
+	// for an ordinary self session.
+	ImpersonatorUserID int64
+}
+
+// ActiveSession is the identity behind a valid session token: the acting user
+// and, when set, the admin impersonating them.
+type ActiveSession struct {
+	UserID             int64         `db:"user_id"`
+	ImpersonatorUserID sql.NullInt64 `db:"impersonator_user_id"`
 }
 
 // SessionRepository persists sessions.
@@ -32,10 +43,14 @@ func (r *SessionRepository) Create(ctx context.Context, s *Session) error {
 	if s.UID == "" {
 		s.UID = idgen.NewULID()
 	}
+	var impersonator any // NULL for an ordinary self session
+	if s.ImpersonatorUserID != 0 {
+		impersonator = s.ImpersonatorUserID
+	}
 	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO sessions (uid, user_id, token_hash, ip, user_agent, expires_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		s.UID, s.UserID, s.TokenHash, s.IP, s.UserAgent, fmtTS(s.ExpiresAt))
+		`INSERT INTO sessions (uid, user_id, token_hash, ip, user_agent, expires_at, impersonator_user_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		s.UID, s.UserID, s.TokenHash, s.IP, s.UserAgent, fmtTS(s.ExpiresAt), impersonator)
 	if err != nil {
 		return errx.Internal(err)
 	}
@@ -45,22 +60,22 @@ func (r *SessionRepository) Create(ctx context.Context, s *Session) error {
 	return nil
 }
 
-// UserIDForActiveToken returns the user id for a session that is not revoked and
-// not expired as of now. It returns an unauthorized error when no such session
-// exists.
-func (r *SessionRepository) UserIDForActiveToken(ctx context.Context, tokenHash string, now time.Time) (int64, error) {
-	var userID int64
-	err := r.db.GetContext(ctx, &userID,
-		`SELECT user_id FROM sessions
+// ActiveSessionForToken returns the acting user and any impersonator for a
+// session that is not revoked and not expired as of now. It returns an
+// unauthorized error when no such session exists.
+func (r *SessionRepository) ActiveSessionForToken(ctx context.Context, tokenHash string, now time.Time) (ActiveSession, error) {
+	var as ActiveSession
+	err := r.db.GetContext(ctx, &as,
+		`SELECT user_id, impersonator_user_id FROM sessions
 		  WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?`,
 		tokenHash, fmtTS(now))
 	if isNoRows(err) {
-		return 0, errx.Unauthorized("invalid_session", "Session is invalid or expired.")
+		return ActiveSession{}, errx.Unauthorized("invalid_session", "Session is invalid or expired.")
 	}
 	if err != nil {
-		return 0, errx.Internal(err)
+		return ActiveSession{}, errx.Internal(err)
 	}
-	return userID, nil
+	return as, nil
 }
 
 // Revoke marks the session with the given token hash as revoked.

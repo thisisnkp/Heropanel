@@ -1,4 +1,4 @@
-import { forwardRef, useEffect } from "react";
+import { forwardRef, useEffect, useId, useRef } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -6,6 +6,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { FOCUSABLE_SELECTOR, nextFocusIndex } from "@/lib/focustrap";
 
 export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -171,17 +172,67 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  // Dialog focus management: on open, move focus into the dialog and remember
+  // where it came from; trap Tab within the dialog so keyboard focus cannot
+  // wander to the page behind it; on close, hand focus back to whatever opened
+  // it. Escape closes. Without this a keyboard or screen-reader user is left
+  // stranded behind the overlay — the defining failure of an inaccessible modal.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const opener = document.activeElement as HTMLElement | null;
+    const node = dialogRef.current;
+    const focusables = () =>
+      node ? Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)) : [];
+    (focusables()[0] ?? node)?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const els = focusables();
+      e.preventDefault();
+      if (els.length === 0) return;
+      const idx = els.indexOf(document.activeElement as HTMLElement);
+      els[nextFocusIndex(els.length, idx, e.shiftKey)]?.focus();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
   }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
-      <Card className={cn("w-full p-6", wide ? "max-w-2xl" : "max-w-md")} >
-        <div onClick={(e) => e.stopPropagation()}>
-          <h2 className="mb-4 text-lg font-semibold text-fg">{title}</h2>
+      <Card className={cn("w-full p-6", wide ? "max-w-2xl" : "max-w-md")}>
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          className="focus:outline-none"
+        >
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <h2 id={titleId} className="text-lg font-semibold text-fg">
+              {title}
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close dialog"
+              className="-m-1 rounded-md p-1 text-muted hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
           {children}
         </div>
       </Card>

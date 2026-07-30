@@ -11,7 +11,9 @@ import (
 
 func listCertsHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := d.SSL.List(r.Context(), 0, 50, 0)
+		out, err := listForTenant(d, r, func(ownerID int64) ([]ssl.Cert, error) {
+			return d.SSL.List(r.Context(), ownerID, 50, 0)
+		})
 		if err != nil {
 			writeError(w, r, err)
 			return

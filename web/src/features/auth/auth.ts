@@ -48,6 +48,20 @@ export function useBootstrap() {
   });
 }
 
+// useStopImpersonation ends the current impersonation and restores the
+// administrator's own session (swapped server-side). We reset the cache and
+// reseat the returned admin principal so the app returns to the admin's view.
+export function useStopImpersonation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<Principal>("/auth/impersonation/stop"),
+    onSuccess: (admin) => {
+      qc.clear();
+      qc.setQueryData(["me"], admin);
+    },
+  });
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation({

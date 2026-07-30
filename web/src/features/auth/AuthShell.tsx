@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 import { Logo } from "@/components/Logo";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useT } from "@/lib/i18n";
 
 // AuthShell is the centered, glass-accented frame around login / bootstrap.
 export function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+  const t = useT();
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden px-4">
       <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-brand/20 blur-3xl" />
@@ -15,7 +18,10 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
           </div>
         </div>
         {children}
-        <p className="text-center text-xs text-muted">HeroPanel — the fast, modern hosting control panel.</p>
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-center text-xs text-muted">{t("app.tagline")}</p>
+          <LanguageSwitcher />
+        </div>
       </div>
     </div>
   );

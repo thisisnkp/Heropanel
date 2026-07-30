@@ -59,6 +59,10 @@ jobs:
           npm ci
           npm test
           npm run build
+          # Enforce the frontend performance budget: the eager entry bundle must
+          # stay small (route pages/editor/terminal are code-split). Fails the
+          # build if a heavy module gets pulled back into the entry chunk.
+          npm run size
 
       - name: Build linux binaries (amd64 + arm64)
         run: |
@@ -468,7 +472,7 @@ jobs:
           echo "$out"
           # The only suite that runs hpd's control-plane store on MariaDB, so it
           # is also the only thing exercising the mysql migrations at all.
-          grep -q 'ok   all 36 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
+          grep -q 'ok   all 40 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
           # The chain must verify against the engine that ships, not just SQLite:
           # MariaDB pads DATETIME(6) to six digits and the hash covers the stored bytes.
           grep -q 'ok   chain intact on MariaDB'   <<<"$out" || { echo '::error::the audit chain does not verify on MariaDB'; exit 1; }
