@@ -68,10 +68,21 @@ func statusHandler(d Deps) http.HandlerFunc {
 			return
 		}
 		_, authed := auth.FromContext(r.Context())
+		// setup_complete gates the first-run wizard for every client. It defaults
+		// to true so a panel without the setup module (or its datastore) is never
+		// stuck behind a wizard it cannot show; the real state overrides it when
+		// the module is available.
+		setupComplete := true
+		if d.Setup != nil && d.Setup.Available() {
+			if st, serr := d.Setup.Status(r.Context()); serr == nil {
+				setupComplete = st.Completed
+			}
+		}
 		writeJSON(w, r, http.StatusOK, map[string]any{
 			"needs_bootstrap": needs,
 			"authenticated":   authed,
 			"configured":      true,
+			"setup_complete":  setupComplete,
 		})
 	}
 }
@@ -91,6 +102,7 @@ func unconfiguredStatusHandler() http.HandlerFunc {
 			"needs_bootstrap": false,
 			"authenticated":   false,
 			"configured":      false,
+			"setup_complete":  true,
 		})
 	}
 }

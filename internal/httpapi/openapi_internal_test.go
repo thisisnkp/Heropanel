@@ -36,6 +36,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/security"
+	"github.com/thisisnkp/heropanel/internal/setup"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/tenancy"
@@ -248,6 +249,7 @@ func fullRouterDeps(t *testing.T) Deps {
 		Tenancy:     tenancy.NewResolver(nil, nil), // present for the wiring check; disabled (no repo) so it imposes no scoping
 		Webhooks:    webhook.NewService(nil, nil, nil, nil),
 		Marketplace: marketplace.NewService(nil, nil, nil, nil),
+		Setup:       setup.NewService(nil, nil, nil),
 		Keyring:     keyring.NewService(nil, nil),
 		Sites:       &site.Service{},
 		PHP:         &php.Service{},

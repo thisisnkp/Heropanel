@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiRequestError, can } from "@/lib/api";
 import { Alert, Button, Card, Spinner, StatusBadge, Tabs } from "@/components/ui";
 import { toast } from "@/stores/toast";
@@ -24,7 +24,10 @@ export function SiteDetailPage() {
   const navigate = useNavigate();
   const { data: site, isLoading, error } = useSite(uid);
   const { data: me } = useMe();
-  const [tab, setTab] = useState("overview");
+  // Seed the active tab from ?tab= so the Websites page's Tools menu can
+  // deep-link straight to Files/Logs; it falls back to Overview.
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => params.get("tab") ?? "overview");
   const suspend = useSuspend(uid);
 
   if (isLoading) {

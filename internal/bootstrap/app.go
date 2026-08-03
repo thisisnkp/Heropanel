@@ -41,6 +41,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/security"
+	"github.com/thisisnkp/heropanel/internal/setup"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/tenancy"
@@ -215,6 +216,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var auditScanSvc *security.Audit
 	var dnsSvc *dns.Service
 	var domainSvc *domain.Service
+	var setupSvc *setup.Service
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -274,10 +276,13 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		runtimeSvc = runtime.NewService(repository.NewRuntimeStore(db), runtimeSiteAdapter{repo: siteStore}, gw)
 		domainSvc = domain.NewService(repository.NewDomainStore(db), domainSiteAdapter{repo: siteStore})
 		phpSvc = php.NewService(repository.NewPHPPoolStore(db), gw)
+		// The web-server service renders vhosts for the active engine (OLS by
+		// default; switched to the operator's setup choice below).
+		webSvc := webserver.NewService(gw)
 		siteSvc = site.NewService(site.Deps{
 			Repo:    siteStore,
 			Broker:  gw,
-			Web:     webserver.NewService(gw),
+			Web:     webSvc,
 			PHP:     phpSvc,
 			Runtime: siteRuntimeAdapter{svc: runtimeSvc},
 			Domains: siteDomainsAdapter{svc: domainSvc},
@@ -298,6 +303,40 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			// record what to drop later.
 			dbSvc.WithAdminer(cfg.Database.AdminerURL, dbStore)
 			log.Info("database client hand-off enabled", "url", cfg.Database.AdminerURL)
+		}
+
+		// First-run setup wizard. With the broker present the operator's
+		// webserver/database/DNS/mail choices are provisioned on the host (packages
+		// installed, services enabled) via the broker's system.provision
+		// capability; without a broker it is record-only (choices persist and gate
+		// the panel, but nothing is applied to the host).
+		//
+		// applyStack points the live services at a selection: the web-server engine
+		// (which changes how vhosts render) and the default database engine. It runs
+		// at boot for an already-completed setup, and again from the completion hook
+		// so finishing the wizard takes effect without a restart.
+		applyStack := func(ctx context.Context, sel setup.Selection) {
+			webSvc.SetEngine(webserver.Engine(sel.Webserver))
+			dbSvc.SetDefaultEngine(string(sel.DBEngine))
+		}
+		var setupProv setup.Provisioner
+		if gw != nil {
+			setupProv = setup.NewBrokerProvisioner(gw)
+		}
+		setupSvc = setup.NewService(repository.NewSetupStore(db), setupProv, log).
+			WithOnComplete(func(ctx context.Context, sel setup.Selection) {
+				applyStack(ctx, sel)
+				// Re-render every vhost in the newly chosen engine's format.
+				if err := siteSvc.ReapplyWebserver(ctx); err != nil {
+					log.Warn("setup: could not re-apply web server after stack change", "err", err)
+				}
+				log.Info("setup completed; hosting stack switched",
+					"webserver", sel.Webserver, "db_engine", sel.DBEngine)
+			})
+		// Adopt an already-completed setup at boot so the engine survives a restart.
+		if st, serr := setupSvc.Status(ctx); serr == nil && st.Completed {
+			applyStack(ctx, st.Selection)
+			log.Info("setup adopted", "webserver", st.Webserver, "db_engine", st.DBEngine)
 		}
 		dnsSvc = dns.NewService(repository.NewDNSStore(db), gw)
 		// Scheduled jobs: site-scoped systemd timers. The service resolves a site
@@ -739,6 +778,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Tenancy:     tenancyResolver,
 		Webhooks:    webhookSvc,
 		Marketplace: marketplaceSvc,
+		Setup:       setupSvc,
 		Keyring:     keyringSvc,
 		Sites:       siteSvc,
 		PHP:         phpSvc,

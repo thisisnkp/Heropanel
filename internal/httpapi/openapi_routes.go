@@ -167,6 +167,16 @@ var apiDocs = map[string]opMeta{
 		RespDesc: "Removes the installed-module record.",
 	},
 
+	// ── first-run setup ─────────────────────────────────────────────────────────
+	"GET /api/v1/setup": {
+		Summary: "Get setup state", Tags: []string{"Setup"}, Permission: "setup.manage",
+		RespDesc: "The persisted first-run selection (webserver, database engine, DNS/mail toggles) and whether the wizard is complete, plus the selectable option catalogs. Unsupported backends are marked (not hidden) so the wizard reflects the roadmap.",
+	},
+	"POST /api/v1/setup": {
+		Summary: "Complete setup", Tags: []string{"Setup"}, Permission: "setup.manage",
+		RespDesc: "Validates the selection, provisions the host to match (install + enable the chosen webserver and database engine, and BIND/Postfix when DNS/mail are on), and records the wizard as finished. Rejected (400) for a webserver or database engine that is not in the catalog.",
+	},
+
 	// ── users ─────────────────────────────────────────────────────────────────
 	"GET /api/v1/users": {
 		Summary: "List users", Tags: []string{"Users"}, Permission: "user.read",

@@ -8,6 +8,7 @@ func All() []capability.Capability {
 	return []capability.Capability{
 		ServiceRestart{},
 		ServiceStatus{},
+		SystemProvision{},
 		SystemUserCreate{},
 		SystemUserDelete{},
 		SiteCreateDirs{},

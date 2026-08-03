@@ -237,6 +237,10 @@ export interface AuthStatus {
   /** False when hpd has no datastore configured, so no one can sign in. Older
    *  servers omit it; treat undefined as "configured". */
   configured?: boolean;
+  /** False on a fresh install until the first-run setup wizard is completed.
+   *  Older servers omit it; treat undefined as "complete" so the wizard never
+   *  blocks a panel that does not know about it. */
+  setup_complete?: boolean;
 }
 
 export interface SystemInfo {

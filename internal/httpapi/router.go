@@ -33,6 +33,7 @@ import (
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/runtime"
 	"github.com/thisisnkp/heropanel/internal/security"
+	"github.com/thisisnkp/heropanel/internal/setup"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
 	"github.com/thisisnkp/heropanel/internal/tenancy"
@@ -126,6 +127,9 @@ type Deps struct {
 	// Marketplace is the module catalog + trust layer. Present but inert (Enabled
 	// false) without a datastore; browsing and install gate on it.
 	Marketplace *marketplace.Service
+	// Setup is the first-run infrastructure wizard. Present but unavailable
+	// without a datastore; the wizard gates the panel until it is completed.
+	Setup *setup.Service
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -241,6 +245,14 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/enable", enableModuleHandler(d))
 					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/disable", disableModuleHandler(d))
 					r.With(requirePermission("module.manage")).Delete("/marketplace/modules/{slug}", uninstallModuleHandler(d))
+				}
+
+				// First-run setup wizard. Both routes are administrator-only: the
+				// selection provisions the whole host. Completion is also mirrored in
+				// /auth/status so any client can gate the UI without this detail.
+				if d.Setup != nil {
+					r.With(requirePermission("setup.manage")).Get("/setup", getSetupHandler(d))
+					r.With(requirePermission("setup.manage")).Post("/setup", completeSetupHandler(d))
 				}
 
 				if d.UserMgmt != nil {

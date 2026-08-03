@@ -56,6 +56,11 @@ var capabilityTimeouts = map[string]time.Duration{
 	// AIDE hashes the watched tree; init/check are minutes on a real host.
 	"fim.init":  10 * time.Minute,
 	"fim.check": 10 * time.Minute,
+	// First-run setup provisioning: apt/dnf update + install of a webserver, a
+	// database engine, and optionally BIND/Postfix/Dovecot. On a fresh box that
+	// is many minutes of downloads, so the client backstop must sit above the
+	// broker's own per-install budget (5m update + 10m per component install).
+	"system.provision": 30 * time.Minute,
 }
 
 // TimeoutFor returns how long the client will wait for a capability.

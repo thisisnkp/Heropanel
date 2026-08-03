@@ -1,8 +1,17 @@
-// Package webserver renders OpenLiteSpeed configuration for hosted sites and
-// applies it through the privileged broker. hpd owns rendering (from DB state);
-// the broker writes the validated config, tests it, and reloads (ADR-0007,
-// docs/05 §2). The full desired state is rendered into a single included config
-// file, so there is no per-site config drift.
+// Package webserver renders web-server configuration for hosted sites and applies
+// it through the privileged broker. hpd owns rendering (from DB state); the broker
+// writes the validated config, tests it, and reloads (ADR-0007, docs/05 §2). The
+// full desired state is rendered into a single included config file per engine, so
+// there is no per-site config drift.
+//
+// Four engines are supported, chosen by the first-run setup wizard:
+//   - OpenLiteSpeed — its own config format (a single listener config with inline
+//     virtual hosts and server-level FastCGI/proxy extProcessors).
+//   - Nginx — one server block per site.
+//   - Apache — one <VirtualHost> per site.
+//   - LiteSpeed Enterprise — a drop-in Apache replacement that reads Apache
+//     config, so it shares the Apache renderer; only the broker's write/reload
+//     path differs.
 //
 // OLS specifics learned against real OpenLiteSpeed:
 //   - The PHP handler must be declared as a server-level (top-level)
@@ -21,6 +30,28 @@ import (
 	"github.com/thisisnkp/heropanel/internal/broker"
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
+
+// Engine identifies the web server the panel renders for. The values match the
+// setup wizard's webserver ids (internal/setup), so no mapping is needed.
+type Engine string
+
+const (
+	EngineOpenLiteSpeed Engine = "openlitespeed"
+	EngineNginx         Engine = "nginx"
+	EngineApache        Engine = "apache"
+	EngineLiteSpeed     Engine = "litespeed_enterprise"
+)
+
+// normalizeEngine defaults an empty/unknown engine to OpenLiteSpeed — the safe
+// baseline the panel has always shipped.
+func normalizeEngine(e Engine) Engine {
+	switch e {
+	case EngineNginx, EngineApache, EngineLiteSpeed, EngineOpenLiteSpeed:
+		return e
+	default:
+		return EngineOpenLiteSpeed
+	}
+}
 
 // Site is the per-site information needed to render a vhost.
 type Site struct {
@@ -52,6 +83,18 @@ type Site struct {
 	// firewall. The module and rules must be present on the host; the render
 	// references a pinned rules file the panel writes.
 	WAFEnabled bool
+}
+
+// AliasDomains returns the site's domains other than the primary — the
+// ServerAlias set for Apache, where the primary is the ServerName.
+func (s Site) AliasDomains() []string {
+	out := make([]string, 0, len(s.Domains))
+	for _, d := range s.Domains {
+		if d != s.PrimaryDomain {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // WAFRulesFile is the pinned path the WAF-enabled vhost references. The panel
@@ -98,29 +141,48 @@ type Applier interface {
 	Apply(ctx context.Context, sites []Site) error
 }
 
-// Service renders and applies OpenLiteSpeed configuration via the broker.
+// Service renders and applies web-server configuration via the broker.
 type Service struct {
 	broker broker.Gateway
+	engine Engine
 }
 
-// NewService constructs the webserver Service.
-func NewService(gw broker.Gateway) *Service { return &Service{broker: gw} }
+// NewService constructs the webserver Service, defaulting to OpenLiteSpeed.
+func NewService(gw broker.Gateway) *Service {
+	return &Service{broker: gw, engine: EngineOpenLiteSpeed}
+}
+
+// WithEngine returns the service configured for engine e (chainable).
+func (s *Service) WithEngine(e Engine) *Service {
+	s.engine = normalizeEngine(e)
+	return s
+}
+
+// SetEngine switches the active engine in place (used when the setup wizard
+// changes the stack at runtime).
+func (s *Service) SetEngine(e Engine) { s.engine = normalizeEngine(e) }
+
+// Engine returns the active engine.
+func (s *Service) Engine() Engine { return normalizeEngine(s.engine) }
 
 var _ Applier = (*Service)(nil)
 
-// Apply renders the entire OLS config for all sites and asks the broker to
-// apply, test, and reload. The config is a single included file, so vhosts is
-// empty and the whole document is passed as the listener config.
+// Apply renders the entire config for all sites in the active engine's format and
+// asks the broker to apply, test, and reload. The config is a single included
+// file, so vhosts is empty and the whole document is passed as the listener
+// config; the engine tells the broker where to write it and how to reload.
 func (s *Service) Apply(ctx context.Context, sites []Site) error {
 	if s.broker == nil {
 		return errx.New(errx.KindUnavailable, "broker_unavailable",
 			"The broker is not available; the web server cannot be configured.")
 	}
-	cfg, err := RenderConfig(sites)
+	engine := normalizeEngine(s.engine)
+	cfg, err := RenderFor(engine, sites)
 	if err != nil {
 		return err
 	}
 	_, err = s.broker.Invoke(ctx, "webserver.apply", map[string]any{
+		"engine":   string(engine),
 		"vhosts":   []any{},
 		"listener": cfg,
 	})
@@ -128,15 +190,46 @@ func (s *Service) Apply(ctx context.Context, sites []Site) error {
 }
 
 var tmplFuncs = template.FuncMap{
-	"join": func(domains []string) string { return strings.Join(domains, ", ") },
+	"join": func(domains []string) string { return strings.Join(domains, " ") },
 	// rxescape escapes a hostname for use inside a RewriteCond regex.
+	"rxescape": func(host string) string { return strings.ReplaceAll(host, ".", `\.`) },
+}
+
+// RenderFor renders the full config for the given engine.
+func RenderFor(engine Engine, sites []Site) (string, error) {
+	switch normalizeEngine(engine) {
+	case EngineNginx:
+		return renderTemplate(nginxTmpl, sites)
+	case EngineApache, EngineLiteSpeed:
+		// LiteSpeed Enterprise is a drop-in Apache replacement and reads Apache
+		// config, so it shares the Apache renderer.
+		return renderTemplate(apacheTmpl, sites)
+	default:
+		return RenderConfig(sites)
+	}
+}
+
+func renderTemplate(t *template.Template, sites []Site) (string, error) {
+	var b bytes.Buffer
+	if err := t.Execute(&b, sites); err != nil {
+		return "", errx.Wrap(err, errx.KindInternal, "config_render_failed", "Could not render the web server config.")
+	}
+	return b.String(), nil
+}
+
+// ── OpenLiteSpeed ────────────────────────────────────────────────────────────
+
+// olsJoin keeps the OLS listener's comma-separated domain map (OLS wants commas;
+// nginx/apache want spaces).
+var olsFuncs = template.FuncMap{
+	"join":     func(domains []string) string { return strings.Join(domains, ", ") },
 	"rxescape": func(host string) string { return strings.ReplaceAll(host, ".", `\.`) },
 }
 
 // configTmpl renders the complete OpenLiteSpeed config: per-site FastCGI
 // handlers (server-level), inline virtual hosts, and the listener with its
 // domain map.
-var configTmpl = template.Must(template.New("olsconfig").Funcs(tmplFuncs).Parse(
+var configTmpl = template.Must(template.New("olsconfig").Funcs(olsFuncs).Parse(
 	`{{range .}}{{if and .IsPHP (not .Suspended)}}extProcessor hps_{{.VhostName}} {
   type                    fcgi
   address                 uds://{{.FpmSocket}}
@@ -231,3 +324,80 @@ func anyWAF(sites []Site) bool {
 	}
 	return false
 }
+
+// ── Nginx ────────────────────────────────────────────────────────────────────
+
+// nginxTmpl renders one server block per site. PHP is served by fastcgi_pass to
+// the site's php-fpm socket; an app site reverse-proxies "/" to its upstream; a
+// suspended site returns 503 for everything. Redirects and force-HTTPS are
+// evaluated first, as guard `if`s that short-circuit with a redirect.
+var nginxTmpl = template.Must(template.New("nginx").Funcs(tmplFuncs).Parse(
+	`# HeroPanel nginx configuration (rendered, do not edit).
+{{range .}}server {
+    listen 80;
+    server_name {{join .Domains}};
+    access_log {{.LogDir}}/access.log;
+    error_log {{.LogDir}}/error.log warn;
+{{if .Suspended}}    location / { return 503; }
+{{else}}    root {{.DocumentRoot}};
+    index {{if .IsPHP}}index.php {{end}}index.html index.htm;
+{{range .Redirects}}    if ($host = "{{.From}}") { return {{.Code}} {{.To}}$request_uri; }
+{{end}}{{if .ForceHTTPS}}    if ($scheme != "https") { return 301 https://$host$request_uri; }
+{{end}}{{if .WAFEnabled}}    modsecurity on;
+    modsecurity_rules_file /etc/heropanel/waf/main.conf;
+{{end}}{{if .ProxyTarget}}    location / {
+        proxy_pass http://{{.ProxyTarget}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+{{else}}    location / {
+        try_files $uri $uri/ {{if .IsPHP}}/index.php?$query_string{{else}}=404{{end}};
+    }
+{{if .IsPHP}}    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:{{.FpmSocket}};
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+{{end}}{{end}}{{end}}}
+{{end}}`))
+
+// ── Apache (also used by LiteSpeed Enterprise) ───────────────────────────────
+
+// apacheTmpl renders one <VirtualHost *:80> per site. The primary domain is the
+// ServerName and the rest are ServerAlias. PHP is handed to php-fpm via
+// mod_proxy_fcgi; an app site reverse-proxies to its upstream; a suspended site
+// answers 503. AllowOverride All keeps .htaccess working as operators expect.
+var apacheTmpl = template.Must(template.New("apache").Funcs(tmplFuncs).Parse(
+	`# HeroPanel Apache configuration (rendered, do not edit).
+{{range .}}<VirtualHost *:80>
+    ServerName {{.PrimaryDomain}}
+{{range .AliasDomains}}    ServerAlias {{.}}
+{{end}}    ErrorLog {{.LogDir}}/error.log
+    CustomLog {{.LogDir}}/access.log combined
+{{if .Suspended}}    RedirectMatch 503 ^/.*$
+{{else}}    DocumentRoot {{.DocumentRoot}}
+    <Directory {{.DocumentRoot}}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+        DirectoryIndex {{if .IsPHP}}index.php {{end}}index.html index.htm
+    </Directory>
+{{if or .Redirects .ForceHTTPS}}    RewriteEngine On
+{{range .Redirects}}    RewriteCond %{HTTP_HOST} ^{{rxescape .From}}$ [NC]
+    RewriteRule ^(.*)$ {{.To}}$1 [R={{.Code}},L]
+{{end}}{{if .ForceHTTPS}}    RewriteCond %{HTTPS} !=on
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+{{end}}{{end}}{{if .WAFEnabled}}    <IfModule security2_module>
+        SecRuleEngine On
+        Include /etc/heropanel/waf/main.conf
+    </IfModule>
+{{end}}{{if .ProxyTarget}}    ProxyPreserveHost On
+    ProxyPass / http://{{.ProxyTarget}}/
+    ProxyPassReverse / http://{{.ProxyTarget}}/
+{{else}}{{if .IsPHP}}    <FilesMatch \.php$>
+        SetHandler "proxy:unix:{{.FpmSocket}}|fcgi://localhost"
+    </FilesMatch>
+{{end}}{{end}}{{end}}</VirtualHost>
+{{end}}`))

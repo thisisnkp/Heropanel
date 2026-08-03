@@ -77,6 +77,11 @@ var basePermissions = []seedPermission{
 	// managing carries its own grant apart from any single resource's write.
 	{"module.read", "module", "read", "Browse the module marketplace and installed modules"},
 	{"module.manage", "module", "manage", "Install, enable, disable and remove marketplace modules"},
+	// First-run setup: choosing the webserver, database engine, and whether DNS
+	// and mail are managed here, then provisioning the host to match. It shapes
+	// the whole box and runs once at install time, so it is reserved to
+	// administrators rather than implied by any single resource's write.
+	{"setup.manage", "setup", "manage", "Complete the first-run setup wizard and provision the hosting stack"},
 }
 
 // seedRole is a role to ensure exists.

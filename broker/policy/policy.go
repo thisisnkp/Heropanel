@@ -43,6 +43,7 @@ func Default() Policy {
 		Enabled: map[string]bool{
 			"service.restart":        true,
 			"service.status":         true,
+			"system.provision":       true,
 			"system_user.create":     true,
 			"system_user.delete":     true,
 			"site.create_dirs":       true,
@@ -175,8 +176,11 @@ func Default() Policy {
 			"docker.compose.logs":          true,
 		},
 		Services: []string{
-			"lshttpd", "openlitespeed", "mariadb", "redis",
+			"lshttpd", "openlitespeed", "lsws", "mariadb", "redis",
 			"postfix", "dovecot", "nftables",
+			// Webservers/engines/DNS the first-run setup wizard can provision and
+			// enable (system.provision). Names span the Debian/RHEL split.
+			"nginx", "apache2", "httpd", "mysql", "mysqld", "postgresql", "named",
 		},
 		PathRoots: []string{"/srv/heropanel/sites"},
 		UIDMin:    20000,

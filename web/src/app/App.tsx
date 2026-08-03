@@ -43,6 +43,7 @@ const ModulesPage = page(() => import("@/features/modules/ModulesPage"), "Module
 const MarketplacePage = page(() => import("@/features/marketplace/MarketplacePage"), "MarketplacePage");
 const HelpPage = page(() => import("@/features/help/HelpPage"), "HelpPage");
 const AccountPage = page(() => import("@/features/account/AccountPage"), "AccountPage");
+const SetupWizard = page(() => import("@/features/setup/SetupWizard"), "SetupWizard");
 
 function FullscreenSpinner() {
   return (
@@ -93,11 +94,20 @@ export function App() {
   }
 
   // Authenticated app. The shell — command palette, job drawer, toaster — is
-  // mounted once, above the routes, so every page shares it.
+  // mounted once, above the routes, so every page shares it. On a fresh install
+  // the first-run setup wizard opens as a popup *over* the dashboard (not a
+  // blocking page); only an explicit setup_complete=false shows it, so a server
+  // that does not know about setup is never trapped behind it.
+  const needsSetup = status.data?.setup_complete === false;
   return (
     <BrowserRouter>
       <ImpersonationBanner />
       <CommandPalette />
+      {needsSetup && (
+        <Suspense fallback={null}>
+          <SetupWizard />
+        </Suspense>
+      )}
       <Suspense fallback={<FullscreenSpinner />}>
         <Routes>
           <Route element={<AppLayout />}>

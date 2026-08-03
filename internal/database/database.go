@@ -124,14 +124,37 @@ type Repo interface {
 
 // Service orchestrates database operations.
 type Service struct {
-	repo       Repo
-	broker     broker.Gateway
-	adminerURL string
-	ssoRepo    SSORepo
+	repo          Repo
+	broker        broker.Gateway
+	adminerURL    string
+	ssoRepo       SSORepo
+	defaultEngine string // "" means MariaDB; set from the setup wizard's choice
 }
 
 // NewService constructs the database Service.
 func NewService(repo Repo, gw broker.Gateway) *Service { return &Service{repo: repo, broker: gw} }
+
+// SetDefaultEngine sets the engine used when a create call does not specify one.
+// It follows the first-run setup wizard's database choice: "mysql" and "mariadb"
+// both map to MariaDB (wire-compatible, same db.* capabilities); "postgresql"
+// maps to PostgreSQL. An unknown value leaves the default at MariaDB.
+func (s *Service) SetDefaultEngine(setupEngine string) {
+	switch setupEngine {
+	case "postgresql", EnginePostgres:
+		s.defaultEngine = EnginePostgres
+	case "mysql", "mariadb":
+		s.defaultEngine = EngineMariaDB
+	}
+}
+
+// resolveEngine applies the configured default when the caller left engine empty,
+// then validates it.
+func (s *Service) resolveEngine(engine string) (string, error) {
+	if engine == "" && s.defaultEngine != "" {
+		engine = s.defaultEngine
+	}
+	return normalizeEngine(engine)
+}
 
 func (s *Service) requireBroker() error {
 	if s.broker == nil {
@@ -148,7 +171,7 @@ func (s *Service) CreateDatabase(ctx context.Context, ownerID int64, name, engin
 		return nil, errx.Validation("invalid_name",
 			"Database name must start with a letter and use only lowercase letters, digits, and underscore.")
 	}
-	engine, err := normalizeEngine(engine)
+	engine, err := s.resolveEngine(engine)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +228,7 @@ func (s *Service) CreateUser(ctx context.Context, ownerID int64, username, host,
 		return nil, errx.Validation("invalid_username",
 			"Username must start with a letter and use only lowercase letters, digits, and underscore.")
 	}
-	engine, err := normalizeEngine(engine)
+	engine, err := s.resolveEngine(engine)
 	if err != nil {
 		return nil, err
 	}

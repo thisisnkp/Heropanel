@@ -12492,6 +12492,116 @@
         "x-required-permission": "security.write"
       }
     },
+    "/api/v1/setup": {
+      "get": {
+        "description": "Requires the `setup.manage` permission.",
+        "operationId": "api_v1_setup_get_setup_state",
+        "responses": {
+          "200": {
+            "description": "The persisted first-run selection (webserver, database engine, DNS/mail toggles) and whether the wizard is complete, plus the selectable option catalogs. Unsupported backends are marked (not hidden) so the wizard reflects the roadmap."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get setup state",
+        "tags": [
+          "Setup"
+        ],
+        "x-required-permission": "setup.manage"
+      },
+      "post": {
+        "description": "Requires the `setup.manage` permission.",
+        "operationId": "api_v1_setup_complete_setup",
+        "responses": {
+          "200": {
+            "description": "Validates the selection, provisions the host to match (install + enable the chosen webserver and database engine, and BIND/Postfix when DNS/mail are on), and records the wizard as finished. Rejected (400) for a webserver or database engine that is not in the catalog."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Complete setup",
+        "tags": [
+          "Setup"
+        ],
+        "x-required-permission": "setup.manage"
+      }
+    },
     "/api/v1/sites": {
       "get": {
         "description": "Requires the `site.read` permission.",
