@@ -9,6 +9,13 @@ import { usePHP, useSetPHP } from "../site-detail";
 const VERSIONS = ["8.1", "8.2", "8.3"];
 const JIT = ["off", "tracing", "function"];
 
+// Human labels for the disable_functions policy tiers the server offers.
+const FUNC_POLICY_LABEL: Record<string, string> = {
+  strict: "Strict — disable exec / system / proc_* / dl (shared-hosting baseline)",
+  basic: "Basic — disable only the process-execution family (exec, system, shell_exec, proc_open, popen)",
+  off: "Off — disable nothing (trusted, single-tenant sites only)",
+};
+
 // PHPTab is the per-site pool editor: version, memory, FPM sizing, an
 // allowlisted php.ini editor, and OPcache. It is a full replace (matching the
 // backend), so it edits a local copy of the whole envelope and PUTs it.
@@ -121,6 +128,27 @@ export function PHPTab({ uid }: { uid: string }) {
             </Select>
           </Field>
         )}
+      </Card>
+
+      <Card className="space-y-3 p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-fg">Function policy</h3>
+          <p className="text-xs text-muted">
+            <code className="text-fg">disable_functions</code> baseline — stops PHP shelling out of the site
+            (exec/system/proc_open…), the path a web vulnerability takes to code execution on the box. It is a
+            plan-gated security control rendered by the panel, so the php.ini editor above can never restore a banned
+            function. Strict is the shared-hosting default.
+          </p>
+        </div>
+        <Field label="disable_functions policy">
+          <Select value={form.func_policy} onChange={(e) => setForm({ ...form, func_policy: e.target.value })}>
+            {(form.allowed_func_policies ?? []).map((p) => (
+              <option key={p} value={p}>
+                {FUNC_POLICY_LABEL[p] ?? p}
+              </option>
+            ))}
+          </Select>
+        </Field>
       </Card>
 
       <Card className="space-y-3 p-5">

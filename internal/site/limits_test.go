@@ -21,18 +21,25 @@ func seedSite(t *testing.T, svc *site.Service) string {
 	return out.UID
 }
 
-func TestNewSiteHasUnlimitedLimits(t *testing.T) {
+func TestNewSiteHasDefaultLimits(t *testing.T) {
 	store, _ := newStore(t)
 	svc := site.NewService(site.Deps{Repo: store, Broker: &mockGateway{}, Web: &fakeApplier{}})
 	uid := seedSite(t, svc)
 
-	// A site nobody has limited must read as unlimited, not as a not-found error.
+	// A fresh site reads as its default envelope, not a not-found error: CPU and
+	// memory unlimited (operator-tuned), with the fork-bomb task guard already on.
 	l, err := svc.GetLimits(context.Background(), uid)
 	if err != nil {
 		t.Fatalf("get limits: %v", err)
 	}
-	if l.CPUQuotaPct != 0 || l.MemLimitBytes != 0 || l.PidsMax != 0 {
-		t.Fatalf("a fresh site should be unlimited, got %+v", l)
+	if want := site.DefaultLimits(); *l != want {
+		t.Fatalf("a fresh site should have default limits %+v, got %+v", want, *l)
+	}
+	if l.CPUQuotaPct != 0 || l.MemLimitBytes != 0 {
+		t.Fatalf("CPU/memory should be unlimited by default, got %+v", *l)
+	}
+	if l.PidsMax == 0 {
+		t.Fatal("a fresh site should have the default fork-bomb task guard, got PidsMax=0")
 	}
 }
 

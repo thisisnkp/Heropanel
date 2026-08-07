@@ -205,9 +205,10 @@ func TestCreateProvisionsAndActivates(t *testing.T) {
 	if gw.calls[0].input["username"] != "hps1" || gw.calls[0].input["home"] != "/srv/heropanel/sites/1" {
 		t.Fatalf("system_user.create input = %+v", gw.calls[0].input)
 	}
-	// A new site's slice has accounting but no caps: 0 means unlimited.
+	// A new site's slice has accounting, CPU/memory unlimited (0), and the default
+	// fork-bomb guard on tasks so one site cannot exhaust the node's PIDs.
 	sl := gw.calls[2].input
-	if sl["vhost"] != "hps1" || sl["cpu_quota_pct"] != 0 || sl["pids_max"] != 0 {
+	if sl["vhost"] != "hps1" || sl["cpu_quota_pct"] != 0 || sl["pids_max"] != 512 {
 		t.Fatalf("site.apply_slice input = %+v", sl)
 	}
 }

@@ -9,6 +9,59 @@ import (
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
+// ── disable_functions policy ────────────────────────────────────────────────
+
+// The default is the secure one: a brand-new site has the strict baseline, and
+// an empty policy normalizes to strict rather than "nothing disabled".
+func TestFuncPolicyDefaultsToStrict(t *testing.T) {
+	if got := php.DefaultSettings().FuncPolicy; got != php.FuncPolicyStrict {
+		t.Fatalf("default func policy = %q, want strict", got)
+	}
+	s := php.DefaultSettings()
+	s.FuncPolicy = "" // caller sent nothing
+	if err := s.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if s.FuncPolicy != php.FuncPolicyStrict {
+		t.Fatalf("empty policy normalized to %q, want strict", s.FuncPolicy)
+	}
+}
+
+func TestFuncPolicyRejectsUnknown(t *testing.T) {
+	s := php.DefaultSettings()
+	s.FuncPolicy = "yolo"
+	if err := s.Validate(); !errx.IsKind(err, errx.KindValidation) {
+		t.Fatalf("unknown policy: want validation, got %v", err)
+	}
+}
+
+// Each tier maps to the right function set: strict disables the exec family plus
+// the extras, basic disables only the exec family, off disables nothing.
+func TestDisableFunctionsForTiers(t *testing.T) {
+	strict := php.DisableFunctionsFor(php.FuncPolicyStrict)
+	basic := php.DisableFunctionsFor(php.FuncPolicyBasic)
+	off := php.DisableFunctionsFor(php.FuncPolicyOff)
+
+	for _, fn := range []string{"exec", "shell_exec", "system", "passthru", "proc_open", "popen"} {
+		if !strings.Contains(strict, fn) {
+			t.Errorf("strict is missing exec-family function %q", fn)
+		}
+		if !strings.Contains(basic, fn) {
+			t.Errorf("basic is missing exec-family function %q", fn)
+		}
+	}
+	// dl is a strict-only extra.
+	if !strings.Contains(strict, "dl") {
+		t.Error("strict should disable dl")
+	}
+	if strings.Contains(basic, "dl") {
+		t.Error("basic should not disable dl")
+	}
+	if off != "" {
+		t.Errorf("off should disable nothing, got %q", off)
+	}
+}
+
 // ── the injection guard ────────────────────────────────────────────────────
 
 // The single most important test in this package.

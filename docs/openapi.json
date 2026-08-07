@@ -840,6 +840,43 @@
         },
         "type": "object"
       },
+      "ParkedDomain": {
+        "properties": {
+          "attached": {
+            "description": "Whether a site currently uses this domain.",
+            "type": "boolean"
+          },
+          "challenge_name": {
+            "description": "DNS TXT record name to publish at your DNS host.",
+            "type": "string"
+          },
+          "challenge_value": {
+            "description": "DNS TXT record value to publish at your DNS host.",
+            "type": "string"
+          },
+          "fqdn": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "unverified",
+              "verified"
+            ],
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          },
+          "verified_at": {
+            "type": "string"
+          },
+          "wildcard_hint": {
+            "description": "Recommended (not verified) wildcard A/CNAME to add so subdomains resolve.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Principal": {
         "properties": {
           "email": {
@@ -7083,6 +7120,411 @@
           "Docker"
         ],
         "x-required-permission": "docker.read"
+      }
+    },
+    "/api/v1/domains/free": {
+      "get": {
+        "description": "Requires the `domain.read` permission.",
+        "operationId": "api_v1_domains_free_list_free_domains",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "fqdns": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Verified parked domains and panel-hosted DNS zones not yet attached to a site — the create-site picker's source."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List free domains",
+        "tags": [
+          "Domains"
+        ],
+        "x-required-permission": "domain.read"
+      }
+    },
+    "/api/v1/domains/parked": {
+      "get": {
+        "description": "Requires the `domain.read` permission.",
+        "operationId": "api_v1_domains_parked_list_parked_domains",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/ParkedDomain"
+                      },
+                      "type": "array"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List parked domains",
+        "tags": [
+          "Domains"
+        ],
+        "x-required-permission": "domain.read"
+      },
+      "post": {
+        "description": "Requires the `domain.write` permission.",
+        "operationId": "api_v1_domains_parked_park_a_domain",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "fqdn": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "fqdn"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParkedDomain"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Registers ownership of a domain with no site attached and returns the DNS TXT challenge to publish at your DNS host before Verify will succeed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Park a domain",
+        "tags": [
+          "Domains"
+        ],
+        "x-required-permission": "domain.write"
+      }
+    },
+    "/api/v1/domains/parked/{uid}": {
+      "delete": {
+        "description": "Requires the `domain.write` permission.",
+        "operationId": "api_v1_domains_parked_uid_unpark_a_domain",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed. 409 if the domain is still attached to a site — remove it there first."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Unpark a domain",
+        "tags": [
+          "Domains"
+        ],
+        "x-required-permission": "domain.write"
+      }
+    },
+    "/api/v1/domains/parked/{uid}/verify": {
+      "post": {
+        "description": "Requires the `domain.write` permission.",
+        "operationId": "api_v1_domains_parked_uid_verify_verify_a_parked_domain",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParkedDomain"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Re-checks the live DNS TXT challenge; 409 if it is not found yet."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Verify a parked domain",
+        "tags": [
+          "Domains"
+        ],
+        "x-required-permission": "domain.write"
       }
     },
     "/api/v1/firewall": {

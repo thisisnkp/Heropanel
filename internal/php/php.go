@@ -57,6 +57,7 @@ type PoolRecord struct {
 	INIOverrides    string `db:"ini_overrides"` // JSON object
 	OPcacheEnabled  bool   `db:"opcache_enabled"`
 	OPcacheJIT      string `db:"opcache_jit"`
+	FuncPolicy      string `db:"func_policy"`
 	SocketPath      string `db:"socket_path"`
 }
 
@@ -76,8 +77,9 @@ func SettingsOf(r *PoolRecord) Settings {
 			MinSpareServers: r.MinSpareServers, MaxSpareServers: r.MaxSpareServers,
 			MaxRequests: r.MaxRequests, IdleTimeoutSec: r.IdleTimeoutSec,
 		},
-		INI:     map[string]string{},
-		OPcache: OPcache{Enabled: r.OPcacheEnabled, JIT: r.OPcacheJIT},
+		INI:        map[string]string{},
+		OPcache:    OPcache{Enabled: r.OPcacheEnabled, JIT: r.OPcacheJIT},
+		FuncPolicy: r.FuncPolicy,
 	}
 	if r.INIOverrides != "" {
 		_ = json.Unmarshal([]byte(r.INIOverrides), &s.INI)
@@ -87,6 +89,10 @@ func SettingsOf(r *PoolRecord) Settings {
 	}
 	if s.OPcache.JIT == "" {
 		s.OPcache.JIT = JITOff
+	}
+	if s.FuncPolicy == "" {
+		// A row written before this column existed reads as the secure default.
+		s.FuncPolicy = FuncPolicyStrict
 	}
 	return s
 }
@@ -126,40 +132,42 @@ var _ Manager = (*Service)(nil)
 
 // pool render inputs.
 type poolTmplData struct {
-	PoolName        string
-	User            string
-	Socket          string
-	PM              string
-	MaxChildren     int
-	StartServers    int
-	MinSpareServers int
-	MaxSpareServers int
-	MaxRequests     int
-	IdleTimeoutSec  int
-	MemoryLimitMB   int
-	INI             []iniPair
-	OPcacheEnabled  bool
-	OPcacheJIT      string
-	Home            string
-	DocumentRoot    string
+	PoolName         string
+	User             string
+	Socket           string
+	PM               string
+	MaxChildren      int
+	StartServers     int
+	MinSpareServers  int
+	MaxSpareServers  int
+	MaxRequests      int
+	IdleTimeoutSec   int
+	MemoryLimitMB    int
+	INI              []iniPair
+	OPcacheEnabled   bool
+	OPcacheJIT       string
+	DisableFunctions string
+	Home             string
+	DocumentRoot     string
 }
 
 // poolData turns validated settings into template input.
 func poolData(req PoolRequest, s Settings) poolTmplData {
 	return poolTmplData{
 		PoolName: req.User, User: req.User, Socket: SocketPath(req.User),
-		PM:              s.FPM.PM,
-		MaxChildren:     s.FPM.MaxChildren,
-		StartServers:    s.FPM.StartServers,
-		MinSpareServers: s.FPM.MinSpareServers,
-		MaxSpareServers: s.FPM.MaxSpareServers,
-		MaxRequests:     s.FPM.MaxRequests,
-		IdleTimeoutSec:  s.FPM.IdleTimeoutSec,
-		MemoryLimitMB:   s.MemoryLimitMB,
-		INI:             sortedINI(s.INI),
-		OPcacheEnabled:  s.OPcache.Enabled,
-		OPcacheJIT:      jitDirective(s.OPcache.JIT),
-		Home:            req.Home, DocumentRoot: req.DocumentRoot,
+		PM:               s.FPM.PM,
+		MaxChildren:      s.FPM.MaxChildren,
+		StartServers:     s.FPM.StartServers,
+		MinSpareServers:  s.FPM.MinSpareServers,
+		MaxSpareServers:  s.FPM.MaxSpareServers,
+		MaxRequests:      s.FPM.MaxRequests,
+		IdleTimeoutSec:   s.FPM.IdleTimeoutSec,
+		MemoryLimitMB:    s.MemoryLimitMB,
+		INI:              sortedINI(s.INI),
+		OPcacheEnabled:   s.OPcache.Enabled,
+		OPcacheJIT:       jitDirective(s.OPcache.JIT),
+		DisableFunctions: DisableFunctionsFor(s.FuncPolicy),
+		Home:             req.Home, DocumentRoot: req.DocumentRoot,
 	}
 }
 
@@ -227,6 +235,7 @@ func (s *Service) ApplySettings(ctx context.Context, req PoolRequest, settings S
 		INIOverrides:    string(iniJSON),
 		OPcacheEnabled:  settings.OPcache.Enabled,
 		OPcacheJIT:      settings.OPcache.JIT,
+		FuncPolicy:      settings.FuncPolicy,
 		SocketPath:      SocketPath(req.User),
 	}
 	if err := s.repo.Upsert(ctx, rec); err != nil {
@@ -282,9 +291,30 @@ php_admin_value[opcache.jit] = {{.OPcacheJIT}}
 
 ; ── confinement: emitted last so it wins, whatever came before ─────────────
 php_admin_value[memory_limit] = {{.MemoryLimitMB}}M
-php_admin_value[open_basedir] = {{.Home}}/:/tmp/
+{{- if .DisableFunctions}}
+; disable_functions is the site's plan-gated function policy. It is a
+; php_admin_value emitted here (last) so the php.ini editor can never hand a
+; banned function back; the tier itself is chosen server-side.
+php_admin_value[disable_functions] = {{.DisableFunctions}}
+{{- end}}
+; open_basedir is the site's own tree ONLY. The shared /tmp is deliberately
+; absent: php-fpm pools do not get systemd PrivateTmp, so a shared /tmp would let
+; one site read another's temp files. Every temp path below is redirected into
+; the site's private (0700) tmp instead, so nothing this site writes is visible
+; to any other.
+php_admin_value[open_basedir] = {{.Home}}/
+php_admin_value[sys_temp_dir] = {{.Home}}/tmp
 php_admin_value[upload_tmp_dir] = {{.Home}}/tmp
 php_admin_value[session.save_path] = {{.Home}}/sessions
+; Only real PHP is ever executed: an uploaded evil.jpg cannot be run, and a
+; crafted /foo.jpg/bar.php path cannot smuggle a script past the extension check.
+php_admin_flag[cgi.fix_pathinfo] = 0
+security.limit_extensions = .php
+; clear_env (php-fpm default) wipes the worker environment; put the temp dir back
+; so anything the site exec()s (ImageMagick, composer, ...) also stays in-site.
+env[TMPDIR] = {{.Home}}/tmp
+env[TMP] = {{.Home}}/tmp
+env[TEMP] = {{.Home}}/tmp
 chdir = {{.DocumentRoot}}
 `))
 

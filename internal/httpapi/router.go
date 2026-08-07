@@ -489,6 +489,11 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/domains", addDomainHandler(d))
 					r.With(requirePermission("site.write")).Delete("/sites/{uid}/domains/{did}", deleteDomainHandler(d))
 					r.With(requirePermission("site.write")).Put("/sites/{uid}/force-https", setForceHTTPSHandler(d))
+					r.With(requirePermission("domain.read")).Get("/domains/parked", listParkedDomainsHandler(d))
+					r.With(requirePermission("domain.write")).Post("/domains/parked", parkDomainHandler(d))
+					r.With(requirePermission("domain.write")).Post("/domains/parked/{uid}/verify", verifyParkedDomainHandler(d))
+					r.With(requirePermission("domain.write")).Delete("/domains/parked/{uid}", deleteParkedDomainHandler(d))
+					r.With(requirePermission("domain.read")).Get("/domains/free", freeDomainsHandler(d))
 				}
 				if d.Runtime != nil {
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/runtime", getSiteRuntimeHandler(d))

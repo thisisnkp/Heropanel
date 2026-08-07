@@ -32,6 +32,20 @@ type Limits struct {
 	PidsMax int `json:"pids_max" db:"pids_max"`
 }
 
+// defaultPidsMax is the task ceiling every new site gets at creation. It is a
+// fork-bomb guard, not a tuning knob: one site must not be able to spawn
+// processes until the whole node runs out of PIDs and every other tenant is
+// starved. 512 is far above what any normal site (FPM workers, a cron job, a
+// deploy) needs, so it never bites legitimate use, yet it turns a fork bomb from
+// a node-wide outage into one site hitting its own wall. CPU and memory are left
+// unlimited by default because their safe value depends on the node's size and
+// the plan — the operator sets those; the fork-bomb guard needs no such context.
+const defaultPidsMax = 512
+
+// DefaultLimits is the resource envelope a site is created with: fork-bomb
+// protection on, CPU and memory unlimited (0) until an operator tunes them.
+func DefaultLimits() Limits { return Limits{PidsMax: defaultPidsMax} }
+
 // minMemLimitBytes mirrors the broker's floor. A ceiling below a few MiB cannot
 // start any real process, so it would present as a mysterious instant crash
 // rather than as a limit.

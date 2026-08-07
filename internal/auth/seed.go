@@ -29,6 +29,11 @@ var basePermissions = []seedPermission{
 	{"site.write", "site", "write", "Create and modify sites"},
 	{"dns.read", "dns", "read", "View DNS zones and records"},
 	{"dns.write", "dns", "write", "Modify DNS zones and records"},
+	// Parked domains are account-level, not site-scoped (a domain can be parked
+	// with no site at all), so they get their own resource rather than riding on
+	// site.read/site.write.
+	{"domain.read", "domain", "read", "View parked domains"},
+	{"domain.write", "domain", "write", "Park, verify, and remove domains"},
 	{"ssl.read", "ssl", "read", "View certificates"},
 	{"ssl.write", "ssl", "write", "Issue and manage certificates"},
 	{"database.read", "database", "read", "View databases"},

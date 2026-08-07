@@ -10,6 +10,7 @@ import { ImpersonationBanner } from "@/features/auth/ImpersonationBanner";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { BootstrapPage } from "@/features/auth/BootstrapPage";
 import { NotConfiguredPage } from "@/features/auth/NotConfiguredPage";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppLayout } from "./layout/AppLayout";
 
 // Authenticated pages are code-split: each becomes its own chunk fetched on
@@ -104,9 +105,11 @@ export function App() {
       <ImpersonationBanner />
       <CommandPalette />
       {needsSetup && (
-        <Suspense fallback={null}>
-          <SetupWizard />
-        </Suspense>
+        <ErrorBoundary title="Setup">
+          <Suspense fallback={null}>
+            <SetupWizard />
+          </Suspense>
+        </ErrorBoundary>
       )}
       <Suspense fallback={<FullscreenSpinner />}>
         <Routes>

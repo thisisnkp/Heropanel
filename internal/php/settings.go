@@ -125,6 +125,70 @@ func validateFPM(f *FPM) error {
 	return nil
 }
 
+// ── disable_functions policy ────────────────────────────────────────────────
+
+// Function-policy tiers. disable_functions is the panel's confinement, not an
+// operator preference, so it is chosen as a named tier rather than a free-text
+// list: the set is defined once here and cannot be typo'd into silently allowing
+// exec() back. A future hosting-plan system sets a site's default/ceiling tier;
+// until then an operator sets it per site.
+const (
+	// FuncPolicyStrict is the shared-hosting baseline and the default: every
+	// dangerous function is disabled. A web vulnerability in a hosted site cannot
+	// become code execution on the node.
+	FuncPolicyStrict = "strict"
+	// FuncPolicyBasic disables only the process-execution family — the sharpest
+	// edge — while leaving the rest available for apps that legitimately need them.
+	FuncPolicyBasic = "basic"
+	// FuncPolicyOff disables nothing. For a trusted, single-tenant site where the
+	// operator owns the code (VPS-like), not for shared hosting.
+	FuncPolicyOff = "off"
+)
+
+// funcPolicyExec is the process-execution family: the functions that hand a shell
+// or a new process to PHP. This is the whole of the "basic" tier and the sharp
+// edge of "strict".
+var funcPolicyExec = []string{
+	"exec", "passthru", "shell_exec", "system", "proc_open", "popen",
+	"proc_close", "proc_get_status", "proc_nice", "proc_terminate",
+}
+
+// funcPolicyStrictExtra is what "strict" adds on top of the exec family: dynamic
+// extension loading and process control that a shared-hosting worker never needs
+// and an attacker very much wants.
+var funcPolicyStrictExtra = []string{
+	"pcntl_exec", "pcntl_fork", "dl",
+}
+
+// DisableFunctionsFor returns the comma-separated disable_functions value for a
+// policy tier, or "" for the off tier (no directive emitted).
+func DisableFunctionsFor(policy string) string {
+	switch policy {
+	case FuncPolicyStrict:
+		return strings.Join(append(append([]string{}, funcPolicyExec...), funcPolicyStrictExtra...), ",")
+	case FuncPolicyBasic:
+		return strings.Join(funcPolicyExec, ",")
+	default: // FuncPolicyOff / unknown-treated-as-off (Validate rejects unknown)
+		return ""
+	}
+}
+
+// FuncPolicies returns the selectable policy tiers, strictest first, for the UI.
+func FuncPolicies() []string { return []string{FuncPolicyStrict, FuncPolicyBasic, FuncPolicyOff} }
+
+func validateFuncPolicy(p string) (string, error) {
+	switch p {
+	case "":
+		return FuncPolicyStrict, nil // secure by default
+	case FuncPolicyStrict, FuncPolicyBasic, FuncPolicyOff:
+		return p, nil
+	default:
+		return "", errx.Validation("bad_func_policy",
+			"The function policy must be \"strict\", \"basic\", or \"off\".",
+			errx.Field{Field: "func_policy", Code: "unsupported", Message: "unknown policy"})
+	}
+}
+
 // ── OPcache ────────────────────────────────────────────────────────────────
 
 // JIT modes exposed. PHP's opcache.jit takes a four-digit CRTO string; these are
@@ -366,6 +430,9 @@ type Settings struct {
 	FPM           FPM               `json:"fpm"`
 	INI           map[string]string `json:"ini"`
 	OPcache       OPcache           `json:"opcache"`
+	// FuncPolicy is the disable_functions tier (strict|basic|off). Empty
+	// normalizes to strict.
+	FuncPolicy string `json:"func_policy"`
 }
 
 // DefaultSettings is what a site gets before anyone tunes it.
@@ -376,6 +443,7 @@ func DefaultSettings() Settings {
 		FPM:           DefaultFPM(),
 		INI:           map[string]string{},
 		OPcache:       DefaultOPcache(),
+		FuncPolicy:    FuncPolicyStrict,
 	}
 }
 
@@ -403,6 +471,11 @@ func (s *Settings) Validate() error {
 	if err := validateOPcache(&s.OPcache); err != nil {
 		return err
 	}
+	policy, err := validateFuncPolicy(s.FuncPolicy)
+	if err != nil {
+		return err
+	}
+	s.FuncPolicy = policy
 	if s.INI == nil {
 		s.INI = map[string]string{}
 	}

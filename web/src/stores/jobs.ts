@@ -42,14 +42,26 @@ export const useJobs = create<JobState>((set, get) => ({
     const update = (patch: Partial<TrackedJob>) =>
       set((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)) }));
 
-    const finish = (status: string, label: string) => {
+    const finish = (status: string, label: string, result?: unknown) => {
       const u = unsub.get(id);
       if (u) {
         u();
         unsub.delete(id);
       }
-      if (status === "succeeded") toast.success(`${label} completed`);
-      else if (status === "failed") toast.error(`${label} failed`, "See the resource for details.");
+      if (status === "succeeded") {
+        toast.success(`${label} completed`);
+        // Some job results (e.g. site.create) carry a dns_status the way the
+        // synchronous creation path does — surface the same warning here so
+        // async-created sites don't lose it just because they went through
+        // the job queue instead of a direct response.
+        const dnsStatus = (result as { dns_status?: string } | null | undefined)?.dns_status;
+        if (dnsStatus === "unverified") {
+          toast.info(
+            "DNS not verified yet",
+            "Add the site's DNS records and verify it on the Domains page so ownership is proven.",
+          );
+        }
+      } else if (status === "failed") toast.error(`${label} failed`, "See the resource for details.");
     };
 
     // Seed from REST — also the fallback if a WS event was missed before we
@@ -58,7 +70,7 @@ export const useJobs = create<JobState>((set, get) => ({
       .get<Job>(`/jobs/${id}`)
       .then((j) => {
         update({ progress: j.progress, step: j.status, status: j.status });
-        if (j.status === "succeeded" || j.status === "failed") finish(j.status, label);
+        if (j.status === "succeeded" || j.status === "failed") finish(j.status, label, j.result);
       })
       .catch(() => {});
 
@@ -66,7 +78,15 @@ export const useJobs = create<JobState>((set, get) => ({
       const d = data as { progress?: number; step?: string; status?: string };
       const status = d.status ?? "running";
       update({ progress: d.progress ?? 0, step: d.step ?? "", status });
-      if (status === "succeeded" || status === "failed") finish(status, label);
+      if (status === "succeeded" || status === "failed") {
+        // The WS event only carries progress/step/status, not the job's
+        // result payload — fetch it once so the dns_status check above has
+        // something to look at.
+        api
+          .get<Job>(`/jobs/${id}`)
+          .then((j) => finish(status, label, j.result))
+          .catch(() => finish(status, label));
+      }
     });
     unsub.set(id, off);
   },

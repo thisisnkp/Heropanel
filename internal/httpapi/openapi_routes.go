@@ -492,6 +492,34 @@ var apiDocs = map[string]opMeta{
 		RespDesc:  "Setting applied.",
 	},
 
+	// ── parked domains ───────────────────────────────────────────────────────
+	"GET /api/v1/domains/parked": {
+		Summary: "List parked domains", Tags: []string{"Domains"}, Permission: "domain.read",
+		RespSchema: arrayOf(ref("ParkedDomain")),
+	},
+	"POST /api/v1/domains/parked": {
+		Summary: "Park a domain", Tags: []string{"Domains"}, Permission: "domain.write",
+		ReqSchema:  object(map[string]any{"fqdn": prop("string", "")}, "fqdn"),
+		RespSchema: ref("ParkedDomain"), RespStatus: 201,
+		RespDesc: "Registers ownership of a domain with no site attached and returns the DNS TXT challenge to publish at your DNS host before Verify will succeed.",
+	},
+	"POST /api/v1/domains/parked/{uid}/verify": {
+		Summary: "Verify a parked domain", Tags: []string{"Domains"}, Permission: "domain.write",
+		RespSchema: ref("ParkedDomain"),
+		RespDesc:   "Re-checks the live DNS TXT challenge; 409 if it is not found yet.",
+	},
+	"DELETE /api/v1/domains/parked/{uid}": {
+		Summary: "Unpark a domain", Tags: []string{"Domains"}, Permission: "domain.write",
+		RespDesc: "Removed. 409 if the domain is still attached to a site — remove it there first.",
+	},
+	"GET /api/v1/domains/free": {
+		Summary: "List free domains", Tags: []string{"Domains"}, Permission: "domain.read",
+		RespSchema: object(map[string]any{
+			"fqdns": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		}),
+		RespDesc: "Verified parked domains and panel-hosted DNS zones not yet attached to a site — the create-site picker's source.",
+	},
+
 	// ── runtime ───────────────────────────────────────────────────────────────
 	"GET /api/v1/sites/{uid}/runtime": {
 		Summary: "Get the runtime config", Tags: []string{"Runtime"}, Permission: "site.read",

@@ -274,6 +274,10 @@ export interface Site {
   system_user: string;
   waf_enabled?: boolean;
   created_at: string;
+  // dns_status is a point-in-time snapshot from creation: "verified" (a free/
+  // parked domain, or a subdomain of one) or "unverified" (add DNS and verify
+  // at /domains). Empty when the registry wasn't available at creation time.
+  dns_status?: "verified" | "unverified" | "";
 }
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -311,6 +315,8 @@ export interface PHPInfo {
   fpm: FPM;
   ini: Record<string, string>;
   opcache: OPcache;
+  func_policy: string;
+  allowed_func_policies: string[];
   allowed_ini: string[];
 }
 
@@ -341,6 +347,20 @@ export interface Domain {
   redirect_to?: string;
   redirect_code?: number;
   force_https?: boolean;
+}
+
+// ParkedDomain is a domain registered with no site attached, proven via a DNS
+// TXT ownership challenge (see internal/domain/parked.go).
+export interface ParkedDomain {
+  uid: string;
+  fqdn: string;
+  status: "unverified" | "verified";
+  challenge_name: string;
+  challenge_value: string;
+  wildcard_hint: string;
+  attached: boolean;
+  verified_at?: string;
+  created_at: string;
 }
 
 export interface Runtime {

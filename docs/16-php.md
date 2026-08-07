@@ -45,8 +45,39 @@ reloads php-fpm. The template emits, in order:
 2. the process manager and only the directives that manager uses,
 3. the operator's php.ini overrides,
 4. OPcache,
-5. **the panel's confinement** — `memory_limit`, `open_basedir`,
-   `upload_tmp_dir`, `session.save_path`, `chdir`.
+5. **the panel's confinement** — `memory_limit`, `open_basedir` (the site's own
+   tree **only**, never the shared `/tmp`), `sys_temp_dir` / `upload_tmp_dir` /
+   `session.save_path` (all redirected into the site's private `0700` tmp),
+   `env[TMPDIR]` / `TMP` / `TEMP` (so anything the site `exec()`s also stays
+   in-site), `security.limit_extensions = .php` and `cgi.fix_pathinfo = 0` (only
+   real PHP is ever run), `disable_functions` (the function policy — see below),
+   and `chdir`.
+
+### The `disable_functions` policy (plan-gated)
+
+`disable_functions` is the control that stops a hosted site from shelling out of
+PHP — `exec`, `system`, `passthru`, `proc_open` and friends are the path a web
+vulnerability takes to code execution on the node. It is chosen as a named
+**policy tier**, not a raw list, so the set is defined once (`internal/php/
+settings.go`) and cannot be typo'd into silently allowing `exec()` back:
+
+| Tier | What it disables |
+| --- | --- |
+| `strict` *(default)* | the process-execution family **plus** `dl` / `pcntl_exec` / `pcntl_fork` — the shared-hosting baseline |
+| `basic` | only the process-execution family (`exec`, `system`, `shell_exec`, `passthru`, `proc_open`, `popen`, `proc_*`) |
+| `off` | nothing — for a trusted, single-tenant site whose operator owns the code |
+
+Every new site is created `strict` (secure by default); a row written before the
+policy column existed also reads as `strict`. It is called **plan-gated** because
+which tier a site may use is a plan dimension, in the same family as the cgroup
+limits and `memory_limit`: today an operator sets it per site, and when a hosting
+plan system exists the plan will set the default and the ceiling. Like every
+other confinement directive it is rendered **last** (below), so the php.ini
+editor can never restore a banned function.
+
+Per-site isolation depends on this: php-fpm pools do not get systemd `PrivateTmp`,
+so a shared `/tmp` in `open_basedir` would let one site read another's temp files.
+Every temp path is therefore confined to the site's own tree.
 
 The confinement comes **last on purpose**. A pool file is last-one-wins, so even
 if a directive somehow slipped past the allowlist, it cannot loosen

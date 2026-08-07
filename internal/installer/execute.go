@@ -658,7 +658,12 @@ func (e *Executor) serviceUID(ctx context.Context) string {
 func (e *Executor) renderBrokerUnit(uid string) string {
 	return "[Unit]\n" +
 		"Description=HeroPanel privileged broker\n" +
-		"After=network.target\n\n" +
+		"After=network.target\n" +
+		// Self-healing: allow rapid auto-restart, and don't give up until many
+		// failures in a short window (StartLimit) — a crashed broker must come
+		// back on its own without an operator.
+		"StartLimitIntervalSec=60\n" +
+		"StartLimitBurst=5\n\n" +
 		"[Service]\n" +
 		"Type=simple\n" +
 		"User=root\n" +
@@ -667,6 +672,7 @@ func (e *Executor) renderBrokerUnit(uid string) string {
 		"Environment=HP_BROKER_PANEL_USER=" + svcUser + "\n" +
 		"ExecStart=" + filepath.Join(e.Layout.BinDir, "hp-broker") + " --serve --socket " + filepath.Join(e.Layout.RunDir, "broker.sock") + "\n" +
 		"Restart=on-failure\n" +
+		"RestartSec=2s\n" +
 		"RuntimeDirectory=heropanel\n" +
 		"NoNewPrivileges=false\n\n" +
 		"[Install]\n" +
@@ -677,14 +683,22 @@ func (e *Executor) renderHpdUnit() string {
 	return "[Unit]\n" +
 		"Description=HeroPanel control-plane daemon\n" +
 		"After=network.target " + brokerSvc + "\n" +
-		"Requires=" + brokerSvc + "\n\n" +
+		"Requires=" + brokerSvc + "\n" +
+		"StartLimitIntervalSec=60\n" +
+		"StartLimitBurst=5\n\n" +
 		"[Service]\n" +
-		"Type=simple\n" +
+		// Type=notify + WatchdogSec: hpd reports readiness and pets the watchdog
+		// (internal/systemd). A hung hpd that stops petting is killed and
+		// restarted by systemd, so a wedged control plane self-heals — not just a
+		// crashed one. Restart/RestartSec bring it back fast on any exit.
+		"Type=notify\n" +
 		"User=" + svcUser + "\n" +
 		"Group=" + svcGroup + "\n" +
 		"EnvironmentFile=" + filepath.Join(e.Layout.ConfigDir, secretsFn) + "\n" +
 		"ExecStart=" + filepath.Join(e.Layout.BinDir, "hpd") + " --config " + filepath.Join(e.Layout.ConfigDir, configFn) + "\n" +
 		"Restart=on-failure\n" +
+		"RestartSec=2s\n" +
+		"WatchdogSec=30s\n" +
 		"NoNewPrivileges=true\n" +
 		"ProtectSystem=strict\n" +
 		"ProtectHome=true\n" +

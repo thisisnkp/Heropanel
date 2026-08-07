@@ -13,6 +13,12 @@ type Service struct {
 	repo    Repo
 	sites   Sites
 	reapply func(context.Context) error
+
+	// parked and resolverAddr back the parked-domain registry (parked.go). A nil
+	// parked repo leaves that half of the service unavailable — reads/writes
+	// there report "unavailable" rather than panicking.
+	parked       ParkedRepo
+	resolverAddr string
 }
 
 // NewService constructs the domain Service.
@@ -22,6 +28,14 @@ func NewService(repo Repo, sites Sites) *Service { return &Service{repo: repo, s
 // site service's ReapplyWebserver). Returns s for chaining.
 func (s *Service) WithReapply(fn func(context.Context) error) *Service {
 	s.reapply = fn
+	return s
+}
+
+// WithParked wires the parked-domain registry. resolverAddr pins the DNS
+// resolver used by VerifyParked (host:port) for e2e against a local
+// authoritative server; empty uses the system resolver. Returns s for chaining.
+func (s *Service) WithParked(repo ParkedRepo, resolverAddr string) *Service {
+	s.parked, s.resolverAddr = repo, resolverAddr
 	return s
 }
 

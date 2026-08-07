@@ -3,24 +3,40 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { api, ApiRequestError, can, type Domain, type Site } from "@/lib/api";
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, Spinner, StatusBadge, cn } from "@/components/ui";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { toast } from "@/stores/toast";
 import { useJobs } from "@/stores/jobs";
 import { useMe } from "@/features/auth/auth";
 import { useZones } from "@/features/dns/dns";
 import { useDatabases } from "@/features/databases/databases";
+import { useFreeDomains } from "@/features/domains/domains";
 import { isJobResult, useCreateSite, useSites, type CreateSiteInput } from "./sites";
+
+const FREE_DOMAINS_LIST_ID = "create-site-free-domains";
 
 function CreateSiteModal({ onClose, onSync }: { onClose: () => void; onSync: () => void }) {
   const [form, setForm] = useState<CreateSiteInput>({ name: "", primary_domain: "", type: "static" });
   const create = useCreateSite();
   const track = useJobs((s) => s.track);
+  const { data: freeDomains } = useFreeDomains();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     create.mutate(form, {
       onSuccess: (res) => {
-        if (isJobResult(res)) track(res.job.id, "Provisioning site");
-        else onSync();
+        if (isJobResult(res)) {
+          // The job tracker (stores/jobs.ts) fetches the job result on
+          // completion and shows the same DNS-not-verified warning itself.
+          track(res.job.id, "Provisioning site");
+        } else {
+          onSync();
+          if (res.dns_status === "unverified") {
+            toast.info(
+              "Website created — DNS not verified yet",
+              "Add the site's DNS records and verify it on the Domains page so ownership is proven.",
+            );
+          }
+        }
         toast.info("Creating site…");
         onClose();
       },
@@ -36,8 +52,21 @@ function CreateSiteModal({ onClose, onSync }: { onClose: () => void; onSync: () 
         <Field label="Name" hint={fieldError("name")}>
           <Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme" />
         </Field>
-        <Field label="Primary domain" hint={fieldError("primary_domain")}>
-          <Input value={form.primary_domain} onChange={(e) => setForm({ ...form, primary_domain: e.target.value })} placeholder="acme.example.com" />
+        <Field
+          label="Primary domain"
+          hint={fieldError("primary_domain") ?? (freeDomains?.fqdns.length ? "Pick a verified domain, or type any domain." : undefined)}
+        >
+          <Input
+            list={FREE_DOMAINS_LIST_ID}
+            value={form.primary_domain}
+            onChange={(e) => setForm({ ...form, primary_domain: e.target.value })}
+            placeholder="acme.example.com"
+          />
+          <datalist id={FREE_DOMAINS_LIST_ID}>
+            {(freeDomains?.fqdns ?? []).map((d) => (
+              <option key={d} value={d} />
+            ))}
+          </datalist>
         </Field>
         <Field label="Type">
           <div className="flex gap-2">
@@ -274,7 +303,11 @@ export function SitesPage() {
 
       {data && (
         <>
-          <SummaryCards sites={sites} me={me} />
+          {/* The summary is a widget: if it crashes (a bad metric, a shape
+              change), the website list below must still render. */}
+          <ErrorBoundary compact title="Summary">
+            <SummaryCards sites={sites} me={me} />
+          </ErrorBoundary>
 
           <Card className="overflow-hidden">
             <div className="border-b border-border p-3">

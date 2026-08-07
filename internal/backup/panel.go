@@ -129,6 +129,15 @@ func (s *Service) CreatePanelBackup(ctx context.Context) (*PanelBackup, error) {
 		_ = os.Remove(sealedPath)
 		return nil, err
 	}
+	// Verify the stored object round-trips — fetch it back, decrypt it, and
+	// confirm it unpacks — before recording it as a success. A panel backup that
+	// cannot be restored is worse than none: it hides the failure until disaster
+	// recovery. If it does not verify, discard it and fail loudly instead.
+	if err := s.verifyPanelObject(ctx, target, key); err != nil {
+		_ = target.Delete(ctx, key)
+		return nil, errx.Wrap(err, errx.KindInternal, "panel_backup_unverified",
+			"The panel backup was written but failed verification and was discarded.")
+	}
 	rec := &PanelRecord{UID: uid, Target: s.panelPolicy.Target, RemoteKey: key, SizeBytes: size}
 	if err := s.panelRepo.InsertPanel(ctx, rec); err != nil {
 		return nil, err
@@ -210,6 +219,16 @@ func (s *Service) RunPanelScheduler(ctx context.Context, log interface{ Info(str
 	// Sweep once at startup so a snapshot that came due during downtime runs
 	// promptly rather than waiting a full tick.
 	sweep()
+	// Then confirm the newest snapshot is still restorable. An object that has
+	// rotted on disk or become unreadable after a key change is caught here,
+	// while there is time to act, rather than during a real recovery.
+	if uid, err := s.VerifyLatestPanelBackup(ctx); err != nil {
+		if log != nil {
+			log.Info("panel backup verification FAILED", "uid", uid, "err", err.Error())
+		}
+	} else if uid != "" && log != nil {
+		log.Info("panel backup verified restorable", "uid", uid)
+	}
 	t := time.NewTicker(s.sweepEvery())
 	defer t.Stop()
 	for {

@@ -151,6 +151,17 @@ var openapiSchemas = map[string]any{
 		"redirect_code": prop("integer", ""),
 	}),
 
+	"ParkedDomain": object(map[string]any{
+		"uid":             prop("string", ""),
+		"fqdn":            prop("string", ""),
+		"status":          map[string]any{"type": "string", "enum": []any{"unverified", "verified"}},
+		"challenge_name":  prop("string", "DNS TXT record name to publish at your DNS host."),
+		"challenge_value": prop("string", "DNS TXT record value to publish at your DNS host."),
+		"wildcard_hint":   prop("string", "Recommended (not verified) wildcard A/CNAME to add so subdomains resolve."),
+		"attached":        prop("boolean", "Whether a site currently uses this domain."),
+		"verified_at":     prop("string", ""),
+	}),
+
 	// ── runtime ──────────────────────────────────────────────────────────────
 	"Runtime": object(map[string]any{
 		"runtime":     map[string]any{"type": "string", "enum": []any{"node", "python", "go", "generic"}},

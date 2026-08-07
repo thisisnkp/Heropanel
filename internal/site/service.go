@@ -28,13 +28,26 @@ const (
 // "unavailable"; a nil Web means the site is provisioned but not served; a nil
 // PHP means PHP sites are provisioned without an FPM pool).
 type Deps struct {
-	Repo    Repo
-	Broker  broker.Gateway
-	Web     webserver.Applier
-	PHP     php.Manager
-	Runtime Runtime
-	Domains Domains
-	Apps    AppProxy
+	Repo     Repo
+	Broker   broker.Gateway
+	Web      webserver.Applier
+	PHP      php.Manager
+	Runtime  Runtime
+	Domains  Domains
+	Apps     AppProxy
+	Registry DomainRegistry
+}
+
+// DomainRegistry classifies a site's chosen domain against the parked-domain /
+// DNS-zone ownership registry at creation time (adapter over internal/domain).
+// Optional: nil disables DNS-status classification (Site.DNSStatus stays
+// empty), matching every other optional Deps field's degrade-gracefully style.
+type DomainRegistry interface {
+	// Classify decides whether fqdn already has proven ownership (an exact or
+	// subdomain match against a verified parked domain or DNS zone), attaching
+	// or creating the bookkeeping parked-domain row as a side effect, and
+	// returns "verified" or "unverified" for Site.DNSStatus.
+	Classify(ctx context.Context, ownerID, siteID int64, fqdn string) (string, error)
 }
 
 // AppProxy resolves the reverse-proxy upstream for a site backed by a one-click
@@ -90,6 +103,10 @@ type Service struct {
 	runtime Runtime
 	domains Domains
 	apps    AppProxy
+	// registry classifies a new site's domain against the parked-domain/DNS-zone
+	// ownership registry. Nil (no DomainRegistry wired) leaves Site.DNSStatus
+	// empty — the same degrade-gracefully style as every other optional dep.
+	registry DomainRegistry
 	// systemVhosts contributes panel-level vhosts (e.g. webmail) to the same
 	// render-all the customer sites go through, so a system service serves over
 	// the one OpenLiteSpeed config without a database site row of its own.
@@ -99,7 +116,7 @@ type Service struct {
 // NewService constructs the site Service from its dependencies.
 func NewService(d Deps) *Service {
 	return &Service{repo: d.Repo, broker: d.Broker, web: d.Web, php: d.PHP,
-		runtime: d.Runtime, domains: d.Domains, apps: d.Apps}
+		runtime: d.Runtime, domains: d.Domains, apps: d.Apps, registry: d.Registry}
 }
 
 // WithSystemVhosts registers a provider of panel-level vhosts (webmail today).
@@ -179,12 +196,19 @@ func (s *Service) RunCreate(ctx context.Context, in CreateInput, p job.Progress)
 		return nil, err
 	}
 
-	// Every site gets its cgroup slice up front, with accounting on and no caps.
-	// The slice has to exist before anything is placed in it — the app unit names
-	// it in `Slice=` — and the accounting is what lets an operator see a site's
-	// real CPU/memory use before deciding what to limit.
+	// Every site gets its cgroup slice up front, with accounting on and the
+	// default limits (fork-bomb protection; CPU/memory unlimited until tuned). The
+	// slice has to exist before anything is placed in it — the app unit names it in
+	// `Slice=` — and the accounting is what lets an operator see a site's real
+	// CPU/memory use before deciding what else to cap. The default is persisted so
+	// it is visible and editable rather than an invisible cap.
 	p.Report(60, "creating resource slice")
-	if err := s.applySlice(ctx, linuxUser, Limits{}); err != nil {
+	limits := DefaultLimits()
+	if err := s.applySlice(ctx, linuxUser, limits); err != nil {
+		_ = s.repo.UpdateStatus(ctx, id, string(StatusError))
+		return nil, err
+	}
+	if err := s.repo.UpsertLimits(ctx, id, limits); err != nil {
 		_ = s.repo.UpdateStatus(ctx, id, string(StatusError))
 		return nil, err
 	}
@@ -212,11 +236,23 @@ func (s *Service) RunCreate(ctx context.Context, in CreateInput, p job.Progress)
 	}
 	p.Report(100, "active")
 
+	// Classify the domain against the parked-domain/DNS-zone ownership registry
+	// once the site is active. This never fails site creation — a registry error
+	// just leaves DNSStatus unset, the same as no registry being wired at all.
+	var dnsStatus string
+	if s.registry != nil {
+		if status, rerr := s.registry.Classify(ctx, in.OwnerID, id, in.PrimaryDomain); rerr == nil {
+			dnsStatus = status
+		}
+	}
+
 	out, err := s.repo.GetByUID(ctx, rec.UID)
 	if err != nil {
 		return nil, err
 	}
-	return toView(out), nil
+	view := toView(out)
+	view.DNSStatus = dnsStatus
+	return view, nil
 }
 
 // provisionSystem performs the two privileged broker operations: create the
@@ -398,6 +434,11 @@ type PHPView struct {
 	FPM           php.FPM           `json:"fpm"`
 	INI           map[string]string `json:"ini"`
 	OPcache       php.OPcache       `json:"opcache"`
+	// FuncPolicy is the disable_functions tier (strict|basic|off) and
+	// AllowedFuncPolicies is the set the UI offers, so the selector cannot drift
+	// from what the server accepts.
+	FuncPolicy          string   `json:"func_policy"`
+	AllowedFuncPolicies []string `json:"allowed_func_policies"`
 	// AllowedINI is the set of directives that may appear in INI. The UI builds
 	// its editor from this instead of carrying its own copy, which would drift
 	// from the server's allowlist and offer fields that are always rejected.
@@ -485,13 +526,15 @@ func (s *Service) phpSite(ctx context.Context, uid string) (*Record, error) {
 func phpView(p *php.PoolRecord) *PHPView {
 	s := php.SettingsOf(p)
 	return &PHPView{
-		Version:       s.Version,
-		SocketPath:    p.SocketPath,
-		MemoryLimitMB: s.MemoryLimitMB,
-		FPM:           s.FPM,
-		INI:           s.INI,
-		OPcache:       s.OPcache,
-		AllowedINI:    php.AllowedINIKeys(),
+		Version:             s.Version,
+		SocketPath:          p.SocketPath,
+		MemoryLimitMB:       s.MemoryLimitMB,
+		FPM:                 s.FPM,
+		INI:                 s.INI,
+		OPcache:             s.OPcache,
+		FuncPolicy:          s.FuncPolicy,
+		AllowedFuncPolicies: php.FuncPolicies(),
+		AllowedINI:          php.AllowedINIKeys(),
 	}
 }
 

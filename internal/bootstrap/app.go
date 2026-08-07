@@ -40,10 +40,12 @@ import (
 	"github.com/thisisnkp/heropanel/internal/registry"
 	"github.com/thisisnkp/heropanel/internal/repository"
 	"github.com/thisisnkp/heropanel/internal/runtime"
+	"github.com/thisisnkp/heropanel/internal/safe"
 	"github.com/thisisnkp/heropanel/internal/security"
 	"github.com/thisisnkp/heropanel/internal/setup"
 	"github.com/thisisnkp/heropanel/internal/site"
 	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/heropanel/internal/systemd"
 	"github.com/thisisnkp/heropanel/internal/tenancy"
 	"github.com/thisisnkp/heropanel/internal/terminal"
 	usermgmt "github.com/thisisnkp/heropanel/internal/users"
@@ -123,10 +125,15 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	// through which services request privileged operations. Left nil when the
 	// broker is absent (services that need it fail with an "unavailable" error).
 	var gw brokerclient.Gateway
+	var brokerConn *brokerclient.Client
 	if cfg.Broker.Socket != "" {
-		client := brokerclient.NewClient(cfg.Broker.Socket, cfg.Broker.Token, log)
-		gw = client
-		brokerHealth = client
+		brokerConn = brokerclient.NewClient(cfg.Broker.Socket, cfg.Broker.Token, log)
+		// Wrap the raw client in a bulkhead + circuit breaker so a hung or down
+		// broker cannot exhaust request goroutines or cost every call a full
+		// dial+timeout. Services see the resilient Gateway; the streaming paths
+		// below still use the concrete client (a breaker cannot wrap a stream).
+		gw = brokerclient.NewResilient(brokerConn, log)
+		brokerHealth = brokerConn
 		log.Info("broker gateway configured", "socket", cfg.Broker.Socket)
 	}
 
@@ -136,10 +143,10 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	// A nil gateway therefore switches the module off entirely rather than
 	// leaving a UI that offers containers it cannot reach.
 	dockerSvc := docker.New(gw)
-	if client, ok := gw.(*brokerclient.Client); ok && client != nil && dockerSvc != nil {
+	if brokerConn != nil && dockerSvc != nil {
 		// Container shells need a *streaming* broker connection, which only the
 		// concrete client provides — the same requirement the site terminal has.
-		dockerSvc = dockerSvc.WithStreams(client)
+		dockerSvc = dockerSvc.WithStreams(brokerConn)
 	}
 
 	// The one-click app catalog rides on Docker: an app is a labelled compose
@@ -275,6 +282,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		siteStore := repository.NewSiteStore(db)
 		runtimeSvc = runtime.NewService(repository.NewRuntimeStore(db), runtimeSiteAdapter{repo: siteStore}, gw)
 		domainSvc = domain.NewService(repository.NewDomainStore(db), domainSiteAdapter{repo: siteStore})
+		// Parked-domain registry (park a domain with no site, prove ownership via
+		// DNS TXT, offer it as "free" at site creation). Reuses the mail module's
+		// resolver pin (cfg.Mail.Resolver / HP_MAIL_RESOLVER) rather than adding a
+		// second identical knob — both are the same "pin DNS for e2e" concern.
+		domainSvc.WithParked(repository.NewParkedDomainStore(db), cfg.Mail.Resolver)
 		phpSvc = php.NewService(repository.NewPHPPoolStore(db), gw)
 		// The web-server service renders vhosts for the active engine (OLS by
 		// default; switched to the operator's setup choice below).
@@ -291,6 +303,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			// site simply renders as a static vhost — the same graceful fallback a
 			// systemd proxy site has before its runtime exists.
 			Apps: appsSvc,
+			// domainSvc's Classify method already matches site.DomainRegistry
+			// structurally — no adapter needed.
+			Registry: domainSvc,
 		})
 		// The runtime re-renders the vhost (as a proxy) after a runtime change;
 		// the domain service re-renders it after an alias/redirect/force-HTTPS change.
@@ -397,19 +412,21 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				Target: cfg.Backup.Panel.Target, IntervalHours: cfg.Backup.Panel.IntervalHours, Keep: cfg.Backup.Panel.Keep,
 			})
 			if backupSvc.PanelAvailable() {
-				go backupSvc.RunPanelScheduler(ctx, log)
+				safe.Go(ctx, log, "backup-panel-scheduler", func(ctx context.Context) { backupSvc.RunPanelScheduler(ctx, log) })
 				log.Info("panel self-backup enabled",
 					"interval_hours", cfg.Backup.Panel.IntervalHours, "target", cfg.Backup.Panel.Target)
 			}
 		}
 		if backupSvc.Available() {
-			go backupSvc.RunScheduler(ctx, func(ctx context.Context, id int64) (string, bool) {
-				rec, err := siteStore.GetByID(ctx, id)
-				if err != nil {
-					return "", false
-				}
-				return rec.UID, true
-			}, log)
+			safe.Go(ctx, log, "backup-scheduler", func(ctx context.Context) {
+				backupSvc.RunScheduler(ctx, func(ctx context.Context, id int64) (string, bool) {
+					rec, err := siteStore.GetByID(ctx, id)
+					if err != nil {
+						return "", false
+					}
+					return rec.UID, true
+				}, log)
+			})
 			log.Info("backup scheduler enabled")
 		}
 		// Mail: Postfix + Dovecot driven by rendered flat maps through the
@@ -439,7 +456,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		firewallSvc = firewallSvc.WithGeoSource(cfg.Security.GeoDBURLv4, cfg.Security.GeoDBURLv6)
 		if firewallSvc.Available() {
-			go firewallSvc.RunGuard(ctx, log)
+			safe.Go(ctx, log, "firewall-guard", func(ctx context.Context) { firewallSvc.RunGuard(ctx, log) })
 			log.Info("firewall guard enabled")
 		}
 		// Malware scanning (ClamAV) with quarantine, over the site tree.
@@ -468,8 +485,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		// concrete client provides. Without a broker there is no way to run a
 		// shell as another user, so the feature stays switched off rather than
 		// offering a terminal that cannot open.
-		if client, ok := gw.(*brokerclient.Client); ok && client != nil {
-			terminalSvc = terminal.NewService(terminalSiteAdapter{repo: siteStore}, client)
+		if brokerConn != nil {
+			terminalSvc = terminal.NewService(terminalSiteAdapter{repo: siteStore}, brokerConn)
 		}
 
 		// Session recording. The transcript files live on disk; only their
@@ -670,7 +687,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	// them with the flow that created them (HTTP-01, DNS-01/wildcard, or a fresh
 	// self-signed). Uploaded certs are left alone.
 	if sslSvc != nil {
-		go ssl.NewRenewer(sslSvc, log).Run(ctx)
+		renewer := ssl.NewRenewer(sslSvc, log)
+		safe.Go(ctx, log, "cert-renewer", func(ctx context.Context) { renewer.Run(ctx) })
 		log.Info("certificate renewer enabled",
 			"interval", ssl.DefaultRenewInterval.String(), "window", ssl.DefaultRenewWindow.String())
 	}
@@ -681,19 +699,20 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		if recordings != nil {
 			// Retention is not optional housekeeping: it is the half of the policy
 			// that says the panel stops holding a transcript of someone's work.
-			go recordings.RunPurger(ctx, log)
+			safe.Go(ctx, log, "recordings-purger", func(ctx context.Context) { recordings.RunPurger(ctx, log) })
 		}
-		go dbSvc.RunSSOSweeper(ctx, log)
+		safe.Go(ctx, log, "db-sso-sweeper", func(ctx context.Context) { dbSvc.RunSSOSweeper(ctx, log) })
 		log.Info("database sign-on sweeper enabled", "ttl", database.SSOTTL.String())
 	}
 	// Prune expired one-time webmail SSO master users the same way.
 	if mailSvc != nil && mailSvc.WebmailSSOAvailable() {
-		go mailSvc.RunWebmailSSOSweeper(ctx, log)
+		safe.Go(ctx, log, "webmail-sso-sweeper", func(ctx context.Context) { mailSvc.RunWebmailSSOSweeper(ctx, log) })
 		log.Info("webmail sign-on sweeper enabled", "ttl", mailpkg.WebmailSSOTTL.String())
 	}
 	// Drain the outbound webhook delivery queue (sign + POST + retry/backoff).
 	if webhookStore != nil {
-		go webhook.NewDispatcher(webhookStore, log).Run(ctx)
+		dispatcher := webhook.NewDispatcher(webhookStore, log)
+		safe.Go(ctx, log, "webhook-dispatcher", func(ctx context.Context) { dispatcher.Run(ctx) })
 		log.Info("webhook dispatcher enabled")
 	}
 
@@ -726,8 +745,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				persistEvery = time.Duration(n) * time.Second
 			}
 		}
-		go monitorSvc.RunPersister(ctx, persistEvery, log)
-		go monitorSvc.RunRollup(ctx, log)
+		safe.Go(ctx, log, "monitor-persister", func(ctx context.Context) { monitorSvc.RunPersister(ctx, persistEvery, log) })
+		safe.Go(ctx, log, "monitor-rollup", func(ctx context.Context) { monitorSvc.RunRollup(ctx, log) })
 	}
 	if siteSvc != nil {
 		// Per-site metrics need the current site list on each (gated) sweep, so it
@@ -756,9 +775,10 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var wsHub *ws.Hub
 	if db != nil {
 		wsHub = ws.NewHub(cacheWiring.RedisClient, channelAuthorizer(jobs), log)
-		go wsHub.Run(ctx)
+		hub := wsHub
+		safe.Go(ctx, log, "ws-hub", func(ctx context.Context) { hub.Run(ctx) })
 		// Push node samples to subscribed dashboards, sampling only while watched.
-		go monitorSvc.RunSampler(ctx, wsHub, monitor.DefaultInterval, log)
+		safe.Go(ctx, log, "monitor-sampler", func(ctx context.Context) { monitorSvc.RunSampler(ctx, hub, monitor.DefaultInterval, log) })
 		log.Info("realtime hub enabled", "redis_bridge", cacheWiring.RedisClient != nil)
 	}
 
@@ -861,6 +881,31 @@ func (a *App) Run(ctx context.Context) error {
 			errCh <- err
 		}
 	}()
+
+	// systemd integration (no-op when not run under systemd): report readiness
+	// for the Type=notify unit, then pet the watchdog on its interval so a hung
+	// hpd — not just a crashed one — is killed and restarted. The pinger is
+	// supervised so it can never itself crash the process.
+	sd := systemd.New()
+	defer func() { _ = sd.Close() }()
+	if err := sd.Ready(); err != nil {
+		a.log.Warn("systemd readiness notification failed", "err", err)
+	}
+	if iv := systemd.WatchdogInterval(); iv > 0 && sd.Enabled() {
+		a.log.Info("systemd watchdog enabled", "ping_interval", iv.String())
+		safe.Go(ctx, a.log, "systemd-watchdog", func(ctx context.Context) {
+			t := time.NewTicker(iv)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					_ = sd.Watchdog()
+				}
+			}
+		})
+	}
 
 	select {
 	case err := <-errCh:

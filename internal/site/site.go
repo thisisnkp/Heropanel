@@ -62,6 +62,13 @@ type Site struct {
 	// WAFEnabled reports whether the ModSecurity + OWASP CRS firewall is on.
 	WAFEnabled bool   `json:"waf_enabled"`
 	CreatedAt  string `json:"created_at"`
+	// DNSStatus reports whether the primary domain had proven ownership
+	// ("verified" — a free/parked domain or a subdomain of one) at creation
+	// time, or none ("unverified" — the operator should add DNS and verify it
+	// at /domains). Empty when no DomainRegistry is wired. This is a point-in-
+	// time snapshot from creation, not re-checked on later reads — the parked-
+	// domain list is the live source of truth for verification status.
+	DNSStatus string `json:"dns_status,omitempty"`
 }
 
 // CreateInput is the request to create a site.

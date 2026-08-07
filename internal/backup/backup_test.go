@@ -1,10 +1,13 @@
 package backup
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +18,50 @@ import (
 	"time"
 
 	"github.com/thisisnkp/heropanel/pkg/blobcrypt"
+	"github.com/thisisnkp/heropanel/pkg/errx"
 )
+
+// codeOf extracts an *errx.Error's machine code, or "" if err is not one.
+func codeOf(err error) string {
+	if e, ok := errx.As(err); ok {
+		return e.Code
+	}
+	return ""
+}
+
+// writePanelArchive builds a real panel snapshot at path: a gzip tar carrying a
+// manifest.json (right kind) plus a panel.db member, matching what the live
+// snapshotter produces. Passing withDB=false omits the db member to simulate an
+// incomplete snapshot.
+func writePanelArchive(t *testing.T, path string, withDB bool) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	write := func(name string, data []byte) {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(data))}); err != nil {
+			t.Fatalf("tar header %s: %v", name, err)
+		}
+		if _, err := tw.Write(data); err != nil {
+			t.Fatalf("tar write %s: %v", name, err)
+		}
+	}
+	manifest, _ := json.Marshal(map[string]string{"kind": panelManifestKind, "driver": "sqlite"})
+	write("manifest.json", manifest)
+	if withDB {
+		write("panel.db", []byte("SQLITE FORMAT 3\x00fake"))
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("tar close: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+}
 
 // chainFor is the heart of restore correctness: the latest full at or before the
 // target, then everything up to and including it.
@@ -483,9 +529,10 @@ func TestPanelBackupSealsAndPrunes(t *testing.T) {
 	repo := &memPanelRepo{}
 	var snapped []string
 	svc.WithPanel(repo, func(_ context.Context, d string) (string, error) {
-		p := filepath.Join(d, "panel-snap.tar.gz")
+		p := filepath.Join(d, "panel-snap-"+time.Now().Format("150405.000000000")+".tar.gz")
 		snapped = append(snapped, p)
-		return p, os.WriteFile(p, []byte("PANELDB"), 0o600)
+		writePanelArchive(t, p, true)
+		return p, nil
 	}, PanelPolicy{Keep: 2})
 
 	var uids []string
@@ -512,10 +559,20 @@ func TestPanelBackupSealsAndPrunes(t *testing.T) {
 	if !strings.HasPrefix(string(blob), "HPB1") {
 		t.Error("the stored panel snapshot is not blobcrypt ciphertext")
 	}
-	var out strings.Builder
-	if err := blobcrypt.Open(&out, strings.NewReader(string(blob)), svc.key); err != nil || out.String() != "PANELDB" {
-		t.Errorf("panel snapshot round trip = %q, %v", out.String(), err)
+	// The stored object decrypts to a valid, complete panel archive.
+	dec := filepath.Join(dir, "roundtrip.tar.gz")
+	out, err := os.OpenFile(dec, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open decrypt target: %v", err)
 	}
+	if err := blobcrypt.Open(out, strings.NewReader(string(blob)), svc.key); err != nil {
+		t.Fatalf("panel snapshot decrypt: %v", err)
+	}
+	_ = out.Close()
+	if err := validatePanelArchive(dec); err != nil {
+		t.Errorf("stored panel snapshot did not validate: %v", err)
+	}
+	_ = os.Remove(dec)
 	// No plaintext snapshot outlives a call.
 	for _, p := range snapped {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
@@ -532,6 +589,93 @@ func TestPanelBackupSealsAndPrunes(t *testing.T) {
 	}
 	if err := svc.DeletePanelBackup(t.Context(), "nope"); err == nil {
 		t.Error("deleting an unknown panel backup succeeded")
+	}
+}
+
+// A freshly created panel backup verifies as restorable, and so does the
+// latest via the convenience method.
+func TestPanelBackupVerifies(t *testing.T) {
+	svc, _, _, _, _ := newTestService(t)
+	repo := &memPanelRepo{}
+	svc.WithPanel(repo, func(_ context.Context, d string) (string, error) {
+		p := filepath.Join(d, "snap.tar.gz")
+		writePanelArchive(t, p, true)
+		return p, nil
+	}, PanelPolicy{Keep: 5})
+
+	b, err := svc.CreatePanelBackup(t.Context())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := svc.VerifyPanelBackup(t.Context(), b.UID); err != nil {
+		t.Errorf("VerifyPanelBackup: %v", err)
+	}
+	uid, err := svc.VerifyLatestPanelBackup(t.Context())
+	if err != nil || uid != b.UID {
+		t.Errorf("VerifyLatestPanelBackup = %q, %v; want %q", uid, err, b.UID)
+	}
+}
+
+// An empty history is not a verification failure.
+func TestVerifyLatestPanelBackupEmpty(t *testing.T) {
+	svc, _, _, _, _ := newTestService(t)
+	repo := &memPanelRepo{}
+	svc.WithPanel(repo, func(_ context.Context, d string) (string, error) {
+		p := filepath.Join(d, "snap.tar.gz")
+		writePanelArchive(t, p, true)
+		return p, nil
+	}, PanelPolicy{Keep: 5})
+
+	uid, err := svc.VerifyLatestPanelBackup(t.Context())
+	if err != nil || uid != "" {
+		t.Errorf("empty history: got (%q, %v), want (\"\", nil)", uid, err)
+	}
+}
+
+// CreatePanelBackup refuses to record a snapshot that does not verify — here an
+// incomplete archive missing its database member — and leaves nothing behind.
+func TestCreatePanelBackupRejectsUnverifiable(t *testing.T) {
+	svc, _, _, _, _ := newTestService(t)
+	repo := &memPanelRepo{}
+	svc.WithPanel(repo, func(_ context.Context, d string) (string, error) {
+		p := filepath.Join(d, "snap.tar.gz")
+		writePanelArchive(t, p, false) // no panel.db → incomplete
+		return p, nil
+	}, PanelPolicy{Keep: 5})
+
+	_, err := svc.CreatePanelBackup(t.Context())
+	if err == nil {
+		t.Fatal("expected an unverifiable snapshot to fail creation")
+	}
+	if c := codeOf(err); c != "panel_backup_unverified" {
+		t.Errorf("error code = %q, want panel_backup_unverified", c)
+	}
+	if len(repo.recs) != 0 {
+		t.Errorf("an unverified backup was recorded: %d rows", len(repo.recs))
+	}
+}
+
+// A stored object that has been corrupted on its target fails verification.
+func TestVerifyPanelBackupDetectsCorruption(t *testing.T) {
+	svc, _, _, _, dir := newTestService(t)
+	repo := &memPanelRepo{}
+	svc.WithPanel(repo, func(_ context.Context, d string) (string, error) {
+		p := filepath.Join(d, "snap.tar.gz")
+		writePanelArchive(t, p, true)
+		return p, nil
+	}, PanelPolicy{Keep: 5})
+
+	b, err := svc.CreatePanelBackup(t.Context())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Corrupt the sealed object on the local target (staging file by basename).
+	obj := filepath.Join(dir, filepath.Base(panelRemoteKey(b.UID)))
+	if err := os.WriteFile(obj, []byte("HPB1 not really ciphertext at all"), 0o600); err != nil {
+		t.Fatalf("corrupt object: %v", err)
+	}
+	if err := svc.VerifyPanelBackup(t.Context(), b.UID); err == nil {
+		t.Error("verification passed on a corrupted object")
 	}
 }
 
