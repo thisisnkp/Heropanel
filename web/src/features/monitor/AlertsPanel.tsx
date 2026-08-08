@@ -61,7 +61,7 @@ export function AlertsPanel() {
           {ruleList.map((r) => (
             <div key={r.uid} className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-sm">
               <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${r.enabled ? "bg-emerald-500" : "bg-border"}`} aria-hidden />
+                <span className={`h-2 w-2 rounded-full ${r.enabled ? "bg-success" : "bg-border"}`} aria-hidden />
                 <span className="font-medium text-fg">{r.name}</span>
                 <span className="text-xs text-muted">
                   {r.metric} {r.op === "lt" ? "<" : ">"} {r.threshold}
@@ -98,7 +98,7 @@ export function AlertsPanel() {
           <div className="space-y-1">
             {eventList.slice(0, 8).map((e, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
-                <span className={`h-2 w-2 rounded-full ${e.state === "firing" ? "bg-danger" : "bg-emerald-500"}`} aria-hidden />
+                <span className={`h-2 w-2 rounded-full ${e.state === "firing" ? "bg-danger" : "bg-success"}`} aria-hidden />
                 <span className="text-fg">{e.state}</span>
                 <span className="text-muted">{e.value.toFixed(1)}</span>
                 <span className="ml-auto text-muted">{new Date(e.at + "Z").toLocaleString()}</span>
@@ -139,7 +139,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
       <Input placeholder="Rule name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
       <div className="flex flex-wrap gap-2">
         <select
-          className="rounded border border-border bg-panel px-2 py-1.5 text-sm text-fg"
+          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={f.metric}
           onChange={(e) => setF({ ...f, metric: e.target.value })}
         >
@@ -150,7 +150,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
           ))}
         </select>
         <select
-          className="rounded border border-border bg-panel px-2 py-1.5 text-sm text-fg"
+          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={f.op}
           onChange={(e) => setF({ ...f, op: e.target.value })}
         >
@@ -176,7 +176,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select
-          className="rounded border border-border bg-panel px-2 py-1.5 text-sm text-fg"
+          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={f.notify_kind}
           onChange={(e) => setF({ ...f, notify_kind: e.target.value })}
         >

@@ -52,7 +52,7 @@ export function DNSPage() {
                 key={z.uid}
                 onClick={() => setSelected(z.uid)}
                 className={`flex w-full items-center justify-between border-b border-border/60 px-4 py-3 text-left text-sm last:border-0 ${
-                  selected === z.uid ? "bg-brand/10" : "hover:bg-border/20"
+                  selected === z.uid ? "bg-brand-subtle" : "hover:bg-panel-hover"
                 }`}
               >
                 <span className="font-medium text-fg">{z.name}</span>

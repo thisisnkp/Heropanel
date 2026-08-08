@@ -16,14 +16,14 @@ export function ImpersonationBanner() {
   return (
     <div
       role="alert"
-      className="flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
+      className="flex items-center justify-center gap-3 bg-warning px-4 py-2 text-sm font-medium text-warning-subtle"
     >
       <span>
         Acting as <strong>{p.email}</strong> — signed in as {p.impersonator_email}. Every action is audited as you.
       </span>
       <Button
         variant="ghost"
-        className="h-7 bg-amber-950/10 px-2 text-amber-950 hover:bg-amber-950/20"
+        className="h-7 border-transparent bg-fg/10 px-2 text-warning-subtle shadow-none hover:bg-fg/20"
         loading={stop.isPending}
         onClick={() =>
           stop.mutate(undefined, {

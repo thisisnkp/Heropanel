@@ -318,6 +318,8 @@ func NewRouter(d Deps) http.Handler {
 				if d.Sites != nil {
 					r.With(requirePermission("site.read")).Get("/sites", listSitesHandler(d))
 					r.With(requirePermission("site.write")).Post("/sites", createSiteHandler(d))
+					// Static segment, so chi matches it ahead of /sites/{uid}.
+					r.With(requirePermission("site.write")).Post("/sites/temp-domain", tempDomainHandler(d))
 					r.With(requirePermission("site.read")).Get("/sites/{uid}", getSiteHandler(d))
 					r.With(requirePermission("site.write")).Delete("/sites/{uid}", deleteSiteHandler(d))
 					r.With(requirePermission("site.read")).Get("/sites/{uid}/php", getSitePHPHandler(d))

@@ -209,7 +209,7 @@ export function CastPlayer({ cast }: { cast: Cast }) {
               onClick={() => setSpeed(s)}
               className={cn(
                 "rounded border border-border px-2 py-1 text-xs",
-                speed === s ? "bg-brand text-brand-fg" : "text-muted hover:bg-border/50 hover:text-fg",
+                speed === s ? "bg-brand text-brand-fg" : "text-muted hover:bg-panel-hover hover:text-fg",
               )}
             >
               {s}×

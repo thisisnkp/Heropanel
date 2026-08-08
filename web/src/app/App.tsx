@@ -28,6 +28,7 @@ const DashboardPage = page(() => import("@/features/dashboard/DashboardPage"), "
 const UsersPage = page(() => import("@/features/users/UsersPage"), "UsersPage");
 const SitesPage = page(() => import("@/features/sites/SitesPage"), "SitesPage");
 const SiteDetailPage = page(() => import("@/features/sites/SiteDetailPage"), "SiteDetailPage");
+const NewSitePage = page(() => import("@/features/sites/NewSitePage"), "NewSitePage");
 const DatabasesPage = page(() => import("@/features/databases/DatabasesPage"), "DatabasesPage");
 const DNSPage = page(() => import("@/features/dns/DNSPage"), "DNSPage");
 const DomainsPage = page(() => import("@/features/domains/DomainsPage"), "DomainsPage");
@@ -116,6 +117,8 @@ export function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/sites" element={<SitesPage />} />
+            {/* Before /sites/:uid so "new" is not read as a site uid. */}
+            <Route path="/sites/new" element={<NewSitePage />} />
             <Route path="/sites/:uid" element={<SiteDetailPage />} />
             <Route path="/databases" element={<DatabasesPage />} />
             <Route path="/domains" element={<DomainsPage />} />

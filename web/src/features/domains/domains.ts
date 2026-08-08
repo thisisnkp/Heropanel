@@ -35,12 +35,22 @@ export function useDeleteParked() {
   });
 }
 
+// DomainPool is what the create-site form needs to explain a typed domain.
+// `fqdns` is what can be taken outright; `trusted` is every ownership-proven
+// domain including ones already serving a site, which is what makes
+// "blog.acme.com" recognisable as needing no verification when acme.com is
+// already in use.
+export interface DomainPool {
+  fqdns: string[];
+  trusted: string[];
+}
+
 // useFreeDomains lists domains available to pick when creating a site: verified
 // parked domains and panel-hosted DNS zones not already attached to one.
 export function useFreeDomains() {
   return useQuery({
     queryKey: ["domains", "free"],
-    queryFn: () => api.get<{ fqdns: string[] }>("/domains/free"),
+    queryFn: () => api.get<DomainPool>("/domains/free"),
     staleTime: 30_000,
   });
 }

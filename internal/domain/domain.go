@@ -80,8 +80,27 @@ type AddInput struct {
 // reFQDN is a strict domain check (also used to build web-server config).
 var reFQDN = regexp.MustCompile(`^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
+// NormalizeFQDN lowercases and trims a domain the way every entry point here
+// does before storing or comparing one. Exported because domains arrive from
+// outside this package too — the setup wizard's panel domain, for one — and a
+// second normalizer elsewhere is how "Example.COM." and "example.com" end up
+// as two different records.
+//
+// Whitespace comes off before the root dot, not after: a pasted "acme.com. "
+// has its trailing dot *inside* the padding, so trimming in the other order
+// leaves it attached and the value then fails validation.
+func NormalizeFQDN(fqdn string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
+}
+
+// ValidFQDN reports whether an already-normalized domain is syntactically
+// valid. It accepts a leading "*." because a wildcard is a legitimate vhost
+// name; callers that need a concrete host (anything used as a parent to mint
+// subdomains under) must reject that themselves.
+func ValidFQDN(fqdn string) bool { return reFQDN.MatchString(fqdn) }
+
 func validateAdd(in *AddInput) error {
-	in.FQDN = strings.ToLower(strings.TrimSpace(strings.TrimSuffix(in.FQDN, ".")))
+	in.FQDN = NormalizeFQDN(in.FQDN)
 	in.Kind = strings.ToLower(strings.TrimSpace(in.Kind))
 	in.RedirectTo = strings.TrimSpace(in.RedirectTo)
 

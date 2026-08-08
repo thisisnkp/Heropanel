@@ -18,6 +18,7 @@ export interface CreateSiteInput {
   name: string;
   primary_domain: string;
   type: string;
+  deploy_mode?: string;
 }
 
 export function useCreateSite() {

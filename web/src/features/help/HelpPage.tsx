@@ -56,10 +56,10 @@ function ShortcutsCard() {
 }
 
 const METHOD_TONE: Record<string, string> = {
-  GET: "text-emerald-600 dark:text-emerald-400",
-  POST: "text-blue-600 dark:text-blue-400",
-  PUT: "text-amber-600 dark:text-amber-400",
-  PATCH: "text-amber-600 dark:text-amber-400",
+  GET: "text-success",
+  POST: "text-brand",
+  PUT: "text-warning",
+  PATCH: "text-warning",
   DELETE: "text-danger",
 };
 
@@ -141,7 +141,7 @@ function EndpointRow({ e }: { e: ApiEndpoint }) {
       </span>
       <span className="font-mono text-xs text-fg">{e.path}</span>
       {e.summary && <span className="text-xs text-muted">— {e.summary}</span>}
-      {e.deprecated && <span className="text-xs text-amber-600 dark:text-amber-400">deprecated</span>}
+      {e.deprecated && <span className="text-xs text-warning">deprecated</span>}
       {e.permission && (
         <span className="ml-auto rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[11px] text-muted">
           {e.permission}

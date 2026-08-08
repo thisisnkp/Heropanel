@@ -120,7 +120,7 @@ export function RecordingsTable({
                     </Button>
                     <a
                       href={`/api/v1/terminal/recordings/${rec.uid}/cast`}
-                      className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-border/50 hover:text-fg"
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-panel-hover hover:text-fg"
                       title="Download as asciicast (playable by asciinema)"
                     >
                       Download

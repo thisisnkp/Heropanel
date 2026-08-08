@@ -1,0 +1,24 @@
+-- The panel's own base domain (SQLite).
+--
+-- Every other domain in the panel belongs to a site or to a customer. This one
+-- belongs to the installation itself: it is the base a throwaway site address
+-- hangs off, so an operator who just wants something serving can take
+-- `site-k3f9a2.panel.example.com` instead of owning a domain first. Nothing
+-- else in the panel had a notion of "this installation's own hostname" — mail
+-- and webmail each carry their own, but those are service FQDNs, not a base to
+-- mint subdomains under.
+--
+-- It lives on panel_setup rather than in a config file because it is a
+-- first-run question of exactly the same kind as the webserver and database
+-- engine, and because it has to be editable afterwards without a redeploy.
+--
+-- panel_ipv4 is optional and exists only so the panel can create the wildcard
+-- A record itself when the base domain happens to be a zone it hosts. The panel
+-- never guesses its own address (there is no server-IP concept anywhere, by
+-- design) — with this empty, temporary addresses still mint, and the operator
+-- is shown the wildcard record to add wherever their DNS actually lives.
+--
+-- Both default to empty: an installation that never sets them simply has no
+-- temporary-domain option, which is why neither is NOT NULL-with-no-default.
+ALTER TABLE panel_setup ADD COLUMN panel_domain TEXT NOT NULL DEFAULT '';
+ALTER TABLE panel_setup ADD COLUMN panel_ipv4 TEXT NOT NULL DEFAULT '';

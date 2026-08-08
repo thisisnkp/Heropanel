@@ -8,9 +8,9 @@ function useAudit() {
 }
 
 const outcomeTone: Record<string, string> = {
-  success: "text-emerald-500",
+  success: "text-success",
   failure: "text-danger",
-  denied: "text-amber-500",
+  denied: "text-warning",
 };
 
 // AuditPage shows the tamper-evident log and lets an operator verify the chain.

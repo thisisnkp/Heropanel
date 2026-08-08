@@ -548,7 +548,7 @@ export function FilesTab({ uid }: { uid: string }) {
       <Card className="space-y-3 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <nav className="flex flex-wrap items-center gap-1 text-sm">
-            <button className="rounded px-2 py-1 text-muted hover:bg-border/50 hover:text-fg" onClick={() => setCwd("")}>
+            <button className="rounded px-2 py-1 text-muted hover:bg-panel-hover hover:text-fg" onClick={() => setCwd("")}>
               Home /
             </button>
             {segments.map((seg, i) => {
@@ -560,7 +560,7 @@ export function FilesTab({ uid }: { uid: string }) {
                   onClick={() => setCwd(to)}
                   className={cn(
                     "rounded px-2 py-1",
-                    last ? "font-medium text-fg" : "text-muted hover:bg-border/50 hover:text-fg",
+                    last ? "font-medium text-fg" : "text-muted hover:bg-panel-hover hover:text-fg",
                   )}
                 >
                   {seg} {last ? "" : "/"}
@@ -762,7 +762,7 @@ export function FilesTab({ uid }: { uid: string }) {
           onContextMenu={(e) => menu.open(e, null)}
         >
           {dragging && (
-            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl border-2 border-dashed border-brand bg-brand/10">
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl border-2 border-dashed border-brand bg-brand-subtle">
               <p className="text-sm font-medium text-fg">Drop to upload into {cwd ? `/${cwd}` : "the site root"}</p>
             </div>
           )}
@@ -1080,7 +1080,7 @@ function IconAction({
       onClick={onClick}
       disabled={loading}
       className={cn(
-        "grid h-8 w-8 place-items-center rounded-lg border border-border text-sm transition-colors hover:bg-border/50 disabled:opacity-50",
+        "grid h-8 w-8 place-items-center rounded-lg border border-border text-sm transition-colors hover:bg-panel-hover disabled:opacity-50",
         danger ? "text-danger" : "text-muted hover:text-fg",
       )}
     >

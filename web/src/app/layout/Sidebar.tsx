@@ -1,14 +1,28 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import {
+  ChevronRight,
+  Container,
+  Globe,
+  LayoutDashboard,
+  LayoutGrid,
+  type LucideIcon,
+  Mail,
+  Network,
+  Server,
+  Settings,
+  Store,
+  Users,
+} from "lucide-react";
 import { Logo } from "@/components/Logo";
-import { cn } from "@/components/ui";
+import { cn, microLabel } from "@/components/ui";
 import { can } from "@/lib/api";
 import { useMe } from "@/features/auth/auth";
 
 interface NavLeaf {
   to: string;
   label: string;
-  icon: string;
+  icon?: LucideIcon;
   /**
    * Hide the item without this permission. Only set where the permission is a
    * narrow one: the other entries lead to pages that explain a 403, which is
@@ -30,7 +44,7 @@ interface NavLeaf {
 // chevron toggles the children. Without `to` the whole header is the toggle.
 interface NavGroup {
   label: string;
-  icon: string;
+  icon: LucideIcon;
   to?: string;
   children: NavLeaf[];
 }
@@ -41,110 +55,87 @@ function isGroup(item: NavItem): item is NavGroup {
   return "children" in item;
 }
 
-// Primary navigation. The shape follows the layout the operator asked for: a
-// small set of top-level destinations, with the rest folded into the group they
-// belong to (site tooling under Websites; DNS under Domains) and the
-// panel-administration screens under a pinned Settings group at the bottom.
-const items: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
+// Primary navigation, banded into sections. The bands are the point: a flat
+// list of eleven destinations is a list to read, whereas three short labelled
+// groups are something the eye lands in. Each band is a different *kind* of
+// work — what you host, what you run alongside it, who may touch it — so the
+// grouping survives new entries being added to any of them.
+const sections: { label: string; items: NavItem[] }[] = [
   {
-    label: "Websites",
-    to: "/sites",
-    icon: "M4 5h16v11H4zM4 9h16M8 20h8M12 16v4",
-    children: [
-      { to: "/databases", label: "Databases", icon: "" },
-      { to: "/ssl", label: "SSL", icon: "" },
-      { to: "/security", label: "Security", icon: "", perm: "security.read" },
+    label: "Platform",
+    items: [
+      { to: "/", label: "Dashboard", icon: LayoutDashboard },
+      {
+        label: "Websites",
+        to: "/sites",
+        icon: Globe,
+        children: [
+          { to: "/databases", label: "Databases" },
+          { to: "/ssl", label: "SSL" },
+          { to: "/security", label: "Security", perm: "security.read" },
+        ],
+      },
+      {
+        label: "Domains",
+        icon: Network,
+        children: [
+          { to: "/domains", label: "Domain management", perm: "site.read" },
+          { to: "/dns", label: "DNS management", perm: "dns.read" },
+          { to: "/nameservers", label: "Nameserver management", perm: "dns.read" },
+        ],
+      },
     ],
   },
   {
-    label: "Domains",
-    icon: "M12 2a10 10 0 100 20 10 10 0 000-20M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20",
-    children: [
-      { to: "/domains", label: "Domain management", icon: "", perm: "site.read" },
-      { to: "/dns", label: "DNS management", icon: "", perm: "dns.read" },
-      { to: "/nameservers", label: "Nameserver management", icon: "", perm: "dns.read" },
+    label: "Services",
+    items: [
+      { to: "/docker", label: "Docker", icon: Container, perm: "docker.read" },
+      { to: "/apps", label: "Apps", icon: LayoutGrid, perm: "docker.read" },
+      { to: "/mail", label: "Mail", icon: Mail, perm: "mail.read" },
+      { to: "/marketplace", label: "Marketplace", icon: Store, perm: "module.read" },
     ],
   },
   {
-    to: "/docker",
-    label: "Docker",
-    icon: "M4 12h16v5a3 3 0 01-3 3H7a3 3 0 01-3-3zM7 12V9h3v3M12 12V9h3v3M12 9V6h3v3",
-    perm: "docker.read",
+    label: "Administration",
+    items: [{ to: "/users", label: "Users", icon: Users }],
   },
-  {
-    to: "/apps",
-    label: "Apps",
-    icon: "M12 2l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 9l6-1z",
-    perm: "docker.read",
-  },
-  {
-    to: "/mail",
-    label: "Mail",
-    icon: "M3 6h18v12H3zM3 7l9 6 9-6",
-    perm: "mail.read",
-  },
-  {
-    to: "/marketplace",
-    label: "Marketplace",
-    icon: "M3 9l1.5-5h15L21 9M3 9h18M3 9v10a1 1 0 001 1h16a1 1 0 001-1V9M8 13h8",
-    perm: "module.read",
-  },
-  { to: "/users", label: "Users", icon: "M16 14a4 4 0 10-8 0M12 7a3 3 0 100 6 3 3 0 000-6M4 20a8 8 0 0116 0" },
 ];
 
 // Settings is pinned to the bottom of the sidebar (rendered outside the
 // scrolling nav) and gathers the panel-administration screens.
 const settingsGroup: NavGroup = {
   label: "Settings",
-  icon:
-    "M12 9a3 3 0 100 6 3 3 0 000-6M19.4 13a7.9 7.9 0 000-2l2-1.5-2-3.5-2.4 1a8 8 0 00-1.7-1L15 3H9l-.3 2.5a8 8 0 00-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 000 2l-2 1.5 2 3.5 2.4-1a8 8 0 001.7 1L9 21h6l.3-2.5a8 8 0 001.7-1l2.4 1 2-3.5z",
+  icon: Settings,
   children: [
-    { to: "/monitor", label: "Monitoring", icon: "", perm: "monitor.read" },
-    { to: "/audit", label: "Audit logs", icon: "" },
-    { to: "/recordings", label: "Recordings", icon: "", perm: "terminal.recordings.read" },
-    { to: "/modules", label: "Modules", icon: "" },
-    { to: "/help", label: "Help", icon: "" },
+    { to: "/monitor", label: "Monitoring", perm: "monitor.read" },
+    { to: "/audit", label: "Audit logs" },
+    { to: "/recordings", label: "Recordings", perm: "terminal.recordings.read" },
+    { to: "/modules", label: "Modules" },
+    { to: "/help", label: "Help" },
   ],
 };
 
-function Icon({ path }: { path: string }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d={path} />
-    </svg>
-  );
-}
+// The selected destination is marked three ways at once — a tinted fill, the
+// accent colour on the label, and a rail against its leading edge. One alone
+// (a pale tint over the whole row) is easy to miss when scanning a long nav.
+const activeItem =
+  "bg-brand-subtle font-medium text-brand " +
+  "before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand before:content-['']";
+const idleItem = "text-muted hover:bg-panel-hover hover:text-fg";
 
 const leafClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-    isActive ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+    "relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors",
+    isActive ? activeItem : idleItem,
   );
 
 function Leaf({ item }: { item: NavLeaf }) {
+  const Icon = item.icon;
   return (
     <NavLink to={item.to} end={item.to === "/"} className={leafClass}>
-      <Icon path={item.icon} />
+      {Icon && <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />}
       {item.label}
     </NavLink>
-  );
-}
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className={cn("h-4 w-4 transition-transform", expanded ? "rotate-90" : "")}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 6l6 6-6 6" />
-    </svg>
   );
 }
 
@@ -158,6 +149,7 @@ function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["d
   // to show.
   if (children.length === 0 && !group.to) return null;
   const expanded = open || hasActiveChild;
+  const Icon = group.icon;
 
   return (
     <div>
@@ -165,12 +157,12 @@ function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["d
         // Linkable group: the label navigates, the chevron toggles.
         <div
           className={cn(
-            "flex items-center rounded-lg text-sm transition-colors",
-            selfActive || hasActiveChild ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+            "relative flex items-center rounded-lg text-[13px] transition-colors",
+            selfActive || hasActiveChild ? activeItem : idleItem,
           )}
         >
-          <NavLink to={group.to} className="flex flex-1 items-center gap-3 px-3 py-2">
-            <Icon path={group.icon} />
+          <NavLink to={group.to} className="flex flex-1 items-center gap-2.5 px-2.5 py-1.5">
+            <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
             <span className="flex-1 text-left">{group.label}</span>
           </NavLink>
           {children.length > 0 && (
@@ -179,9 +171,13 @@ function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["d
               onClick={() => setOpen((v) => !v)}
               aria-expanded={expanded}
               aria-label={`Toggle ${group.label}`}
-              className="rounded-lg px-2 py-2 hover:text-fg"
+              className="rounded-lg px-1.5 py-1.5 opacity-70 transition-opacity hover:opacity-100"
             >
-              <Chevron expanded={expanded} />
+              <ChevronRight
+                className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")}
+                strokeWidth={2.25}
+                aria-hidden
+              />
             </button>
           )}
         </div>
@@ -192,25 +188,31 @@ function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["d
           onClick={() => setOpen((v) => !v)}
           aria-expanded={expanded}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            hasActiveChild ? "text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+            "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors",
+            hasActiveChild ? "font-medium text-fg" : idleItem,
           )}
         >
-          <Icon path={group.icon} />
+          <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
           <span className="flex-1 text-left">{group.label}</span>
-          <Chevron expanded={expanded} />
+          <ChevronRight
+            className={cn("h-3.5 w-3.5 opacity-70 transition-transform", expanded && "rotate-90")}
+            strokeWidth={2.25}
+            aria-hidden
+          />
         </button>
       )}
       {expanded && children.length > 0 && (
-        <div className="mt-1 space-y-1 border-l border-border/60 pl-3">
+        // The rail is indented to sit under the parent's icon, so the children
+        // hang off it rather than starting at an unrelated left edge.
+        <div className="ml-[1.3125rem] mt-0.5 space-y-0.5 border-l border-border pl-2.5">
           {children.map((c) => (
             <NavLink
               key={c.to}
               to={c.to}
               className={({ isActive }) =>
                 cn(
-                  "block rounded-lg px-3 py-1.5 text-sm transition-colors",
-                  isActive ? "bg-brand/15 text-fg" : "text-muted hover:bg-border/40 hover:text-fg",
+                  "block rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
+                  isActive ? "bg-brand-subtle font-medium text-brand" : idleItem,
                 )
               }
             >
@@ -225,24 +227,42 @@ function Group({ group, me }: { group: NavGroup; me: ReturnType<typeof useMe>["d
 
 export function Sidebar() {
   const { data: me } = useMe();
-  const visible = items.filter((it) => (isGroup(it) ? true : !it.perm || can(me, it.perm)));
+
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-panel">
-      <div className="flex h-14 items-center gap-2 px-4">
-        <Logo className="h-7 w-7" />
-        <span className="text-sm font-semibold tracking-tight text-fg">HeroPanel</span>
+    <aside className="flex w-[15rem] shrink-0 flex-col border-r border-border bg-panel">
+      {/* h-14 and the bottom rule match the top bar exactly, so the header line
+          runs unbroken across the sidebar seam instead of stepping at it. */}
+      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-4">
+        <Logo className="h-7 w-7 shrink-0" />
+        <div className="min-w-0">
+          <div className="truncate text-[15px] font-semibold leading-tight tracking-tight text-fg">HeroPanel</div>
+          <div className="flex items-center gap-1 text-2xs text-muted">
+            <Server className="h-3 w-3" strokeWidth={2} aria-hidden />
+            single-node
+          </div>
+        </div>
       </div>
-      <nav aria-label="Primary" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        {visible.map((it) =>
-          isGroup(it) ? <Group key={it.label} group={it} me={me} /> : <Leaf key={it.to} item={it} />,
-        )}
+
+      <nav aria-label="Primary" className="flex-1 space-y-5 overflow-y-auto px-2.5 py-3">
+        {sections.map((section) => {
+          const visible = section.items.filter((it) => (isGroup(it) ? true : !it.perm || can(me, it.perm)));
+          if (visible.length === 0) return null;
+          return (
+            <div key={section.label} className="space-y-0.5">
+              <div className={cn(microLabel, "px-2.5 pb-1.5")}>{section.label}</div>
+              {visible.map((it) =>
+                isGroup(it) ? <Group key={it.label} group={it} me={me} /> : <Leaf key={it.to} item={it} />,
+              )}
+            </div>
+          );
+        })}
       </nav>
+
       {/* Settings is pinned to the bottom, always reachable regardless of how
           far the primary nav has scrolled. */}
-      <div className="border-t border-border px-3 py-2">
+      <div className="border-t border-border px-2.5 py-2">
         <Group group={settingsGroup} me={me} />
       </div>
-      <div className="border-t border-border px-4 py-2 text-xs text-muted">v0 · single-node</div>
     </aside>
   );
 }

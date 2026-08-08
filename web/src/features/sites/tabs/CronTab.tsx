@@ -88,7 +88,7 @@ export function CronTab({ uid }: { uid: string }) {
                 <tr key={j.uid} className="border-b border-border/60 last:border-0">
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${j.enabled ? "bg-emerald-500" : "bg-border"}`} aria-hidden />
+                      <span className={`h-2 w-2 rounded-full ${j.enabled ? "bg-success" : "bg-border"}`} aria-hidden />
                       <span className="text-fg">{j.name}</span>
                     </div>
                   </td>

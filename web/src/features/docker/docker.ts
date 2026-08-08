@@ -146,10 +146,10 @@ export function usePruneImages() {
 export function stateTone(state: string): string {
   switch (state) {
     case "running":
-      return "text-emerald-500";
+      return "text-success";
     case "restarting":
     case "created":
-      return "text-amber-500";
+      return "text-warning";
     case "exited":
     case "dead":
       return "text-danger";

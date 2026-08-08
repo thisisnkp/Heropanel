@@ -579,7 +579,7 @@ function PendingBanner({
   }, [deadline]);
 
   return (
-    <Card className="border-amber-500/40 bg-amber-500/10">
+    <Card className="border-warning/40 bg-warning/10">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div className="text-sm text-fg">
           <span className="font-semibold">A firewall change is pending.</span> It reverts automatically in{" "}

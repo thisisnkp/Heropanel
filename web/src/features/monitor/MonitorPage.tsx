@@ -38,7 +38,7 @@ export function MonitorPage() {
         </div>
         <span className="flex items-center gap-2 text-xs text-muted">
           <span
-            className={`h-2 w-2 rounded-full ${streaming ? "animate-pulse bg-emerald-500" : "bg-border"}`}
+            className={`h-2 w-2 rounded-full ${streaming ? "animate-pulse bg-success" : "bg-border"}`}
             aria-hidden
           />
           {streaming ? "live" : "connecting…"}
@@ -87,7 +87,7 @@ function HistoryPanel() {
               key={r}
               onClick={() => setRange(r)}
               className={`rounded px-2 py-1 text-xs ${
-                r === range ? "bg-brand/15 text-brand" : "text-muted hover:bg-border/50 hover:text-fg"
+                r === range ? "bg-brand-subtle text-brand" : "text-muted hover:bg-panel-hover hover:text-fg"
               }`}
             >
               {r}
@@ -132,7 +132,7 @@ function ServicesPanel() {
 function ServiceChip({ svc }: { svc: ServiceHealth }) {
   const tone =
     svc.state === "active"
-      ? "bg-emerald-500"
+      ? "bg-success"
       : svc.state === "unknown"
         ? "bg-border"
         : "bg-danger";
@@ -275,7 +275,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 // thresholds the numbers use, so the eye and the figure agree.
 function Bar({ pct }: { pct: number }) {
   const clamped = Math.max(0, Math.min(100, pct));
-  const color = pct >= 90 ? "bg-danger" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500";
+  const color = pct >= 90 ? "bg-danger" : pct >= 75 ? "bg-warning" : "bg-success";
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-border/60">
       <div className={`h-full rounded-full ${color} transition-[width] duration-500`} style={{ width: `${clamped}%` }} />

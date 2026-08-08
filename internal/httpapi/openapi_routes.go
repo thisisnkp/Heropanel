@@ -411,6 +411,15 @@ var apiDocs = map[string]opMeta{
 		}, "name", "primary_domain", "type"),
 		RespSchema: ref("Site"), RespStatus: 201,
 	},
+	"POST /api/v1/sites/temp-domain": {
+		Summary: "Mint a temporary site address", Tags: []string{"Sites"}, Permission: "site.write",
+		RespSchema: object(map[string]any{
+			"fqdn":     prop("string", "The suggested hostname, e.g. site-k3f9a2.panel.example.com."),
+			"base":     prop("string", "The panel's configured base domain."),
+			"wildcard": prop("string", "The DNS record that must point at this host for any temporary address to resolve."),
+		}),
+		RespDesc: "Suggests a throwaway hostname under the panel's own domain. Nothing is reserved and no DNS is written — the name is only taken when a site is created with it. 409 when no panel domain is configured.",
+	},
 	"GET /api/v1/sites/{uid}": {
 		Summary: "Get a site", Tags: []string{"Sites"}, Permission: "site.read", RespSchema: ref("Site"),
 	},
@@ -513,11 +522,12 @@ var apiDocs = map[string]opMeta{
 		RespDesc: "Removed. 409 if the domain is still attached to a site — remove it there first.",
 	},
 	"GET /api/v1/domains/free": {
-		Summary: "List free domains", Tags: []string{"Domains"}, Permission: "domain.read",
+		Summary: "List free and trusted domains", Tags: []string{"Domains"}, Permission: "domain.read",
 		RespSchema: object(map[string]any{
-			"fqdns": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"fqdns":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"trusted": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		}),
-		RespDesc: "Verified parked domains and panel-hosted DNS zones not yet attached to a site — the create-site picker's source.",
+		RespDesc: "fqdns: verified parked domains and panel-hosted DNS zones not yet attached to a site — the create-site picker's source. trusted: every ownership-proven domain including ones already in use, so a caller can recognise a subdomain of one as needing no verification.",
 	},
 
 	// ── runtime ───────────────────────────────────────────────────────────────

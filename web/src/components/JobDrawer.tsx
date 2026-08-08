@@ -14,7 +14,7 @@ function Row({ job }: { job: TrackedJob }) {
         <div
           className={cn(
             "h-full rounded-full transition-all duration-300",
-            failed ? "bg-danger" : done ? "bg-emerald-500" : "bg-brand",
+            failed ? "bg-danger" : done ? "bg-success" : "bg-brand",
           )}
           style={{ width: `${done ? 100 : Math.max(4, job.progress)}%` }}
         />

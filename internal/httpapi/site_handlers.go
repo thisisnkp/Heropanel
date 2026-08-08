@@ -8,7 +8,9 @@ import (
 
 	"github.com/thisisnkp/heropanel/internal/audit"
 	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/heropanel/internal/setup"
 	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
 // listSitesHandler returns sites. Gated by "site.read". A superuser sees every
@@ -95,6 +97,51 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 		}
 		audit.SetResource(r.Context(), "sites", out.UID)
 		writeJSON(w, r, http.StatusCreated, out)
+	}
+}
+
+// tempDomainHandler mints a throwaway hostname under the panel's own base
+// domain, for an operator who wants a site serving before they own a domain.
+// Gated by "site.write" rather than "setup.manage": this is a step in creating
+// a site, and someone allowed to create one must not need admin rights to name
+// it.
+//
+// It is a POST because it mints something, but it deliberately writes nothing —
+// no reservation, no DNS. The wildcard that makes these addresses resolve is
+// created once, when an administrator sets the panel domain (see
+// bootstrap.ensureTempDomainWildcard); this route only names a host. That keeps
+// a site-creation flow from quietly editing DNS.
+func tempDomainHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if d.Setup == nil {
+			writeError(w, r, errx.New(errx.KindUnavailable, "setup_unavailable",
+				"Temporary addresses are unavailable because the panel has no datastore."))
+			return
+		}
+		state, err := d.Setup.Status(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if state.PanelDomain == "" {
+			writeError(w, r, errx.New(errx.KindConflict, "panel_domain_unset",
+				"No panel domain is configured, so there is nothing to build a temporary address under. "+
+					"An administrator can set one in Setup."))
+			return
+		}
+		fqdn, err := setup.SuggestTempDomain(state.PanelDomain)
+		if err != nil {
+			writeError(w, r, errx.Internal(err))
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"fqdn": fqdn,
+			"base": state.PanelDomain,
+			// The record the operator needs wherever this base's DNS lives. Sent
+			// unconditionally: the panel cannot cheaply prove a wildcard resolves,
+			// and claiming it does when it does not is worse than repeating it.
+			"wildcard": setup.WildcardFor(state.PanelDomain),
+		})
 	}
 }
 

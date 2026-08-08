@@ -2,7 +2,7 @@ import { useToasts, type ToastKind } from "@/stores/toast";
 import { cn } from "./ui";
 
 const tone: Record<ToastKind, string> = {
-  success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  success: "border-success/40 bg-success/10 text-success",
   error: "border-danger/40 bg-danger/10 text-danger",
   info: "border-border bg-panel text-fg",
 };

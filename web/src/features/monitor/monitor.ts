@@ -234,6 +234,6 @@ export function fmtUptime(sec: number): string {
 /** usageTone maps a 0–100 utilisation to the badge colour the app uses. */
 export function usageTone(pct: number): string {
   if (pct >= 90) return "text-danger";
-  if (pct >= 75) return "text-amber-500";
-  return "text-emerald-500";
+  if (pct >= 75) return "text-warning";
+  return "text-success";
 }

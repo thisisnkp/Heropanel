@@ -1,10 +1,29 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Clock, Globe, Link2, Lock, Search, Trash2 } from "lucide-react";
 import { api, ApiRequestError, can, type Domain, type ParkedDomain, type Site } from "@/lib/api";
-import { Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Spinner, StatusBadge } from "@/components/ui";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  DataTable,
+  EmptyState,
+  Field,
+  Input,
+  Modal,
+  PageHeader,
+  Select,
+  Skeleton,
+  Td,
+  Tr,
+  cn,
+} from "@/components/ui";
 import { toast } from "@/stores/toast";
 import { useMe } from "@/features/auth/auth";
+import { useCompleteSetup, useSetup } from "@/features/setup/setup";
 import { useSites } from "@/features/sites/sites";
 import { useDeleteParked, useParkedDomains, usePark, useVerifyParked } from "./domains";
 
@@ -98,20 +117,15 @@ export function DomainsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-fg">Domains</h1>
-          <p className="text-sm text-muted">Every domain you've parked or attached to a website.</p>
-        </div>
-        {canShowAdd && <Button onClick={() => setAdding(true)}>Add domain</Button>}
-      </div>
+      <PageHeader
+        title="Domains"
+        description="Every domain you've parked or attached to a website."
+        actions={canShowAdd && <Button onClick={() => setAdding(true)}>Add domain</Button>}
+      />
+
+      {can(me, "setup.manage") && <PanelDomainCard />}
 
       {can(me, "domain.read") && <ParkedDomainsSection canWrite={canPark} viewing={viewing} onView={setViewing} />}
-
-      <div>
-        <h2 className="text-lg font-semibold text-fg">Attached domains</h2>
-        <p className="text-sm text-muted">Every domain already serving a website. Manage each on its site.</p>
-      </div>
 
       {sites.error && (
         <Alert>
@@ -121,67 +135,78 @@ export function DomainsPage() {
         </Alert>
       )}
 
-      {sites.isLoading ? (
-        <Spinner />
-      ) : (
-        <Card className="overflow-hidden">
-          <div className="border-b border-border p-3">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by domain, type, or site…"
-              aria-label="Filter domains"
-            />
+      <Card className="overflow-hidden">
+        <CardHeader
+          title="Attached domains"
+          description="Every domain already serving a website. Manage each on its site."
+          actions={
+            siteList.length > 0 && (
+              <div className="relative w-56">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Filter domains…"
+                  aria-label="Filter domains"
+                  className="h-8 pl-9 text-xs"
+                />
+              </div>
+            )
+          }
+        />
+        {sites.isLoading || (loadingDomains && rows.length === 0) ? (
+          <div className="divide-y divide-border">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <Skeleton className="h-3.5 w-56" />
+                <Skeleton className="h-3.5 w-16" />
+                <Skeleton className="h-3.5 w-24" />
+              </div>
+            ))}
           </div>
-          {siteList.length === 0 ? (
-            <EmptyState title="No sites yet" hint="Create a website and its domains appear here." />
-          ) : rows.length === 0 && !loadingDomains ? (
-            <EmptyState title="No domains match" hint="Clear the filter to see all domains." />
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="border-b border-border text-left text-muted">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Domain</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
-                  <th className="px-4 py-3 font-medium">Site</th>
-                  <th className="px-4 py-3 font-medium">HTTPS</th>
-                  <th className="px-4 py-3 font-medium">Redirect</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={`${r.site.uid}-${r.uid}`} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs text-fg">{r.fqdn}</td>
-                    <td className="px-4 py-3">
-                      <Badge>{r.kind}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/sites/${r.site.uid}`)}
-                        className="text-brand hover:underline"
-                      >
-                        {r.site.name}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.force_https ? <StatusBadge status="active" /> : <span className="text-xs text-muted">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted">
-                      {r.redirect_to ? `${r.redirect_code ?? 301} → ${r.redirect_to}` : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {loadingDomains && (
-            <div className="flex items-center gap-2 p-4 text-xs text-muted">
-              <Spinner /> Loading domains…
-            </div>
-          )}
-        </Card>
-      )}
+        ) : siteList.length === 0 ? (
+          <EmptyState icon={Globe} title="No sites yet" hint="Create a website and its domains appear here." />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={Search} title="No domains match" hint="Clear the filter to see all domains." />
+        ) : (
+          <DataTable head={["Domain", "Type", "Website", "HTTPS", "Redirect"]}>
+            {rows.map((r) => (
+              <Tr key={`${r.site.uid}-${r.uid}`}>
+                <Td className="font-mono text-xs">{r.fqdn}</Td>
+                <Td>
+                  <Badge tone={r.kind === "primary" ? "brand" : "neutral"}>{r.kind}</Badge>
+                </Td>
+                <Td>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/sites/${r.site.uid}`)}
+                    className="font-medium text-brand hover:underline"
+                  >
+                    {r.site.name}
+                  </button>
+                </Td>
+                <Td>
+                  {r.force_https ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
+                      <Lock className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+                      Forced
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted">—</span>
+                  )}
+                </Td>
+                <Td className="text-xs text-muted">
+                  {r.redirect_to ? `${r.redirect_code ?? 301} → ${r.redirect_to}` : "—"}
+                </Td>
+              </Tr>
+            ))}
+          </DataTable>
+        )}
+      </Card>
 
       {adding && (
         <AddDomainModal
@@ -193,6 +218,147 @@ export function DomainsPage() {
         />
       )}
     </div>
+  );
+}
+
+// ── panel domain ─────────────────────────────────────────────────────────────
+
+// The one domain that belongs to the installation rather than to a customer:
+// the base temporary site addresses are minted under. It lives here because it
+// is a domain and this is the domains page — a settings screen for a single
+// field would be worse. Admin-only, and it reuses the setup endpoint rather
+// than growing a second way to write the same row.
+function PanelDomainCard() {
+  const { data } = useSetup(true);
+  const complete = useCompleteSetup();
+  const [editing, setEditing] = useState(false);
+
+  const state = data?.state;
+  const base = state?.panel_domain ?? "";
+  const ipv4 = state?.panel_ipv4 ?? "";
+
+  return (
+    <Card>
+      <CardHeader
+        title="Panel domain"
+        description="The base used for temporary website addresses, so a site can go up before you own a domain."
+        actions={
+          !editing && (
+            <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+              {base ? "Change" : "Set domain"}
+            </Button>
+          )
+        }
+      />
+      <div className="p-4">
+        {editing ? (
+          <PanelDomainForm
+            initialDomain={base}
+            initialIPv4={ipv4}
+            pending={complete.isPending}
+            error={complete.error instanceof ApiRequestError ? complete.error : null}
+            onCancel={() => setEditing(false)}
+            onSave={(panel_domain, panel_ipv4) => {
+              // The setup endpoint takes the whole selection, so the current
+              // stack choices ride along unchanged — sending a partial would
+              // reset the webserver and database engine to empty.
+              if (!state) return;
+              complete.mutate(
+                {
+                  webserver: state.webserver!,
+                  db_engine: state.db_engine!,
+                  manage_dns: state.manage_dns ?? false,
+                  create_mail: state.create_mail ?? false,
+                  license_key: state.license_key ?? "",
+                  panel_domain,
+                  panel_ipv4,
+                },
+                {
+                  onSuccess: () => {
+                    setEditing(false);
+                    toast.success(panel_domain ? "Panel domain saved" : "Panel domain cleared");
+                  },
+                },
+              );
+            }}
+          />
+        ) : base ? (
+          <div className="space-y-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="font-mono text-xs text-fg">{base}</code>
+              <Badge tone="brand">temporary addresses on</Badge>
+            </div>
+            <p className="text-xs leading-relaxed text-muted">
+              New sites can take a <code className="font-mono">site-xxxxxx.{base}</code> address. For those to
+              resolve, <code className="font-mono">*.{base}</code> must have an <code className="font-mono">A</code>{" "}
+              record pointing at this server
+              {ipv4 ? (
+                <>
+                  {" "}
+                  (<code className="font-mono">{ipv4}</code> — created automatically if this domain is a zone managed
+                  here).
+                </>
+              ) : (
+                <> — add it wherever this domain's DNS lives.</>
+              )}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">
+            Not set. Without one the panel offers no temporary addresses, and every website needs a domain you own.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function PanelDomainForm({
+  initialDomain,
+  initialIPv4,
+  pending,
+  error,
+  onSave,
+  onCancel,
+}: {
+  initialDomain: string;
+  initialIPv4: string;
+  pending: boolean;
+  error: ApiRequestError | null;
+  onSave: (domain: string, ipv4: string) => void;
+  onCancel: () => void;
+}) {
+  const [domain, setDomain] = useState(initialDomain);
+  const [ipv4, setIPv4] = useState(initialIPv4);
+  const fieldError = (f: string) => error?.fields?.find((x) => x.field === f)?.message;
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(domain.trim(), ipv4.trim());
+      }}
+    >
+      <Field label="Domain" hint={fieldError("panel_domain") ?? "Leave empty to turn temporary addresses off."}>
+        <Input autoFocus value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="panel.example.com" />
+      </Field>
+      <Field
+        label="This server's IPv4 (optional)"
+        hint={fieldError("panel_ipv4") ?? "Only used to create the wildcard record automatically, when the domain is a zone managed here."}
+      >
+        <Input value={ipv4} onChange={(e) => setIPv4(e.target.value)} placeholder="203.0.113.10" />
+      </Field>
+      {error && !error.fields?.length && <Alert>{error.message}</Alert>}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" loading={pending}>
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -301,68 +467,87 @@ function ParkedDomainsSection({
   const del = useDeleteParked();
 
   return (
-    <Card className="space-y-3 p-5">
-      <div>
-        <h2 className="text-lg font-semibold text-fg">Parked domains</h2>
-        <p className="text-sm text-muted">
-          Registered here with no website yet. Verify ownership via DNS and it becomes a free domain you can pick
-          when creating a site — no warning, because ownership is already proven.
-        </p>
-      </div>
+    <Card className="overflow-hidden">
+      <CardHeader
+        title="Parked domains"
+        description="Registered here with no website yet. Verify ownership via DNS and it becomes a free domain you can pick when creating a site — no warning, because ownership is already proven."
+      />
 
-      {error && <Alert>Could not load parked domains.</Alert>}
-      {isLoading ? (
-        <Spinner />
+      {error ? (
+        <div className="p-4">
+          <Alert>Could not load parked domains.</Alert>
+        </div>
+      ) : isLoading ? (
+        <div className="divide-y divide-border">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-center gap-4 px-4 py-3">
+              <Skeleton className="h-3.5 w-48" />
+              <Skeleton className="h-3.5 w-20" />
+            </div>
+          ))}
+        </div>
       ) : !data || data.length === 0 ? (
-        <EmptyState title="No parked domains" hint="Park a domain to prove ownership before you build a site on it." />
+        <EmptyState
+          icon={Link2}
+          title="No parked domains"
+          hint="Park a domain to prove ownership before you build a site on it."
+        />
       ) : (
-        <table className="w-full text-sm">
-          <thead className="border-b border-border text-left text-muted">
-            <tr>
-              <th className="px-2 py-2 font-medium">Domain</th>
-              <th className="px-2 py-2 font-medium">Status</th>
-              <th className="px-2 py-2 font-medium">Site</th>
-              <th className="px-2 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((pd) => (
-              <tr key={pd.uid} className="border-b border-border/60 last:border-0">
-                <td className="px-2 py-2 font-mono text-xs text-fg">{pd.fqdn}</td>
-                <td className="px-2 py-2">
-                  <span className={pd.status === "verified" ? "text-xs font-medium text-emerald-500" : "text-xs font-medium text-amber-500"}>
-                    {pd.status === "verified" ? "Verified" : "Unverified"}
+        <DataTable head={["Domain", "Ownership", "Availability", { label: "", align: "right" }]}>
+          {data.map((pd) => {
+            const verified = pd.status === "verified";
+            return (
+              <Tr key={pd.uid}>
+                <Td className="font-mono text-xs">{pd.fqdn}</Td>
+                <Td>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 text-xs font-medium",
+                      verified ? "text-success" : "text-warning",
+                    )}
+                  >
+                    {verified ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                    ) : (
+                      <Clock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                    )}
+                    {verified ? "Verified" : "Unverified"}
                   </span>
-                </td>
-                <td className="px-2 py-2 text-xs text-muted">{pd.attached ? "In use" : "Free"}</td>
-                <td className="px-2 py-2 text-right">
+                </Td>
+                <Td>
+                  <Badge tone={pd.attached ? "neutral" : "success"}>{pd.attached ? "In use" : "Free"}</Badge>
+                </Td>
+                <Td align="right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" className="h-8 px-2" onClick={() => onView(pd)}>
-                      {pd.status === "verified" ? "Details" : "Verify"}
+                    <Button variant="ghost" size="sm" onClick={() => onView(pd)}>
+                      {verified ? "Details" : "Verify"}
                     </Button>
                     {canWrite && (
                       <Button
                         variant="ghost"
-                        className="h-8 px-2 text-danger"
+                        size="sm"
+                        className="text-danger"
                         disabled={pd.attached}
-                        title={pd.attached ? "Remove this domain from its site first" : undefined}
+                        title={pd.attached ? "Remove this domain from its site first" : "Unpark this domain"}
                         loading={del.isPending}
                         onClick={() =>
                           del.mutate(pd.uid, {
                             onSuccess: () => toast.success("Domain unparked"),
-                            onError: (e) => toast.error("Could not remove", e instanceof ApiRequestError ? e.message : undefined),
+                            onError: (e) =>
+                              toast.error("Could not remove", e instanceof ApiRequestError ? e.message : undefined),
                           })
                         }
                       >
+                        <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                         Remove
                       </Button>
                     )}
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </Td>
+              </Tr>
+            );
+          })}
+        </DataTable>
       )}
 
       {viewing && <ParkedDomainDetailModal domain={viewing} canWrite={canWrite} onClose={() => onView(null)} />}
@@ -390,7 +575,7 @@ function ParkedDomainDetailModal({
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${current.status === "verified" ? "bg-emerald-500" : "bg-amber-500"}`}
+            className={`h-1.5 w-1.5 rounded-full ${current.status === "verified" ? "bg-success" : "bg-warning"}`}
           />
           <span className="text-sm text-muted">{current.status === "verified" ? "Ownership verified" : "Not verified yet"}</span>
         </div>

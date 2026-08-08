@@ -45,6 +45,8 @@ export function SetupWizard() {
       manage_dns: state?.manage_dns ?? false,
       create_mail: state?.create_mail ?? false,
       license_key: state?.license_key ?? "",
+      panel_domain: state?.panel_domain ?? "",
+      panel_ipv4: state?.panel_ipv4 ?? "",
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [webservers.length, dbEngines.length, state?.webserver, state?.db_engine],
@@ -133,6 +135,33 @@ export function SetupWizard() {
             <option value="yes">Yes — create a mail server</option>
           </Select>
         </Field>
+
+        {/* Optional, and last: the wizard must stay finishable by an operator
+            who has no domain yet. Without it the panel simply offers no
+            temporary site addresses. */}
+        <Field
+          label="Panel domain (optional)"
+          hint="Used to hand out temporary addresses like site-k3f9a2.panel.example.com, so a website can go up before you own a domain."
+        >
+          <Input
+            value={current.panel_domain ?? ""}
+            onChange={(e) => setSel({ ...current, panel_domain: e.target.value })}
+            placeholder="panel.example.com"
+          />
+        </Field>
+
+        {(current.panel_domain ?? "").trim() !== "" && (
+          <Field
+            label="This server's IPv4 (optional)"
+            hint={`Only used to create the *.${(current.panel_domain ?? "").trim()} record automatically, and only when that domain is a zone managed here. Leave empty and you'll add it at your own DNS provider.`}
+          >
+            <Input
+              value={current.panel_ipv4 ?? ""}
+              onChange={(e) => setSel({ ...current, panel_ipv4: e.target.value })}
+              placeholder="203.0.113.10"
+            />
+          </Field>
+        )}
 
         <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
           <Button variant="ghost" onClick={() => setOpen(false)}>

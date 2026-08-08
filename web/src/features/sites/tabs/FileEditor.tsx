@@ -113,7 +113,7 @@ export function FileEditor({
                 </button>
                 {fDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" title="unsaved changes" />}
                 <button
-                  className="shrink-0 rounded px-1 text-muted hover:bg-border/60 hover:text-fg"
+                  className="shrink-0 rounded px-1 text-muted hover:bg-panel-hover hover:text-fg"
                   aria-label={`Close ${baseName(f.path)}`}
                   onClick={() => tryCloseFile(f.path)}
                 >
@@ -169,7 +169,7 @@ export function FileEditor({
       {showDiff && diff && (
         <Modal title={`Changes — ${baseName(active.path)}`} wide onClose={() => setShowDiff(false)}>
           <div className="mb-3 flex items-center gap-3 text-xs">
-            <span className="text-emerald-500">+{diff.added} added</span>
+            <span className="text-success">+{diff.added} added</span>
             <span className="text-danger">−{diff.removed} removed</span>
           </div>
           {diff.tooLarge ? (
@@ -184,7 +184,7 @@ export function FileEditor({
                     <tr
                       key={i}
                       className={cn(
-                        l.kind === "add" && "bg-emerald-500/10",
+                        l.kind === "add" && "bg-success/10",
                         l.kind === "del" && "bg-danger/10",
                       )}
                     >
@@ -197,7 +197,7 @@ export function FileEditor({
                       <td
                         className={cn(
                           "w-5 select-none px-1 py-0.5 text-center",
-                          l.kind === "add" && "text-emerald-500",
+                          l.kind === "add" && "text-success",
                           l.kind === "del" && "text-danger",
                         )}
                       >

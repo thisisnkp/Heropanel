@@ -374,7 +374,7 @@ function TermButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={cn("grid h-7 w-7 place-items-center rounded border border-border text-xs text-muted hover:bg-border/50 hover:text-fg")}
+      className={cn("grid h-7 w-7 place-items-center rounded border border-border text-xs text-muted hover:bg-panel-hover hover:text-fg")}
     >
       {children}
     </button>

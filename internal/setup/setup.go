@@ -16,8 +16,11 @@ package setup
 import (
 	"context"
 	"log/slog"
+	"net"
+	"strings"
 	"time"
 
+	"github.com/thisisnkp/heropanel/internal/domain"
 	"github.com/thisisnkp/heropanel/pkg/errx"
 )
 
@@ -53,6 +56,17 @@ type Selection struct {
 	// Webserver is litespeed_enterprise (that engine is licensed); empty means a
 	// trial, which LSWS also accepts.
 	LicenseKey string `json:"license_key,omitempty"`
+	// PanelDomain is this installation's own base domain — the parent a
+	// throwaway site address is minted under (site-k3f9a2.<PanelDomain>), so an
+	// operator can get something serving before they own a domain. Optional:
+	// empty simply means the panel offers no temporary addresses.
+	PanelDomain string `json:"panel_domain,omitempty"`
+	// PanelIPv4 is this host's public address, and exists for exactly one
+	// purpose: creating the `*.<PanelDomain>` wildcard record itself when the
+	// base domain is a zone this panel hosts. The panel never infers its own
+	// address — with this empty, temporary addresses still mint and the
+	// operator is shown the record to add at whatever DNS they actually use.
+	PanelIPv4 string `json:"panel_ipv4,omitempty"`
 }
 
 // State is the persisted setup state: the operator's selection plus whether the
@@ -113,13 +127,37 @@ func supported(opts []Option, id string) bool {
 
 // Validate rejects a selection with an unknown webserver or database engine —
 // one that is not in the catalog at all. DNS and mail are booleans over modules
-// that already exist, so any value is valid.
-func (s Selection) Validate() error {
+// that already exist, so any value is valid. It normalizes the panel domain and
+// IP in place, so callers persist the same form the rest of the panel compares
+// against; both are optional and only checked when present.
+func (s *Selection) Validate() error {
 	if !supported(Webservers(), string(s.Webserver)) {
 		return errx.Validation("unknown_webserver", "Unknown webserver.")
 	}
 	if !supported(DBEngines(), string(s.DBEngine)) {
 		return errx.Validation("unknown_db_engine", "Unknown database engine.")
+	}
+
+	s.PanelDomain = domain.NormalizeFQDN(s.PanelDomain)
+	if s.PanelDomain != "" {
+		// A wildcard passes ValidFQDN (it is a legal vhost name) but cannot be
+		// a base: "site-a1b2.*.example.com" is not a hostname.
+		if strings.HasPrefix(s.PanelDomain, "*.") || !domain.ValidFQDN(s.PanelDomain) {
+			return errx.Validation("invalid_panel_domain",
+				"The panel domain must be a plain hostname, e.g. panel.example.com.",
+				errx.Field{Field: "panel_domain", Code: "invalid", Message: "invalid domain"})
+		}
+	}
+
+	s.PanelIPv4 = strings.TrimSpace(s.PanelIPv4)
+	if s.PanelIPv4 != "" {
+		// Must be a v4 literal specifically: this address is written into an A
+		// record, and net.ParseIP alone would happily accept an IPv6 one.
+		if ip := net.ParseIP(s.PanelIPv4); ip == nil || ip.To4() == nil {
+			return errx.Validation("invalid_panel_ipv4",
+				"The panel IP must be an IPv4 address, e.g. 203.0.113.10.",
+				errx.Field{Field: "panel_ipv4", Code: "invalid", Message: "invalid IPv4 address"})
+		}
 	}
 	return nil
 }

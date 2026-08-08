@@ -1,21 +1,69 @@
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui";
+import { Link, useLocation } from "react-router-dom";
+import { Activity, ChevronRight, Moon, Search, Sun } from "lucide-react";
+import { Button, IconButton, cn } from "@/components/ui";
 import { useTheme } from "@/stores/theme";
 import { useMe, useLogout } from "@/features/auth/auth";
 import { activeJobCount, useJobs } from "@/stores/jobs";
 
-function SunMoon({ dark }: { dark: boolean }) {
+// Route segments the breadcrumb should show with a proper name rather than a
+// title-cased slug. Anything not listed falls back to the segment itself, which
+// is right for ids and uids — those *are* their own label.
+const segmentNames: Record<string, string> = {
+  sites: "Websites",
+  new: "New website",
+  dns: "DNS",
+  ssl: "SSL",
+  domains: "Domains",
+  nameservers: "Nameservers",
+  databases: "Databases",
+  docker: "Docker",
+  apps: "Apps",
+  mail: "Mail",
+  marketplace: "Marketplace",
+  users: "Users",
+  monitor: "Monitoring",
+  audit: "Audit logs",
+  recordings: "Recordings",
+  modules: "Modules",
+  security: "Security",
+  account: "Account",
+  help: "Help",
+};
+
+// Breadcrumbs answer "where am I" on the deep pages — a site's workspace is
+// four levels from the dashboard and otherwise gives no clue how to get back
+// up. On a top-level page there is nothing to trace, so it renders nothing
+// rather than a lone crumb pointing at itself.
+function Breadcrumbs() {
+  const { pathname } = useLocation();
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 0) return <span className="text-sm font-medium text-fg">Dashboard</span>;
+
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      {dark ? (
-        <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8Z" />
-      ) : (
-        <>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-        </>
-      )}
-    </svg>
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
+      <Link to="/" className="shrink-0 text-muted transition-colors hover:text-fg">
+        Home
+      </Link>
+      {segments.map((seg, i) => {
+        const href = "/" + segments.slice(0, i + 1).join("/");
+        const last = i === segments.length - 1;
+        const label = segmentNames[seg] ?? seg;
+        return (
+          <span key={href} className="flex min-w-0 items-center gap-1">
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted/70" strokeWidth={2} aria-hidden />
+            {last ? (
+              <span aria-current="page" className="truncate font-medium text-fg">
+                {label}
+              </span>
+            ) : (
+              <Link to={href} className="truncate text-muted transition-colors hover:text-fg">
+                {label}
+              </Link>
+            )}
+          </span>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -28,48 +76,59 @@ export function Topbar() {
   const active = activeJobCount(jobs);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-panel/80 px-4 backdrop-blur">
+    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-panel/85 px-4 backdrop-blur">
+      <div className="min-w-0 flex-1">
+        <Breadcrumbs />
+      </div>
+
       <button
         onClick={() => {
           // The palette is keyboard-first, but a click target discovers it.
           window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
         }}
-        className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-muted hover:text-fg"
+        className={cn(
+          "hidden items-center gap-2 rounded-lg border border-border-strong bg-surface py-1.5 pl-2.5 pr-2 text-sm text-muted",
+          "transition-colors hover:border-muted/50 hover:text-fg md:flex",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
+        )}
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-          <circle cx="11" cy="11" r="7" />
-          <path d="M21 21l-4.3-4.3" />
-        </svg>
-        <span className="hidden sm:inline">Search…</span>
-        <kbd className="rounded border border-border bg-panel px-1.5 py-0.5 text-xs">⌘K</kbd>
+        <Search className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+        <span className="pr-8">Search…</span>
+        <kbd className="rounded border border-border bg-panel px-1.5 py-0.5 font-sans text-2xs font-medium text-muted">
+          ⌘K
+        </kbd>
       </button>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setJobsOpen(true)}
-          className="relative grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-border/40 hover:text-fg"
-          aria-label="Activity"
-        >
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-          </svg>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <IconButton label="Activity" onClick={() => setJobsOpen(true)} className="relative">
+          <Activity className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
           {active > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-brand-fg">
+            <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-2xs font-semibold text-brand-fg">
               {active}
             </span>
           )}
-        </button>
-        <button
-          onClick={toggle}
-          className="grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-border/40 hover:text-fg"
-          aria-label="Toggle theme"
+        </IconButton>
+
+        <IconButton label="Toggle theme" onClick={toggle}>
+          {theme === "dark" ? (
+            <Moon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
+          ) : (
+            <Sun className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
+          )}
+        </IconButton>
+
+        <span className="mx-1 hidden h-6 w-px bg-border sm:block" />
+
+        <Link
+          to="/account"
+          className="hidden max-w-[12rem] rounded-lg px-2.5 py-1 text-right leading-tight transition-colors hover:bg-panel-hover sm:block"
+          title="Account & sessions"
         >
-          <SunMoon dark={theme === "dark"} />
-        </button>
-        <Link to="/account" className="hidden rounded-lg px-2 py-1 text-right hover:bg-border/40 sm:block" title="Account & sessions">
-          <div className="text-sm font-medium text-fg">{me?.display_name ?? me?.username}</div>
-          <div className="text-xs text-muted">{me?.email}</div>
+          <div className="truncate text-[13px] font-medium text-fg">{me?.display_name ?? me?.username}</div>
+          <div className="truncate text-2xs text-muted">{me?.email}</div>
         </Link>
-        <Button variant="ghost" className="h-9 px-3" loading={logout.isPending} onClick={() => logout.mutate()}>
+
+        <Button variant="ghost" size="sm" loading={logout.isPending} onClick={() => logout.mutate()}>
           Sign out
         </Button>
       </div>

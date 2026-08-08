@@ -108,7 +108,7 @@ function IssueModal({ onClose }: { onClose: () => void }) {
             key={id}
             onClick={() => setMode(id)}
             className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-              mode === id ? "border-brand bg-brand/10 text-fg" : "border-border text-muted hover:text-fg"
+              mode === id ? "border-brand bg-brand-subtle text-fg" : "border-border text-muted hover:text-fg"
             }`}
           >
             {label}

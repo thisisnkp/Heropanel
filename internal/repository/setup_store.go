@@ -23,15 +23,18 @@ func NewSetupStore(db *DB) *SetupStore { return &SetupStore{db: db} }
 // what gates the wizard on first run.
 func (s *SetupStore) Get(ctx context.Context) (*setup.State, error) {
 	var (
-		webserver, dbEngine   string
-		manageDNS, createMail int
-		licenseKey            string
-		completedAt           sql.NullString
+		webserver, dbEngine    string
+		manageDNS, createMail  int
+		licenseKey             string
+		panelDomain, panelIPv4 string
+		completedAt            sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT webserver, db_engine, manage_dns, create_mail, license_key, completed_at
+		`SELECT webserver, db_engine, manage_dns, create_mail, license_key,
+		        panel_domain, panel_ipv4, completed_at
 		   FROM panel_setup WHERE id = 1`).
-		Scan(&webserver, &dbEngine, &manageDNS, &createMail, &licenseKey, &completedAt)
+		Scan(&webserver, &dbEngine, &manageDNS, &createMail, &licenseKey,
+			&panelDomain, &panelIPv4, &completedAt)
 	if isNoRows(err) {
 		return &setup.State{}, nil
 	}
@@ -40,11 +43,13 @@ func (s *SetupStore) Get(ctx context.Context) (*setup.State, error) {
 	}
 	st := &setup.State{
 		Selection: setup.Selection{
-			Webserver:  setup.Webserver(webserver),
-			DBEngine:   setup.DBEngine(dbEngine),
-			ManageDNS:  manageDNS != 0,
-			CreateMail: createMail != 0,
-			LicenseKey: licenseKey,
+			Webserver:   setup.Webserver(webserver),
+			DBEngine:    setup.DBEngine(dbEngine),
+			ManageDNS:   manageDNS != 0,
+			CreateMail:  createMail != 0,
+			LicenseKey:  licenseKey,
+			PanelDomain: panelDomain,
+			PanelIPv4:   panelIPv4,
 		},
 		Completed: completedAt.Valid && completedAt.String != "",
 	}
@@ -70,22 +75,27 @@ func (s *SetupStore) Save(ctx context.Context, sel setup.Selection, completedAt 
 
 	var q string
 	if s.db.Dialect == DialectMySQL {
-		q = `INSERT INTO panel_setup (id, webserver, db_engine, manage_dns, create_mail, license_key, completed_at, created_at, updated_at)
-		     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+		q = `INSERT INTO panel_setup (id, webserver, db_engine, manage_dns, create_mail, license_key,
+		       panel_domain, panel_ipv4, completed_at, created_at, updated_at)
+		     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		     ON DUPLICATE KEY UPDATE webserver = VALUES(webserver), db_engine = VALUES(db_engine),
 		       manage_dns = VALUES(manage_dns), create_mail = VALUES(create_mail),
 		       license_key = VALUES(license_key),
+		       panel_domain = VALUES(panel_domain), panel_ipv4 = VALUES(panel_ipv4),
 		       completed_at = VALUES(completed_at), updated_at = VALUES(updated_at)`
 	} else {
-		q = `INSERT INTO panel_setup (id, webserver, db_engine, manage_dns, create_mail, license_key, completed_at, created_at, updated_at)
-		     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+		q = `INSERT INTO panel_setup (id, webserver, db_engine, manage_dns, create_mail, license_key,
+		       panel_domain, panel_ipv4, completed_at, created_at, updated_at)
+		     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		     ON CONFLICT(id) DO UPDATE SET webserver = excluded.webserver, db_engine = excluded.db_engine,
 		       manage_dns = excluded.manage_dns, create_mail = excluded.create_mail,
 		       license_key = excluded.license_key,
+		       panel_domain = excluded.panel_domain, panel_ipv4 = excluded.panel_ipv4,
 		       completed_at = excluded.completed_at, updated_at = excluded.updated_at`
 	}
 	if _, err := s.db.ExecContext(ctx, q,
-		string(sel.Webserver), string(sel.DBEngine), manageDNS, createMail, sel.LicenseKey, completed, now, now); err != nil {
+		string(sel.Webserver), string(sel.DBEngine), manageDNS, createMail, sel.LicenseKey,
+		sel.PanelDomain, sel.PanelIPv4, completed, now, now); err != nil {
 		return errx.Internal(err)
 	}
 	return nil

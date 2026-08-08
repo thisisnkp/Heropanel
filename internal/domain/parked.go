@@ -230,12 +230,25 @@ func (s *Service) DeleteParked(ctx context.Context, uid string) error {
 	return s.parked.DeleteParked(ctx, uid)
 }
 
-// FreeDomains returns the domains available to pick when creating a new
-// site: verified parked domains and panel-hosted DNS zones, minus whatever is
-// already attached to a site.
-func (s *Service) FreeDomains(ctx context.Context, ownerID int64) ([]string, error) {
+// Pool is what a create-site form needs to explain a domain the operator is
+// typing. Free is what they can take outright; Trusted is every domain whose
+// ownership is already proven here, *including* ones a site already uses.
+//
+// The second list is not redundant. "blog.acme.com" is a perfectly good new
+// site even when acme.com itself is serving one — Classify accepts it, because
+// ownership of the parent is what was proven. Without Trusted the form can see
+// only that acme.com is unavailable, and would wrongly warn that the subdomain
+// needs verifying.
+type Pool struct {
+	Free    []string `json:"fqdns"`
+	Trusted []string `json:"trusted"`
+}
+
+// DomainPool returns both lists from a single pass, so they cannot disagree
+// about what is trusted.
+func (s *Service) DomainPool(ctx context.Context, ownerID int64) (*Pool, error) {
 	if s.parked == nil {
-		return []string{}, nil
+		return &Pool{Free: []string{}, Trusted: []string{}}, nil
 	}
 	trusted, err := s.trustedDomains(ctx, ownerID)
 	if err != nil {
@@ -249,13 +262,24 @@ func (s *Service) FreeDomains(ctx context.Context, ownerID int64) ([]string, err
 	for _, d := range attached {
 		attachedSet[d] = true
 	}
-	out := make([]string, 0, len(trusted))
+	free := make([]string, 0, len(trusted))
 	for _, d := range trusted {
 		if !attachedSet[d] {
-			out = append(out, d)
+			free = append(free, d)
 		}
 	}
-	return out, nil
+	return &Pool{Free: free, Trusted: trusted}, nil
+}
+
+// FreeDomains returns the domains available to pick when creating a new
+// site: verified parked domains and panel-hosted DNS zones, minus whatever is
+// already attached to a site.
+func (s *Service) FreeDomains(ctx context.Context, ownerID int64) ([]string, error) {
+	p, err := s.DomainPool(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return p.Free, nil
 }
 
 // trustedDomains is the full ownership-proven set: verified parked domains
@@ -349,9 +373,7 @@ func isSameOrSubdomain(fqdn, domain string) bool {
 }
 
 // normalizeFQDN lowercases and trims a domain the same way validateAdd does.
-func normalizeFQDN(fqdn string) string {
-	return strings.ToLower(strings.TrimSpace(strings.TrimSuffix(fqdn, ".")))
-}
+func normalizeFQDN(fqdn string) string { return NormalizeFQDN(fqdn) }
 
 func parkedView(r *ParkedRow) *ParkedDomain {
 	return &ParkedDomain{

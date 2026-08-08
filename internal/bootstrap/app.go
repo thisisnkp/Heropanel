@@ -345,6 +345,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				if err := siteSvc.ReapplyWebserver(ctx); err != nil {
 					log.Warn("setup: could not re-apply web server after stack change", "err", err)
 				}
+				ensureTempDomainWildcard(ctx, dnsSvc, sel, log)
 				log.Info("setup completed; hosting stack switched",
 					"webserver", sel.Webserver, "db_engine", sel.DBEngine)
 			})
@@ -915,5 +916,36 @@ func (a *App) Run(ctx context.Context) error {
 		shCtx, cancel := context.WithTimeout(context.Background(), a.cfg.Server.ShutdownTimeout.D())
 		defer cancel()
 		return a.srv.Shutdown(shCtx)
+	}
+}
+
+// ensureTempDomainWildcard puts `*.<panel domain> A <panel ip>` in place when
+// the panel's own base domain happens to be a zone this installation hosts.
+//
+// Temporary site addresses each get a fresh label, so a wildcard is the only
+// record that can cover them — and one that is merely *documented* is one that
+// is never added, leaving every temporary address dead. Creating it here, at
+// the moment the operator names the domain, is the only point where we know
+// both the base and the address.
+//
+// The panel never infers its own IP, so an operator who left that blank (or
+// whose DNS lives elsewhere) simply gets the record logged for them to add;
+// EnsureRecord reports false with no error when no managed zone covers the
+// name, which is exactly that case rather than a failure.
+func ensureTempDomainWildcard(ctx context.Context, dnsSvc *dns.Service, sel setup.Selection, log *slog.Logger) {
+	if dnsSvc == nil || sel.PanelDomain == "" || sel.PanelIPv4 == "" {
+		return
+	}
+	wildcard := setup.WildcardFor(sel.PanelDomain)
+	ok, err := dnsSvc.EnsureRecord(ctx, wildcard, "A", sel.PanelIPv4, 0, 3600, false)
+	switch {
+	case err != nil:
+		log.Warn("setup: could not create the temporary-address wildcard",
+			"record", wildcard, "ip", sel.PanelIPv4, "err", err)
+	case ok:
+		log.Info("setup: temporary-address wildcard in place", "record", wildcard, "ip", sel.PanelIPv4)
+	default:
+		log.Info("setup: panel domain is not a zone hosted here — add this record at your DNS provider",
+			"record", wildcard, "type", "A", "value", sel.PanelIPv4)
 	}
 }

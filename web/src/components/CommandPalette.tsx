@@ -131,7 +131,7 @@ export function CommandPalette() {
                 onClick={c.run}
                 className={cn(
                   "flex w-full items-center justify-between px-4 py-2.5 text-left text-sm",
-                  i === sel ? "bg-brand/15 text-fg" : "text-muted",
+                  i === sel ? "bg-brand-subtle text-fg" : "text-muted",
                 )}
               >
                 <span>{c.label}</span>

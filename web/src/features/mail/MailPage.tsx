@@ -86,7 +86,7 @@ export function MailPage() {
                 key={d.uid}
                 onClick={() => setSelected(d.uid)}
                 className={`flex w-full items-center justify-between border-b border-border/60 px-4 py-3 text-left text-sm last:border-0 ${
-                  selected === d.uid ? "bg-brand/10" : "hover:bg-border/20"
+                  selected === d.uid ? "bg-brand-subtle" : "hover:bg-panel-hover"
                 }`}
               >
                 <span className="font-medium text-fg">{d.domain}</span>
@@ -467,7 +467,7 @@ function QueueModal({ onClose }: { onClose: () => void }) {
               from {m.sender || "<>"} · {m.recipients.map((r) => r.address).join(", ")}
             </div>
             {m.recipients.some((r) => r.delay_reason) && (
-              <div className="mt-1 text-xs text-amber-600">
+              <div className="mt-1 text-xs text-warning">
                 {m.recipients.find((r) => r.delay_reason)?.delay_reason}
               </div>
             )}
@@ -621,7 +621,7 @@ function InboundPolicyCard() {
           </p>
         </div>
         <select
-          className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-fg"
+          className="hp-select h-9 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg"
           value={level}
           disabled={setInbound.isPending}
           onChange={(e) =>
@@ -666,7 +666,7 @@ function AuthVerifyCard() {
           </p>
         </div>
         <select
-          className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-fg"
+          className="hp-select h-9 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg"
           value={mode}
           disabled={setAV.isPending}
           onChange={(e) =>

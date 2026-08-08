@@ -156,14 +156,19 @@ func deleteParkedDomainHandler(d Deps) http.HandlerFunc {
 func freeDomainsHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FromContext(r.Context())
-		out, err := d.Domains.FreeDomains(r.Context(), p.UserID)
+		pool, err := d.Domains.DomainPool(r.Context(), p.UserID)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		if out == nil {
-			out = []string{}
+		// Never null: the create-site form iterates both without guarding, and a
+		// JSON null there is a crash rather than an empty picker.
+		if pool.Free == nil {
+			pool.Free = []string{}
 		}
-		writeJSON(w, r, http.StatusOK, map[string]any{"fqdns": out})
+		if pool.Trusted == nil {
+			pool.Trusted = []string{}
+		}
+		writeJSON(w, r, http.StatusOK, pool)
 	}
 }

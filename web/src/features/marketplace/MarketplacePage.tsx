@@ -76,8 +76,8 @@ function ModuleCard({ m, canManage }: { m: CatalogEntry; canManage: boolean }) {
           className={
             "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium " +
             (m.verified
-              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-              : "bg-amber-500/15 text-amber-700 dark:text-amber-400")
+              ? "bg-success/15 text-success"
+              : "bg-warning/15 text-warning")
           }
         >
           {m.verified ? "Verified" : "Unverified"}
@@ -97,7 +97,7 @@ function ModuleCard({ m, canManage }: { m: CatalogEntry; canManage: boolean }) {
           Signed by publisher <span className="font-mono">{m.publisher_key}</span>.
         </p>
       ) : (
-        <p className="text-xs text-amber-700 dark:text-amber-400">{m.verify_error || "Not signed by a trusted key."}</p>
+        <p className="text-xs text-warning">{m.verify_error || "Not signed by a trusted key."}</p>
       )}
 
       {m.requires_broker.length > 0 && (

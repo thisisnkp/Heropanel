@@ -136,7 +136,7 @@ export function ContextMenu({
                 ? "cursor-not-allowed text-muted/50"
                 : item.danger
                   ? "text-danger hover:bg-danger/10"
-                  : "text-fg hover:bg-border/60",
+                  : "text-fg hover:bg-panel-hover",
               i === active && !item.disabled && (item.danger ? "bg-danger/10" : "bg-border/60"),
             )}
           >

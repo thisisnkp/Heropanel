@@ -17,7 +17,7 @@ export function LogsTab({ uid }: { uid: string }) {
             onClick={() => setKind(k)}
             className={cn(
               "rounded-lg border px-3 py-1.5 text-sm capitalize transition-colors",
-              kind === k ? "border-brand bg-brand/10 text-fg" : "border-border text-muted hover:text-fg",
+              kind === k ? "border-brand bg-brand-subtle text-fg" : "border-border text-muted hover:text-fg",
             )}
           >
             {k} log

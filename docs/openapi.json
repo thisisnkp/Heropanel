@@ -7125,7 +7125,7 @@
     "/api/v1/domains/free": {
       "get": {
         "description": "Requires the `domain.read` permission.",
-        "operationId": "api_v1_domains_free_list_free_domains",
+        "operationId": "api_v1_domains_free_list_free_and_trusted_domains",
         "responses": {
           "200": {
             "content": {
@@ -7135,6 +7135,12 @@
                     "data": {
                       "properties": {
                         "fqdns": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "trusted": {
                           "items": {
                             "type": "string"
                           },
@@ -7155,7 +7161,7 @@
                 }
               }
             },
-            "description": "Verified parked domains and panel-hosted DNS zones not yet attached to a site — the create-site picker's source."
+            "description": "fqdns: verified parked domains and panel-hosted DNS zones not yet attached to a site — the create-site picker's source. trusted: every ownership-proven domain including ones already in use, so a caller can recognise a subdomain of one as needing no verification."
           },
           "400": {
             "content": {
@@ -7198,7 +7204,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "List free domains",
+        "summary": "List free and trusted domains",
         "tags": [
           "Domains"
         ],
@@ -13227,6 +13233,95 @@
           }
         },
         "summary": "Create a site",
+        "tags": [
+          "Sites"
+        ],
+        "x-required-permission": "site.write"
+      }
+    },
+    "/api/v1/sites/temp-domain": {
+      "post": {
+        "description": "Requires the `site.write` permission.",
+        "operationId": "api_v1_sites_temp_domain_mint_a_temporary_site_address",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "base": {
+                          "description": "The panel's configured base domain.",
+                          "type": "string"
+                        },
+                        "fqdn": {
+                          "description": "The suggested hostname, e.g. site-k3f9a2.panel.example.com.",
+                          "type": "string"
+                        },
+                        "wildcard": {
+                          "description": "The DNS record that must point at this host for any temporary address to resolve.",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Suggests a throwaway hostname under the panel's own domain. Nothing is reserved and no DNS is written — the name is only taken when a site is created with it. 409 when no panel domain is configured."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Mint a temporary site address",
         "tags": [
           "Sites"
         ],

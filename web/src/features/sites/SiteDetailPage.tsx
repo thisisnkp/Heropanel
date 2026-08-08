@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ArrowLeft, ExternalLink, Globe, Pause, Play } from "lucide-react";
 import { ApiRequestError, can } from "@/lib/api";
-import { Alert, Button, Card, Spinner, StatusBadge, Tabs } from "@/components/ui";
+import { Alert, Badge, Button, Card, Skeleton, StatusBadge, Tabs } from "@/components/ui";
 import { toast } from "@/stores/toast";
 import { useJobs } from "@/stores/jobs";
 import { useMe } from "@/features/auth/auth";
@@ -32,8 +33,14 @@ export function SiteDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-muted">
-        <Spinner /> Loading…
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-7 w-72" />
+          <Skeleton className="h-3.5 w-56" />
+        </div>
+        <Skeleton className="h-9 w-full rounded-lg" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       </div>
     );
   }
@@ -82,26 +89,59 @@ export function SiteDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/sites" className="text-sm text-muted hover:text-fg">
-          ← Websites
+        <Link
+          to="/sites"
+          className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-fg"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+          Websites
         </Link>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-fg">{site.primary_domain}</h1>
-            <StatusBadge status={site.status} />
+
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border bg-surface-2 text-muted">
+              <Globe className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="truncate text-xl font-semibold text-fg">{site.primary_domain}</h1>
+                <StatusBadge status={site.status} />
+              </div>
+              {/* The identifiers an operator needs when they open a shell or read
+                  a log: which site this is, how it is served, and whose uid owns
+                  the files. Kept as separated chips rather than one dot-joined
+                  line so each stays scannable. */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                <span className="truncate">{site.name}</span>
+                <span className="text-border-strong">·</span>
+                <Badge>{site.type}</Badge>
+                {site.system_user && (
+                  <>
+                    <span className="text-border-strong">·</span>
+                    <span className="font-mono">{site.system_user}</span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex shrink-0 items-center gap-2">
             <a href={`http://${site.primary_domain}`} target="_blank" rel="noreferrer">
-              <Button variant="ghost">Visit ↗</Button>
+              <Button variant="ghost" size="sm">
+                <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                Visit
+              </Button>
             </a>
-            <Button variant="ghost" loading={suspend.isPending} onClick={toggleSuspend}>
+            <Button variant="ghost" size="sm" loading={suspend.isPending} onClick={toggleSuspend}>
+              {suspended ? (
+                <Play className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              ) : (
+                <Pause className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              )}
               {suspended ? "Resume" : "Suspend"}
             </Button>
           </div>
         </div>
-        <p className="mt-1 text-sm text-muted">
-          {site.name} · {site.type} · user {site.system_user}
-        </p>
       </div>
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
