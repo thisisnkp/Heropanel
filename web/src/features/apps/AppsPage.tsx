@@ -28,7 +28,7 @@ export function AppsPage() {
         <Header />
         <EmptyState
           title="Docker is not available on this host"
-          hint={info.data?.reason || "One-click apps deploy as Docker containers. Install Docker and restart HeroPanel."}
+          hint={info.data?.reason || "One-click apps deploy as Docker containers. Install Docker and restart NexPanel."}
         />
       </div>
     );

@@ -13,10 +13,10 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // Local parts are stored lowercase; the panel normalises on the way in.
@@ -125,7 +125,7 @@ type Service struct {
 	dns          DNSProvider     // wires records into managed zones; nil = display-only
 	resolverAddr string          // pinned resolver for CheckDNS ("" = system)
 
-	hostname   string       // mail host FQDN (HP_MAIL_HOSTNAME); "" = TLS off
+	hostname   string       // mail host FQDN (NP_MAIL_HOSTNAME); "" = TLS off
 	certs      CertProvider // ensures the mail host's cert; nil = no auto-issue
 	tlsEnabled bool         // TLS wired at least once this process
 

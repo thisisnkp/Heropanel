@@ -82,7 +82,7 @@ func TestHeaderIsAValidAsciicastV2Header(t *testing.T) {
 
 func TestOutputAndInputAreRecordedWithTimings(t *testing.T) {
 	r, buf := newTestRecorder(t)
-	r.Output([]byte("hps1@host:~$ "))
+	r.Output([]byte("nps1@host:~$ "))
 	r.Input([]byte("ls\r"))
 	r.Output([]byte("index.php\r\n"))
 
@@ -91,7 +91,7 @@ func TestOutputAndInputAreRecordedWithTimings(t *testing.T) {
 		t.Fatalf("got %d events, want 3: %v", len(got), got)
 	}
 	want := []struct{ kind, data string }{
-		{"o", "hps1@host:~$ "},
+		{"o", "nps1@host:~$ "},
 		{"i", "ls\r"},
 		{"o", "index.php\r\n"},
 	}
@@ -112,7 +112,7 @@ func TestOutputAndInputAreRecordedWithTimings(t *testing.T) {
 // The invariant the whole design rests on.
 func TestInputIsRedactedWhileEchoIsOff(t *testing.T) {
 	r, buf := newTestRecorder(t)
-	r.Output([]byte("[sudo] password for hps1: "))
+	r.Output([]byte("[sudo] password for nps1: "))
 	r.SetEcho(false)
 	r.Input([]byte("h"))
 	r.Input([]byte("u"))

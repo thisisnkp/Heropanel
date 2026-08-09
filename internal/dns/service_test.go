@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/dns"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 type gwCall struct {

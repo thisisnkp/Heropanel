@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth"
 )
 
 // listAPIKeysHandler returns the current user's API keys (never the secrets).

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	brokerd "github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerd "github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestCertInstallWritesFiles(t *testing.T) {
@@ -20,10 +20,10 @@ func TestCertInstallWritesFiles(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("cert.install: %v", err)
 	}
-	if got, ok := fs.Written("/etc/heropanel/ssl/acme.example.com/fullchain.pem"); !ok || got != "CERT" {
+	if got, ok := fs.Written("/etc/nexpanel/ssl/acme.example.com/fullchain.pem"); !ok || got != "CERT" {
 		t.Fatalf("cert not written: %q", got)
 	}
-	if got, ok := fs.Written("/etc/heropanel/ssl/acme.example.com/privkey.pem"); !ok || got != "KEY" {
+	if got, ok := fs.Written("/etc/nexpanel/ssl/acme.example.com/privkey.pem"); !ok || got != "KEY" {
 		t.Fatalf("key not written: %q", got)
 	}
 }
@@ -44,12 +44,12 @@ func TestCertWriteChallenge(t *testing.T) {
 	if _, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "cert.write_challenge",
 		Input: mustJSON(t, map[string]string{
-			"webroot": "/srv/heropanel/sites/1", "token": "tok_ABC-123", "key_auth": "tok.thumb",
+			"webroot": "/srv/nexpanel/sites/1", "token": "tok_ABC-123", "key_auth": "tok.thumb",
 		}),
 	}); err != nil {
 		t.Fatalf("write_challenge: %v", err)
 	}
-	if got, ok := fs.Written("/srv/heropanel/sites/1/.well-known/acme-challenge/tok_ABC-123"); !ok || got != "tok.thumb" {
+	if got, ok := fs.Written("/srv/nexpanel/sites/1/.well-known/acme-challenge/tok_ABC-123"); !ok || got != "tok.thumb" {
 		t.Fatalf("challenge not written: %q", got)
 	}
 }

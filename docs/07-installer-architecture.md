@@ -1,19 +1,19 @@
 # 07 — Installer Architecture
 
-Goal: a **single command** that turns a fresh Linux box into a running HeroPanel install, safely, on any supported arch/OS, with detection, backups, and automatic rollback on failure.
+Goal: a **single command** that turns a fresh Linux box into a running NexPanel install, safely, on any supported arch/OS, with detection, backups, and automatic rollback on failure.
 
 > **Implementation status.** The **execute path is implemented and verified**
 > ([`internal/installer/execute.go`](../internal/installer/execute.go),
-> [`cmd/hp-installer`](../cmd/hp-installer)). `hp-installer --detect` / `--plan`
+> [`cmd/np-installer`](../cmd/np-installer)). `np-installer --detect` / `--plan`
 > report the host profile, compatibility verdict, and ordered action list;
 > `--execute` runs the install, journaling each step to
-> `/var/lib/heropanel/install-journal.json` so `--resume` continues an
+> `/var/lib/nexpanel/install-journal.json` so `--resume` continues an
 > interrupted run and `--rollback` walks the completed steps in reverse and runs
 > each one's inverse. The package-manager split (apt/dnf) is the only
 > distro-specific code ([`pkgmgr.go`](../internal/installer/pkgmgr.go)); every
 > other step is identical across distributions. **Verified live** (`run-installer.sh`,
 > in CI) on a **fresh `ubuntu:24.04` (apt)** *and* **`rockylinux:9` (dnf)** image:
-> a real execute installs packages, creates the `heropanel` user, renders the
+> a real execute installs packages, creates the `nexpanel` user, renders the
 > config + hardened systemd units, migrates a SQLite datastore as the service
 > user, starts the broker + daemon, and the installer's own verify step confirms
 > `/healthz` answers — with the broker socket group-owned by the panel group so
@@ -35,17 +35,17 @@ Goal: a **single command** that turns a fresh Linux box into a running HeroPanel
 > the broker self-check.
 >
 > *Deferred:* backup/restore of pre-existing web/db/firewall configs before
-> touching them; `hpctl`; the uninstall
+> touching them; `npctl`; the uninstall
 > subcommand; coexistence handling for a pre-existing Apache/Nginx/MySQL/Docker;
-> the OLS panel reverse-proxy vhost (the panel is served by `hpd` directly for
+> the OLS panel reverse-proxy vhost (the panel is served by `npd` directly for
 > now, and the Docker verification runs `--no-webserver`); and package-level
 > rollback (OS packages are intentionally **not** removed on rollback — other
 > software may now depend on them, so that step records itself as not-reversible).
 
 ```
-curl -fsSL https://get.heropanel.io/install.sh | bash
+curl -fsSL https://get.nexpanel.io/install.sh | bash
 # or, pinned + verified:
-curl -fsSL https://get.heropanel.io/install.sh -o install.sh \
+curl -fsSL https://get.nexpanel.io/install.sh -o install.sh \
   && sha256sum -c install.sh.sha256 && bash install.sh --channel stable
 ```
 
@@ -53,23 +53,23 @@ curl -fsSL https://get.heropanel.io/install.sh -o install.sh \
 
 The public `install.sh` is a **thin, auditable bootstrap** (POSIX sh, no bashisms beyond what's guarded). Its only jobs:
 1. Refuse to run in unsafe conditions (non-root when root needed, unsupported OS/arch, missing curl/tar).
-2. Detect **arch + OS + libc** just enough to fetch the correct **`hp-installer`** Go binary.
-3. **Verify signature** of `hp-installer` against a pinned public key.
-4. Hand off: `exec hp-installer install --channel <c> [flags]`.
+2. Detect **arch + OS + libc** just enough to fetch the correct **`np-installer`** Go binary.
+3. **Verify signature** of `np-installer` against a pinned public key.
+4. Hand off: `exec np-installer install --channel <c> [flags]`.
 
-Everything intelligent lives in the **`hp-installer` Go binary** (same codebase, testable, no fragile 2000-line shell script). Rationale: shell is fine for bootstrap, terrible for the complex, stateful, rollback-capable logic that follows.
+Everything intelligent lives in the **`np-installer` Go binary** (same codebase, testable, no fragile 2000-line shell script). Rationale: shell is fine for bootstrap, terrible for the complex, stateful, rollback-capable logic that follows.
 
 ```
-install.sh (shell, ~150 lines)          hp-installer (Go, tested, stateful)
+install.sh (shell, ~150 lines)          np-installer (Go, tested, stateful)
 ──────────────────────────────          ─────────────────────────────────────
 detect arch/os/libc  ──────────────►    Preflight → Plan → Backup → Execute →
 fetch + verify installer binary         Verify → Finalize   (Rollback on any failure)
-exec hp-installer
+exec np-installer
 ```
 
 ## 2. Detection phase (Preflight)
 
-`hp-installer preflight` gathers a full **system profile** (also exposed later at `/api/v1/system/info`):
+`np-installer preflight` gathers a full **system profile** (also exposed later at `/api/v1/system/info`):
 
 | Category | Detected | How |
 |----------|----------|-----|
@@ -99,7 +99,7 @@ Output: a machine profile + a human summary + a **compatibility verdict** (proce
 | Unsupported OS/arch, no systemd | **Block** with a clear reason |
 | RAM below floor (e.g. < 1 GB) | **Warn**, offer SQLite-mode + minimal module set |
 | Port 8443 (panel) in use | Offer alternate port via `--port` |
-| Apache/Nginx already on 80/443 | Detect, ask: coexist (panel on 8443 only), or let HeroPanel manage the web server, or abort. Never silently kill someone's stack |
+| Apache/Nginx already on 80/443 | Detect, ask: coexist (panel on 8443 only), or let NexPanel manage the web server, or abort. Never silently kill someone's stack |
 | Existing MySQL/MariaDB | Reuse it (prompt for/create a scoped panel DB user) instead of installing a second engine |
 | Existing Docker | Reuse; don't reinstall |
 | CSF/firewalld active | Integrate (add panel rules) rather than replace; warn before changes |
@@ -108,24 +108,24 @@ All conflicts are surfaced with a chosen-default and can be pre-answered via fla
 
 ## 4. Execution phases (atomic, journaled)
 
-`hp-installer` maintains an on-disk **install journal** (`/var/lib/heropanel/install/journal.json`) so every step is resumable and reversible.
+`np-installer` maintains an on-disk **install journal** (`/var/lib/nexpanel/install/journal.json`) so every step is resumable and reversible.
 
 ```
 1. PLAN        Resolve versions per arch/OS; compute action list; show/confirm (unless --yes)
 2. BACKUP      Snapshot anything it may modify: existing web/db configs, firewall rules,
-               /etc/hosts, PHP configs → /var/lib/heropanel/install/backup/<ts>/
+               /etc/hosts, PHP configs → /var/lib/nexpanel/install/backup/<ts>/
 3. DEPS        Install base deps via native pkg mgr (idempotent): ca-certs, tar, zstd,
                and — per chosen options — OLS, PHP, MariaDB, Redis. Arch-correct repos.
-4. USERS       Create heropanel system user/group; create /opt,/etc,/var,/run dirs with modes
-5. BINARIES    Place hpd, hp-broker, hpctl (arch-correct, verified) into /opt/heropanel/bin
+4. USERS       Create nexpanel system user/group; create /opt,/etc,/var,/run dirs with modes
+5. BINARIES    Place npd, np-broker, npctl (arch-correct, verified) into /opt/nexpanel/bin
 6. CONFIG      Generate config.yaml + secrets.env (random DB pw, JWT key, broker token,
                master enc key); set 0600/0640 ownership
 7. DATABASE    Create panel DB + user; run golang-migrate migrations
-8. SERVICES    Install systemd units (hardened); enable hpd + hp-broker; start
+8. SERVICES    Install systemd units (hardened); enable npd + np-broker; start
 9. WEBSERVER   Configure OLS to serve the panel on :8443 (self-signed cert now; LE later);
-               optional: register HeroPanel as the site web server
+               optional: register NexPanel as the site web server
 10. FIREWALL   Add rules for 8443 (and 80/443 if managing sites) with rollback timer
-11. VERIFY     Health probe hpd /readyz; broker socket handshake; DB reachable; port open
+11. VERIFY     Health probe npd /readyz; broker socket handshake; DB reachable; port open
 12. FINALIZE   Print URL + one-time admin bootstrap token; write journal 'success'
 ```
 
@@ -136,7 +136,7 @@ Each step is **idempotent** (safe re-run) and records its inverse in the journal
 If any step fails (or `--rollback` is invoked):
 - Walk the journal **in reverse**, executing recorded inverses: stop/remove services, remove created users/dirs/binaries, **restore backed-up configs** (web/db/firewall) verbatim, drop the panel DB if we created it.
 - Firewall changes have a **dead-man timer**: if verification doesn't confirm within N seconds, rules auto-revert (prevents SSH lock-out).
-- End state after rollback ≈ pre-install state; the journal + logs are preserved under `/var/lib/heropanel/install/` for diagnosis.
+- End state after rollback ≈ pre-install state; the journal + logs are preserved under `/var/lib/nexpanel/install/` for diagnosis.
 
 ## 6. Multi-arch / multi-OS binary resolution
 - Never hardcode URLs/versions. A signed **release manifest** (`releases/<channel>/manifest.json`) maps `{component, version} → {os, arch, libc} → {url, sha256, sig}`.
@@ -154,8 +154,8 @@ If any step fails (or `--rollback` is invoked):
 
 ## 8. Post-install
 - Prints the panel URL (`https://<host>:8443`) and a **one-time bootstrap token**; first browser visit creates the admin account (with forced MFA setup optional).
-- `hpctl doctor` runs the same preflight anytime for health/repair.
-- Uninstaller (`hp-installer uninstall`) reuses the journal + backups to cleanly remove and restore.
+- `npctl doctor` runs the same preflight anytime for health/repair.
+- Uninstaller (`np-installer uninstall`) reuses the journal + backups to cleanly remove and restore.
 
 ## 9. Testing the installer
 - Matrix CI across {Ubuntu LTS, Debian, Rocky, Alma, Oracle} × {amd64, arm64} in containers/VMs.

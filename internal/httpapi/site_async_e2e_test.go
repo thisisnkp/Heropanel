@@ -12,15 +12,15 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/webserver"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 func newAsyncSiteRouter(t *testing.T) http.Handler {

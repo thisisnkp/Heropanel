@@ -1,6 +1,6 @@
 // Turning the live OpenAPI document into something a help page can render. The
 // spec is served (unauthenticated) at /api/v1/openapi.json and is built by
-// walking hpd's real routing tree, so this reference cannot drift from what the
+// walking npd's real routing tree, so this reference cannot drift from what the
 // server actually exposes. These transforms are pure — grouping by tag, pulling
 // out the required permission, filtering by a search box — so the parsing that
 // is easy to get subtly wrong (a `parameters` key mistaken for a method, an
@@ -11,7 +11,7 @@ export type OpenApiOperation = {
   tags?: string[];
   description?: string;
   deprecated?: boolean;
-  // hpd stamps the required RBAC permission here (openapi.go).
+  // npd stamps the required RBAC permission here (openapi.go).
   "x-required-permission"?: string;
 };
 

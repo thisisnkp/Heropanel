@@ -72,12 +72,12 @@ export function SetupWizard() {
     <Modal title="Set up your server" onClose={() => setOpen(false)} wide>
       <div className="space-y-5">
         <p className="text-sm text-muted">
-          Choose the hosting stack HeroPanel will install and manage. You can change this later.
+          Choose the hosting stack NexPanel will install and manage. You can change this later.
         </p>
 
         {errorMessage && <Alert>{errorMessage}</Alert>}
 
-        <Field label="Web server" hint="Serves your websites; HeroPanel renders and reloads its config for you.">
+        <Field label="Web server" hint="Serves your websites; NexPanel renders and reloads its config for you.">
           <Select
             value={current.webserver}
             onChange={(e) => setSel({ ...current, webserver: e.target.value as Webserver })}

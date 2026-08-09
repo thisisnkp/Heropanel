@@ -1,7 +1,7 @@
 // Package policy holds the broker's capability policy: which privileged
 // capabilities are enabled and the constraints that bound them (allowed service
 // names, allowed filesystem roots, minimum uid). The policy is loaded from
-// /etc/heropanel/broker/policy.yaml (root-owned, 0600) at startup; this package
+// /etc/nexpanel/broker/policy.yaml (root-owned, 0600) at startup; this package
 // defines the model and its checks. See docs/05-security-architecture.md.
 package policy
 
@@ -27,13 +27,13 @@ type Policy struct {
 	// panel-created site users out of the system/reserved range.
 	UIDMin int
 
-	// PanelUser is the unprivileged account hpd runs as. Capabilities that hand a
+	// PanelUser is the unprivileged account npd runs as. Capabilities that hand a
 	// file back to the panel (a database export, say) chown it to this user, so
 	// the panel never needs a root file handle.
 	//
 	// It is policy rather than a constant because the account name is a
 	// deployment fact, not a property of the broker: a packager may install under
-	// a different name, and a test harness runs hpd as root.
+	// a different name, and a test harness runs npd as root.
 	PanelUser string
 }
 
@@ -41,9 +41,15 @@ type Policy struct {
 func Default() Policy {
 	return Policy{
 		Enabled: map[string]bool{
-			"service.restart":        true,
-			"service.status":         true,
-			"system.provision":       true,
+			"service.restart":  true,
+			"service.status":   true,
+			"system.provision": true,
+			// Starts np-installer as a transient systemd unit to replace the
+			// panel's own binaries. It writes nothing itself, so it needs no
+			// PathRoots entry, and it restarts nothing itself, so npd and
+			// np-broker stay off the Services allowlist — the installer the unit
+			// runs is what does both, outside this process's lifetime.
+			"panel.update":           true,
 			"system_user.create":     true,
 			"system_user.delete":     true,
 			"site.create_dirs":       true,
@@ -182,17 +188,17 @@ func Default() Policy {
 			// enable (system.provision). Names span the Debian/RHEL split.
 			"nginx", "apache2", "httpd", "mysql", "mysqld", "postgresql", "named",
 		},
-		PathRoots: []string{"/srv/heropanel/sites"},
+		PathRoots: []string{"/srv/nexpanel/sites"},
 		UIDMin:    20000,
-		PanelUser: "heropanel",
+		PanelUser: "nexpanel",
 	}
 }
 
-// EffectivePanelUser returns the account hpd runs as, falling back to the
+// EffectivePanelUser returns the account npd runs as, falling back to the
 // default when the policy leaves it unset.
 func (p Policy) EffectivePanelUser() string {
 	if p.PanelUser == "" {
-		return "heropanel"
+		return "nexpanel"
 	}
 	return p.PanelUser
 }

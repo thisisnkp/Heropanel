@@ -1,7 +1,7 @@
 # 13 — DNS (module design)
 
-Phase 2. Authoritative DNS management: HeroPanel hosts zones and records and
-serves them from a real authoritative nameserver (BIND9). hpd renders the zone
+Phase 2. Authoritative DNS management: NexPanel hosts zones and records and
+serves them from a real authoritative nameserver (BIND9). npd renders the zone
 file and the zone declaration from DB state; the privileged broker writes them,
 validates with `named-checkzone`, and reloads BIND — the same render → broker →
 reload shape as the OpenLiteSpeed and php-fpm flows.
@@ -74,18 +74,18 @@ _dmarc  IN TXT   "v=DMARC1; p=none"
 
 `dns.write_zone` — input `{zone, zone_file, named_conf}`:
 1. `ValidateFQDN(zone)`; write `/etc/bind/zones/db.<zone>` (the records) and
-   `/etc/bind/named.conf.heropanel` (the full set of `zone {}` blocks — declarative,
+   `/etc/bind/named.conf.nexpanel` (the full set of `zone {}` blocks — declarative,
    so there is no drift, mirroring the single OLS config file).
 2. `named-checkzone <zone> /etc/bind/zones/db.<zone>` — on failure, roll back the
    files and return `zone_invalid` (a broken zone is never served).
 3. `rndc reload` — apply.
 
 `dns.remove_zone` — input `{zone, named_conf}`: rewrite the declarative
-`named.conf.heropanel` without the zone, delete `db.<zone>`, reload.
+`named.conf.nexpanel` without the zone, delete `db.<zone>`, reload.
 
 Both write to fixed system paths derived from a `ValidateFQDN`-checked zone name
 (same pattern as `php.write_pool` / `cert.install`). BIND's config include is
-wired once at install time: `include "/etc/bind/named.conf.heropanel";`.
+wired once at install time: `include "/etc/bind/named.conf.nexpanel";`.
 
 ## 5. API
 

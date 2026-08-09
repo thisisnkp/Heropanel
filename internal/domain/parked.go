@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Parked domains: the missing "registrar" half of domain management.
@@ -16,14 +16,14 @@ import (
 // A Row (above) only exists once it is attached to a site. This is the other
 // case — a domain the operator has registered ownership of in the panel with
 // NO site yet, proven via a DNS TXT challenge at whatever DNS host the operator
-// actually uses (HeroPanel does not need to be authoritative for it). Once
+// actually uses (NexPanel does not need to be authoritative for it). Once
 // verified, it becomes a "free" domain offered when creating a site: pick it
 // and it attaches with no warning, because ownership is already proven.
 //
 // Trust extends to subdomains without a separate parked row for each one: once
 // `acme.com` is verified, `blog.acme.com` is trusted too, on the assumption the
 // operator followed the wildcard-record recommendation shown alongside the
-// challenge. HeroPanel does not verify the wildcard itself — only the TXT
+// challenge. NexPanel does not verify the wildcard itself — only the TXT
 // ownership record is actually checked.
 
 // Parked-domain status.
@@ -33,7 +33,7 @@ const (
 )
 
 // challengeLabel is the DNS label the ownership challenge is published under.
-const challengeLabel = "_heropanel-challenge"
+const challengeLabel = "_nexpanel-challenge"
 
 // ParkedDomain is the API view of a parked domain.
 type ParkedDomain struct {
@@ -100,7 +100,7 @@ func (s *Service) resolver() *net.Resolver {
 }
 
 func challengeName(fqdn string) string   { return challengeLabel + "." + fqdn }
-func challengeValue(token string) string { return "heropanel-verify=" + token }
+func challengeValue(token string) string { return "nexpanel-verify=" + token }
 func wildcardHint(fqdn string) string {
 	return "Recommended: point *." + fqdn + " (and " + fqdn + ") at this server so subdomains resolve automatically."
 }

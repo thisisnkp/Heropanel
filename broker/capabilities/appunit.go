@@ -8,20 +8,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/unitharden"
 )
 
 // unitDir is where per-site app units live. The unit name is derived from the
 // validated vhost id, so it is always a safe filename.
 const unitDir = "/etc/systemd/system"
 
-// reAppEnvKey is a conventional environment variable name (defense in depth; hpd
+// reAppEnvKey is a conventional environment variable name (defense in depth; npd
 // validates too).
 var reAppEnvKey = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
-func appUnitName(vhost string) string { return "heropanel-app-" + vhost + ".service" }
+func appUnitName(vhost string) string { return "nexpanel-app-" + vhost + ".service" }
 func appUnitPath(vhost string) string { return unitDir + "/" + appUnitName(vhost) }
 
 // ── app.unit_apply ───────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ func (AppUnitApply) Execute(c capability.Context, raw json.RawMessage) (capabili
 	}
 
 	home := strings.TrimRight(in.Home, "/")
-	launcher := home + "/.heropanel-run"
+	launcher := home + "/.nexpanel-run"
 	// The launcher carries the command; the unit just execs it. `exec` replaces
 	// the shell so systemd supervises the app process directly.
 	if err := c.FS.WriteFile(launcher, []byte("#!/bin/sh\nexec "+in.Command+"\n"), 0o755); err != nil {
@@ -108,7 +109,7 @@ func (AppUnitApply) Execute(c capability.Context, raw json.RawMessage) (capabili
 func renderAppUnit(in appUnitApplyInput, home, launcher string) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
-	b.WriteString("Description=HeroPanel app " + in.Vhost + "\n")
+	b.WriteString("Description=NexPanel app " + in.Vhost + "\n")
 	b.WriteString("After=network.target\n\n")
 	b.WriteString("[Service]\n")
 	b.WriteString("User=" + in.Username + "\n")
@@ -132,13 +133,16 @@ func renderAppUnit(in appUnitApplyInput, home, launcher string) string {
 	// limits actually bound it. Without this the unit lands in system.slice and a
 	// runaway app is bounded only by the size of the node.
 	b.WriteString("Slice=" + SiteSliceName(in.Vhost) + "\n")
-	// Hardening: the app can only touch its own tree.
-	b.WriteString("NoNewPrivileges=true\n")
+	// Hardening: the app can only touch its own tree. The filesystem half is
+	// per-unit (it depends on this site's home); the rest is the shared
+	// SiteWorkload profile, so an app unit and a cron unit cannot drift apart.
 	b.WriteString("PrivateTmp=true\n")
 	b.WriteString("ProtectSystem=strict\n")
 	b.WriteString("ProtectHome=true\n")
 	b.WriteString("ReadWritePaths=" + home + "\n")
-	b.WriteString("UMask=0027\n\n")
+	b.WriteString("UMask=0027\n")
+	b.WriteString(unitharden.SiteWorkload.Directives())
+	b.WriteString("\n")
 	b.WriteString("[Install]\n")
 	b.WriteString("WantedBy=multi-user.target\n")
 	return b.String()

@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
-const liveRuleset = "table inet heropanel {\n\tchain input { type filter hook input priority 0; policy accept; }\n}\n"
+const liveRuleset = "table inet nexpanel {\n\tchain input { type filter hook input priority 0; policy accept; }\n}\n"
 
 // nftRunner routes nft calls: `list ruleset` prints the live ruleset, `-f`
 // records the file it was asked to load.
@@ -35,7 +35,7 @@ func TestFirewallApplySnapshotsThenApplies(t *testing.T) {
 	fs := fsys.NewFake()
 
 	res, err := (capabilities.FirewallApply{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
-		"ruleset": "flush ruleset\ntable inet heropanel { chain input { policy drop; } }\n",
+		"ruleset": "flush ruleset\ntable inet nexpanel { chain input { policy drop; } }\n",
 	}))
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -43,7 +43,7 @@ func TestFirewallApplySnapshotsThenApplies(t *testing.T) {
 	if res.Data["pending"] != true {
 		t.Error("apply did not leave the change pending")
 	}
-	snap, ok := fs.Written("/var/lib/heropanel/firewall/rollback.nft")
+	snap, ok := fs.Written("/var/lib/nexpanel/firewall/rollback.nft")
 	if !ok {
 		t.Fatal("no rollback snapshot was written")
 	}
@@ -51,7 +51,7 @@ func TestFirewallApplySnapshotsThenApplies(t *testing.T) {
 		t.Errorf("snapshot is not a flushable restore of the live ruleset: %q", snap)
 	}
 	// The new ruleset was the last thing nft loaded.
-	if len(loaded) == 0 || loaded[len(loaded)-1] != "/var/lib/heropanel/firewall/desired.nft" {
+	if len(loaded) == 0 || loaded[len(loaded)-1] != "/var/lib/nexpanel/firewall/desired.nft" {
 		t.Errorf("the new ruleset was not applied: %v", loaded)
 	}
 }
@@ -60,7 +60,7 @@ func TestFirewallApplySnapshotsThenApplies(t *testing.T) {
 // true pre-change baseline, not a half-changed intermediate.
 func TestFirewallApplyRefusesWhilePending(t *testing.T) {
 	fs := fsys.NewFake()
-	_ = fs.WriteFile("/var/lib/heropanel/firewall/rollback.nft", []byte("flush ruleset\n"), 0o600)
+	_ = fs.WriteFile("/var/lib/nexpanel/firewall/rollback.nft", []byte("flush ruleset\n"), 0o600)
 
 	_, err := (capabilities.FirewallApply{}).Execute(appCtx(nftRunner(nil), fs), raw(t, map[string]any{
 		"ruleset": "flush ruleset\n",
@@ -88,9 +88,9 @@ func TestFirewallApplyCleansUpOnRejected(t *testing.T) {
 	})); err == nil {
 		t.Fatal("a rejected ruleset reported success")
 	}
-	if _, ok := fs.Written("/var/lib/heropanel/firewall/rollback.nft"); ok {
+	if _, ok := fs.Written("/var/lib/nexpanel/firewall/rollback.nft"); ok {
 		// Written then removed: Fake records the last write; assert it was removed.
-		if exists, _ := fs.Exists("/var/lib/heropanel/firewall/rollback.nft"); exists {
+		if exists, _ := fs.Exists("/var/lib/nexpanel/firewall/rollback.nft"); exists {
 			t.Error("a rejected apply left a pending snapshot")
 		}
 	}
@@ -99,7 +99,7 @@ func TestFirewallApplyCleansUpOnRejected(t *testing.T) {
 // Confirm discards the snapshot; rollback restores and discards it.
 func TestFirewallConfirmAndRollback(t *testing.T) {
 	fs := fsys.NewFake()
-	_ = fs.WriteFile("/var/lib/heropanel/firewall/rollback.nft", []byte("flush ruleset\npolicy accept\n"), 0o600)
+	_ = fs.WriteFile("/var/lib/nexpanel/firewall/rollback.nft", []byte("flush ruleset\npolicy accept\n"), 0o600)
 
 	res, err := (capabilities.FirewallConfirm{}).Execute(appCtx(nftRunner(nil), fs), raw(t, map[string]any{}))
 	if err != nil {
@@ -108,7 +108,7 @@ func TestFirewallConfirmAndRollback(t *testing.T) {
 	if res.Data["was_pending"] != true {
 		t.Error("confirm did not see the pending change")
 	}
-	if exists, _ := fs.Exists("/var/lib/heropanel/firewall/rollback.nft"); exists {
+	if exists, _ := fs.Exists("/var/lib/nexpanel/firewall/rollback.nft"); exists {
 		t.Error("confirm left the snapshot behind")
 	}
 
@@ -116,7 +116,7 @@ func TestFirewallConfirmAndRollback(t *testing.T) {
 	var loaded []string
 	fr := nftRunner(&loaded)
 	fs2 := fsys.NewFake()
-	_ = fs2.WriteFile("/var/lib/heropanel/firewall/rollback.nft", []byte("flush ruleset\npolicy accept\n"), 0o600)
+	_ = fs2.WriteFile("/var/lib/nexpanel/firewall/rollback.nft", []byte("flush ruleset\npolicy accept\n"), 0o600)
 	rb, err := (capabilities.FirewallRollback{}).Execute(appCtx(fr, fs2), raw(t, map[string]any{}))
 	if err != nil {
 		t.Fatalf("rollback: %v", err)
@@ -124,10 +124,10 @@ func TestFirewallConfirmAndRollback(t *testing.T) {
 	if rb.Data["rolled_back"] != true {
 		t.Error("rollback did not restore the snapshot")
 	}
-	if len(loaded) != 1 || loaded[0] != "/var/lib/heropanel/firewall/rollback.nft" {
+	if len(loaded) != 1 || loaded[0] != "/var/lib/nexpanel/firewall/rollback.nft" {
 		t.Errorf("rollback did not load the snapshot: %v", loaded)
 	}
-	if exists, _ := fs2.Exists("/var/lib/heropanel/firewall/rollback.nft"); exists {
+	if exists, _ := fs2.Exists("/var/lib/nexpanel/firewall/rollback.nft"); exists {
 		t.Error("rollback left the snapshot behind")
 	}
 

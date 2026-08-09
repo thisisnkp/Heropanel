@@ -4,23 +4,23 @@ import (
 	"context"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	backuppkg "github.com/thisisnkp/heropanel/internal/backup"
-	"github.com/thisisnkp/heropanel/internal/cron"
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/internal/dns"
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/internal/files"
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/runtime"
-	"github.com/thisisnkp/heropanel/internal/security"
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/internal/terminal"
-	"github.com/thisisnkp/heropanel/internal/ws"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	backuppkg "github.com/thisisnkp/nexpanel/internal/backup"
+	"github.com/thisisnkp/nexpanel/internal/cron"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/internal/files"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/internal/security"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/internal/ws"
 )
 
 // userDirectoryAdapter adapts the user repository to httpapi.UserDirectory,
@@ -147,7 +147,7 @@ func (a siteDomainsAdapter) ForSite(ctx context.Context, siteID int64) ([]site.D
 }
 
 // sslDNSAdapter adapts the DNS service to ssl.DNSProvider, letting ACME publish
-// DNS-01 challenges into a zone HeroPanel is authoritative for (which is what
+// DNS-01 challenges into a zone NexPanel is authoritative for (which is what
 // makes wildcard certificates possible).
 type sslDNSAdapter struct {
 	svc *dns.Service

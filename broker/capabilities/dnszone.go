@@ -5,18 +5,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // BIND paths. The include file is wired into named.conf once at install time:
 //
-//	include "/etc/bind/named.conf.heropanel";
+//	include "/etc/bind/named.conf.nexpanel";
 const (
 	bindZonesDir    = "/etc/bind/zones"
 	bindKeysDir     = "/etc/bind/keys"
-	bindNamedConf   = "/etc/bind/named.conf.heropanel"
+	bindNamedConf   = "/etc/bind/named.conf.nexpanel"
 	namedCheckzone  = "/usr/bin/named-checkzone"
 	rndcPath        = "/usr/sbin/rndc"
 	dnssecDsFromKey = "/usr/bin/dnssec-dsfromkey"

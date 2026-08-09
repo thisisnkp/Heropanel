@@ -14,7 +14,7 @@ import (
 // The format is a JSON header line followed by one JSON array per event:
 //
 //	{"version":2,"width":120,"height":30,"timestamp":1700000000}
-//	[0.482, "o", "hps1@host:~$ "]
+//	[0.482, "o", "nps1@host:~$ "]
 //	[1.913, "i", "ls\r"]
 //	[2.004, "r", "132x40"]
 //

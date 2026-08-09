@@ -1,4 +1,4 @@
--- HeroPanel app runtimes: a supervised process + reverse-proxy target per site (MariaDB).
+-- NexPanel app runtimes: a supervised process + reverse-proxy target per site (MariaDB).
 
 CREATE TABLE app_runtimes (
     id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

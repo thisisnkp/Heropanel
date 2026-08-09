@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Passwordless webmail sign-on via a Dovecot MASTER user.
@@ -34,7 +34,7 @@ const (
 	// WebmailSSOSweep is how often expired master users are pruned.
 	WebmailSSOSweep = 5 * time.Minute
 	// ssoMasterPrefix marks master users this panel owns.
-	ssoMasterPrefix = "hpsso_"
+	ssoMasterPrefix = "npsso_"
 )
 
 // WebmailSSORecord is one live master-user session. It holds the bcrypt hash of

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Private Git repository over SSH, end to end against a real sshd.
 #
-# HeroPanel generates an ed25519 deploy key, seals the private half with the
+# NexPanel generates an ed25519 deploy key, seals the private half with the
 # panel's master key, and hands only the public half back. We register that
 # public key on a local git account, then deploy: the clone must succeed using a
 # key the operator never saw, and the private half must never appear in argv or
@@ -12,7 +12,7 @@
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
 sec "start OpenLiteSpeed"
 /usr/local/lsws/bin/lswsctrl start >/dev/null 2>&1
@@ -27,10 +27,10 @@ git init --bare -q /srv/git/app.git
 
 work=$(mktemp -d)
 git init -q "$work"
-git -C "$work" config user.email ci@heropanel.test
+git -C "$work" config user.email ci@nexpanel.test
 git -C "$work" config user.name CI
 mkdir -p "$work/site"
-printf '<h1>private repo via HeroPanel</h1>' > "$work/site/index.html"
+printf '<h1>private repo via NexPanel</h1>' > "$work/site/index.html"
 git -C "$work" add -A
 git -C "$work" commit -qm seed
 git -C "$work" branch -M main
@@ -44,27 +44,27 @@ ssh-keygen -A >/dev/null 2>&1
 for i in $(seq 1 40); do (echo > /dev/tcp/127.0.0.1/22) >/dev/null 2>&1 && break; sleep 0.2; done
 echo "sshd up; bare repo /srv/git/app.git owned by $(stat -c %U /srv/git/app.git)"
 
-sec "start hp-broker + hpd (with a master key, so private repos are enabled)"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+sec "start np-broker + npd (with a master key, so private repos are enabled)"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 # 32 random bytes, base64 — what the installer would write into secrets.env.
 SECRET_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY="$SECRET_KEY" \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY="$SECRET_KEY" \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
-grep -o 'secret encryption enabled' /tmp/hpd.log | head -1
+grep -o 'secret encryption enabled' /tmp/npd.log | head -1
 
 sec "auth"
 curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "CREATE GIT SITE"
@@ -85,13 +85,13 @@ echo "generated deploy key: ${pub:0:60}..."
 sec "*** THE PRIVATE HALF NEVER LEAVES THE PANEL ***"
 if echo "$src" | grep -q 'PRIVATE KEY'; then echo 'FAIL: private key in API response'; else echo 'private key absent from API response: OK'; fi
 # At rest it is ciphertext, not PEM.
-if grep -aq 'BEGIN OPENSSH PRIVATE KEY' /tmp/hp.db; then
+if grep -aq 'BEGIN OPENSSH PRIVATE KEY' /tmp/np.db; then
   echo 'FAIL: private key stored in the clear'
 else
   echo 'private key sealed at rest (no PEM in the database): OK'
 fi
 echo -n 'stored credential looks like: '
-strings /tmp/hp.db 2>/dev/null | grep -oE 'hp1\.[A-Za-z0-9_-]{20}' | head -1
+strings /tmp/np.db 2>/dev/null | grep -oE 'np1\.[A-Za-z0-9_-]{20}' | head -1
 
 sec "DEPLOY BEFORE REGISTERING THE KEY (must fail — the repo does not trust us yet)"
 api -X POST $base/api/v1/sites/$uid/git/deploy | head -c 300; echo
@@ -119,8 +119,8 @@ sec "*** CURL THE PAGE CLONED FROM THE PRIVATE REPO ***"
 echo -n "priv.test -> "; curl -s -o /tmp/body -w '%{http_code} ' -H 'Host: priv.test' http://127.0.0.1/; cat /tmp/body; echo
 
 sec "*** THE CREDENTIAL IS GONE FROM DISK ***"
-if [ -d /run/heropanel/gitauth ] && [ -n "$(ls -A /run/heropanel/gitauth 2>/dev/null)" ]; then
-  echo "FAIL: credential material left behind:"; ls -laR /run/heropanel/gitauth
+if [ -d /run/nexpanel/gitauth ] && [ -n "$(ls -A /run/nexpanel/gitauth 2>/dev/null)" ]; then
+  echo "FAIL: credential material left behind:"; ls -laR /run/nexpanel/gitauth
 else
   echo "no credential material left on /run: OK"
 fi

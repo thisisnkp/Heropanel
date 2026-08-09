@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // VersionOPcache is the per-**version** OPcache tuning that a per-site pool
@@ -102,7 +102,7 @@ func rangeCheck(field string, v, lo, hi int) error {
 }
 
 var versionOpcacheTmpl = template.Must(template.New("opcache").Parse(
-	`; Managed by HeroPanel — per-version OPcache (PHP_INI_SYSTEM). Do not edit by hand.
+	`; Managed by NexPanel — per-version OPcache (PHP_INI_SYSTEM). Do not edit by hand.
 opcache.memory_consumption={{.MemoryConsumptionMB}}
 opcache.interned_strings_buffer={{.InternedStringsBufferMB}}
 opcache.max_accelerated_files={{.MaxAcceleratedFiles}}

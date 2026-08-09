@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { ADMIN, bootstrapOnce, login } from "./helpers";
 
-// First-run and sign-in, driven through the browser against a real hpd.
+// First-run and sign-in, driven through the browser against a real npd.
 //
 // These are the flows every other one depends on, and the ones most likely to
 // break invisibly: a routing change, a cookie attribute, or an error shape that

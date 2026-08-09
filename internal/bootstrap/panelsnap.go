@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // panelSnapshotter builds the dialect-appropriate snapshot function for panel
@@ -73,7 +73,7 @@ func panelSnapshotter(db *repository.DB, dbCfg config.Database, gw broker.Gatewa
 		}
 
 		manifest, err := json.Marshal(map[string]string{
-			"kind":       "heropanel-panel-backup",
+			"kind":       "nexpanel-panel-backup",
 			"driver":     string(db.Dialect),
 			"created_at": time.Now().UTC().Format(time.RFC3339),
 		})

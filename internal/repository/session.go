@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Session is a server-side session row.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // Catalog is a marketplace feed: the set of module manifests offered for

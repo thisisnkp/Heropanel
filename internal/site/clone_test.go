@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/site"
 )
 
 func cloneInputFor(srcUID string) site.CloneInput {
@@ -63,10 +63,10 @@ func TestCloneProvisionsASeparateSiteAndCopiesTheContent(t *testing.T) {
 		t.Fatalf("site.copy_tree called %d times, want 1", len(copies))
 	}
 	in := copies[0].input
-	if in["src_root"] != "/srv/heropanel/sites/1" {
+	if in["src_root"] != "/srv/nexpanel/sites/1" {
 		t.Errorf("src_root = %v, want the source's home", in["src_root"])
 	}
-	if in["dst_root"] != "/srv/heropanel/sites/2" {
+	if in["dst_root"] != "/srv/nexpanel/sites/2" {
 		t.Errorf("dst_root = %v, want the clone's home", in["dst_root"])
 	}
 	// The copy must be re-owned to the clone's user, not the source's.

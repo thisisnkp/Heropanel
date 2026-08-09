@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Compose stacks.
@@ -28,7 +28,7 @@ import (
 //   - the project name is validated, so it cannot inject flags or escape the
 //     stack directory;
 //   - the operator's file is written to a **broker-chosen** directory, never a
-//     path hpd names, so hpd cannot point compose at /etc/anything;
+//     path npd names, so npd cannot point compose at /etc/anything;
 //   - nothing here runs a shell.
 //
 // The managed label is applied by deploying with a generated override file
@@ -101,9 +101,9 @@ func (ComposeUp) Execute(c capability.Context, raw json.RawMessage) (capability.
 	// every service. The override's service names come from compose itself
 	// (`config --services`), so the broker never parses arbitrary YAML — it lets
 	// compose do that and only weaves in labels. The directory is the broker's,
-	// created with os.MkdirTemp, so the "hpd cannot name a path" property holds:
-	// hpd supplies bytes, the broker chooses where they live and cleans up after.
-	dir, err := os.MkdirTemp("", "hp-compose-")
+	// created with os.MkdirTemp, so the "npd cannot name a path" property holds:
+	// npd supplies bytes, the broker chooses where they live and cleans up after.
+	dir, err := os.MkdirTemp("", "np-compose-")
 	if err != nil {
 		return capability.Result{}, errx.Internal(err)
 	}
@@ -125,7 +125,7 @@ func (ComposeUp) Execute(c capability.Context, raw json.RawMessage) (capability.
 	}
 
 	override := buildLabelOverride(string(namesRes.Stdout), in.Site)
-	overridePath := filepath.Join(dir, "hp-labels.yaml")
+	overridePath := filepath.Join(dir, "np-labels.yaml")
 	if err := os.WriteFile(overridePath, []byte(override), 0o600); err != nil {
 		return capability.Result{}, errx.Internal(err)
 	}
@@ -262,7 +262,7 @@ func composeProjectIsManaged(c capability.Context, project string) error {
 	}
 	if len(res.Stdout) == 0 {
 		return errx.New(errx.KindForbidden, "compose_not_managed",
-			"That stack was not created by HeroPanel, so the panel will not tear it down.")
+			"That stack was not created by NexPanel, so the panel will not tear it down.")
 	}
 	return nil
 }

@@ -1,5 +1,5 @@
-// Package brokerwire defines the on-the-wire protocol shared by hp-broker
-// (server) and hpd (client): the request/response types and a minimal
+// Package brokerwire defines the on-the-wire protocol shared by np-broker
+// (server) and npd (client): the request/response types and a minimal
 // length-prefixed JSON framing. It depends only on the standard library so the
 // root broker's parser surface stays tiny (ADR-0007).
 package brokerwire
@@ -13,7 +13,7 @@ import (
 
 const (
 	// DefaultSocket is the standard broker socket path.
-	DefaultSocket = "/run/heropanel/broker.sock"
+	DefaultSocket = "/run/nexpanel/broker.sock"
 	// MaxFrame caps a single frame's payload to bound memory use.
 	MaxFrame = 1 << 20 // 1 MiB
 )

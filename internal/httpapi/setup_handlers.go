@@ -3,8 +3,8 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/setup"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/setup"
 )
 
 // First-run setup wizard edge. The panel serves itself over net/http the moment

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // logGateway answers site.read_log with a canned payload, shaped like the
@@ -67,8 +67,8 @@ func TestLogsReadsTheAccessLogThroughTheBroker(t *testing.T) {
 	if read == nil {
 		t.Fatal("the broker was never asked to read the log")
 	}
-	// The logs are 0750 and owned by the site's user; hpd cannot read them itself.
-	if read.input["root"] != "/srv/heropanel/sites/1" {
+	// The logs are 0750 and owned by the site's user; npd cannot read them itself.
+	if read.input["root"] != "/srv/nexpanel/sites/1" {
 		t.Errorf("root = %v, want the site's home", read.input["root"])
 	}
 	if read.input["kind"] != site.LogAccess || read.input["lines"] != 50 {

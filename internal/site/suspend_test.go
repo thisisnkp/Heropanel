@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/webserver"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeRuntime records Control calls so a suspension can be checked to actually

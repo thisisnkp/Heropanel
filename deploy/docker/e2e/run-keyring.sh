@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Rotating data-key envelope, end to end against a real hpd: the panel starts in
+# Rotating data-key envelope, end to end against a real npd: the panel starts in
 # legacy (generation 0) mode, rotates to a wrapped data key (generation 1) which
 # is persisted, and — after a full restart with the same master key — reloads the
 # keyring from the database and still reports generation 1. That restart is the
 # real proof: the wrapped key round-trips through the DB and unwraps under the
-# master on boot. No broker needed — this is pure hpd + its datastore.
+# master on boot. No broker needed — this is pure npd + its datastore.
 set -u
 sec(){ echo; echo "======== $* ========"; }
 fail=0
@@ -12,23 +12,23 @@ check(){ if printf '%s' "$2" | grep -q -- "$3"; then echo "  ok   $1"; else echo
 base=http://127.0.0.1:18443
 KEY=$(head -c 32 /dev/urandom | base64)
 
-start_hpd(){
-  HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-    HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-    HP_SECRET_KEY="$KEY" hpd >/tmp/hpd.log 2>&1 &
-  HPD_PID=$!
+start_npd(){
+  NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+    NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+    NP_SECRET_KEY="$KEY" npd >/tmp/npd.log 2>&1 &
+  NPD_PID=$!
   for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 }
 
-sec "start hpd (sqlite, master key set)"
-install -m0755 /hp/hpd /usr/local/bin/
-start_hpd
+sec "start npd (sqlite, master key set)"
+install -m0755 /np/npd /usr/local/bin/
+start_npd
 
 sec "auth"
 curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 login(){ curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null; CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt); }
+  -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null; CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt); }
 login
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
@@ -46,16 +46,16 @@ check "no longer legacy"     "$R" '"legacy_key_in_use":false'
 
 sec "the wrapped data key is persisted in the datastore"
 if command -v sqlite3 >/dev/null 2>&1; then
-  CNT=$(sqlite3 /tmp/hp.db 'SELECT count(*) FROM data_keys;' 2>/dev/null || echo "?")
+  CNT=$(sqlite3 /tmp/np.db 'SELECT count(*) FROM data_keys;' 2>/dev/null || echo "?")
   check "data_keys row present" "$CNT" '1'
 else
   echo "  (sqlite3 CLI absent — persistence is proven by the restart+reload below)"
 fi
 
-sec "RESTART hpd with the same master key — keyring reloads from the DB"
-kill "$HPD_PID" 2>/dev/null; wait "$HPD_PID" 2>/dev/null
-start_hpd
-check "keyring reloaded on boot" "$(cat /tmp/hpd.log)" 'data-key ring loaded'
+sec "RESTART npd with the same master key — keyring reloads from the DB"
+kill "$NPD_PID" 2>/dev/null; wait "$NPD_PID" 2>/dev/null
+start_npd
+check "keyring reloaded on boot" "$(cat /tmp/npd.log)" 'data-key ring loaded'
 login
 S=$(api $base/api/v1/system/keyring); echo "$S"
 check "still generation 1 after restart" "$S" '"active_generation":1'

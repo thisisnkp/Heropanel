@@ -10,7 +10,7 @@ CREATE TABLE mail_domains (
     uid           CHAR(26) NOT NULL,
     owner_id      BIGINT UNSIGNED NOT NULL,
     domain        VARCHAR(255) NOT NULL,
-    dkim_selector VARCHAR(63) NOT NULL DEFAULT 'hp1',
+    dkim_selector VARCHAR(63) NOT NULL DEFAULT 'np1',
     dkim_private  TEXT NOT NULL,
     dkim_public   TEXT NOT NULL,
     status        VARCHAR(16) NOT NULL DEFAULT 'active',

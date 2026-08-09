@@ -19,7 +19,7 @@
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
 sec "start OpenLiteSpeed + Redis"
 /usr/local/lsws/bin/lswsctrl start >/dev/null 2>&1
@@ -33,12 +33,12 @@ mkdir -p /srv/git /home/git/.ssh
 git init --bare -q /srv/git/app.git
 work=$(mktemp -d)
 git init -q "$work"
-git -C "$work" config user.email ci@heropanel.test
+git -C "$work" config user.email ci@nexpanel.test
 git -C "$work" config user.name CI
 
 cat > "$work/package.json" <<'EOF'
 {
-  "name": "heropanel-nextjs-e2e",
+  "name": "nexpanel-nextjs-e2e",
   "private": true,
   "scripts": { "build": "next build", "start": "next start" },
   "dependencies": {
@@ -63,7 +63,7 @@ EOF
 cat > "$work/app/page.js" <<'EOF'
 export const dynamic = 'force-dynamic';
 export default function Page() {
-  return <h1>Next.js live via HeroPanel pid {process.pid}</h1>;
+  return <h1>Next.js live via NexPanel pid {process.pid}</h1>;
 }
 EOF
 mkdir -p "$work/app/healthz"
@@ -87,28 +87,28 @@ ssh-keygen -A >/dev/null 2>&1
 for i in $(seq 1 40); do (echo > /dev/tcp/127.0.0.1/22) >/dev/null 2>&1 && break; sleep 0.2; done
 echo "node $(node --version), npm $(npm --version), next $(grep -o '"next": "[^"]*"' "$work/package.json")"
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 SECRET_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY="$SECRET_KEY" \
-  HP_REDIS_ADDR=127.0.0.1:6379 \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY="$SECRET_KEY" \
+  NP_REDIS_ADDR=127.0.0.1:6379 \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
-grep -o 'job queue enabled' /tmp/hpd.log | head -1
+grep -o 'job queue enabled' /tmp/npd.log | head -1
 
 sec "auth"
 curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 # waitjob <id> <max-polls> — with a queue configured EVERY long op returns a job,
@@ -164,7 +164,7 @@ api -X PUT $base/api/v1/sites/$uid/runtime -H 'Content-Type: application/json' -
 
 sec "health + slice placement"
 api $base/api/v1/sites/$uid/runtime/health; echo
-grep -E '^Slice=' /etc/systemd/system/heropanel-app-hps1.service 2>&1
+grep -E '^Slice=' /etc/systemd/system/nexpanel-app-nps1.service 2>&1
 
 sec "reload OLS"
 /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
@@ -174,9 +174,9 @@ curl -si -H 'Host: next.test' http://127.0.0.1/ 2>&1 | head -8
 echo "--- rendered by Next.js ---"
 # React splits text around an interpolation with <!-- --> markers, so match the
 # literal prefix rather than the whole sentence.
-curl -s -H 'Host: next.test' http://127.0.0.1/ 2>&1 | grep -o 'Next.js live via HeroPanel' | head -1
+curl -s -H 'Host: next.test' http://127.0.0.1/ 2>&1 | grep -o 'Next.js live via NexPanel' | head -1
 echo -n "next start is serving (x-powered-by): "
 curl -sI -H 'Host: next.test' http://127.0.0.1/ 2>&1 | grep -io 'x-powered-by: Next.js'
 
 sec "app log tail"
-tail -5 /tmp/app-heropanel-app-hps1.log 2>&1
+tail -5 /tmp/app-nexpanel-app-nps1.log 2>&1

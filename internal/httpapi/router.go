@@ -1,4 +1,4 @@
-// Package httpapi builds hpd's HTTP edge: the Chi router, the standard
+// Package httpapi builds npd's HTTP edge: the Chi router, the standard
 // middleware chain, the JSON response/error contract, and the baseline
 // endpoints. Business handlers are added per bounded context (docs/04).
 package httpapi
@@ -12,37 +12,38 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/thisisnkp/heropanel/internal/apps"
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/backup"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/cron"
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/internal/dns"
-	"github.com/thisisnkp/heropanel/internal/docker"
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/internal/files"
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/keyring"
-	"github.com/thisisnkp/heropanel/internal/mail"
-	"github.com/thisisnkp/heropanel/internal/marketplace"
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/registry"
-	"github.com/thisisnkp/heropanel/internal/runtime"
-	"github.com/thisisnkp/heropanel/internal/security"
-	"github.com/thisisnkp/heropanel/internal/setup"
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/internal/tenancy"
-	"github.com/thisisnkp/heropanel/internal/terminal"
-	"github.com/thisisnkp/heropanel/internal/users"
-	"github.com/thisisnkp/heropanel/internal/webhook"
-	"github.com/thisisnkp/heropanel/internal/webmail"
-	"github.com/thisisnkp/heropanel/internal/ws"
-	"github.com/thisisnkp/heropanel/web"
+	"github.com/thisisnkp/nexpanel/internal/apps"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/backup"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/cron"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/internal/docker"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/internal/files"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/keyring"
+	"github.com/thisisnkp/nexpanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/registry"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/internal/security"
+	"github.com/thisisnkp/nexpanel/internal/setup"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/internal/tenancy"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/internal/update"
+	"github.com/thisisnkp/nexpanel/internal/users"
+	"github.com/thisisnkp/nexpanel/internal/webhook"
+	"github.com/thisisnkp/nexpanel/internal/webmail"
+	"github.com/thisisnkp/nexpanel/internal/ws"
+	"github.com/thisisnkp/nexpanel/web"
 )
 
 // HealthChecker is anything whose health can be probed (e.g. the database).
@@ -116,7 +117,7 @@ type Deps struct {
 	AuditScan *security.Audit
 	// Monitor samples node health for the dashboard. It needs no datastore or
 	// broker (node metrics come from world-readable /proc), so it is present
-	// whenever hpd is.
+	// whenever npd is.
 	Monitor  *monitor.Service
 	Jobs     *job.Dispatcher    // nil when the async job queue is disabled (no Redis)
 	WS       *ws.Hub            // nil when the realtime hub is disabled (no Redis)
@@ -130,6 +131,11 @@ type Deps struct {
 	// Setup is the first-run infrastructure wizard. Present but unavailable
 	// without a datastore; the wizard gates the panel until it is completed.
 	Setup *setup.Service
+
+	// Update is the panel's self-update service (docs/26). Nil without a
+	// datastore, in which case the endpoints report unavailable rather than
+	// pretending an update could be recorded.
+	Update *update.Service
 }
 
 // NewRouter assembles the middleware chain and routes into an http.Handler.
@@ -242,6 +248,7 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("module.read")).Get("/marketplace/catalog", listMarketplaceHandler(d))
 					r.With(requirePermission("module.read")).Get("/marketplace/installed", listInstalledModulesHandler(d))
 					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/install", installModuleHandler(d))
+					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/update", updateModuleHandler(d))
 					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/enable", enableModuleHandler(d))
 					r.With(requirePermission("module.manage")).Post("/marketplace/modules/{slug}/disable", disableModuleHandler(d))
 					r.With(requirePermission("module.manage")).Delete("/marketplace/modules/{slug}", uninstallModuleHandler(d))
@@ -253,6 +260,14 @@ func NewRouter(d Deps) http.Handler {
 				if d.Setup != nil {
 					r.With(requirePermission("setup.manage")).Get("/setup", getSetupHandler(d))
 					r.With(requirePermission("setup.manage")).Post("/setup", completeSetupHandler(d))
+
+					// Panel self-update (docs/26). Reading is system.read; the
+					// apply is system.write, because it replaces the broker as
+					// well as the panel.
+					r.With(requirePermission("system.read")).Get("/system/update", getUpdateHandler(d))
+					r.With(requirePermission("system.read")).Get("/system/updates", listUpdatesHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/update/check", checkUpdateHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/update/apply", applyUpdateHandler(d))
 				}
 
 				if d.UserMgmt != nil {
@@ -524,7 +539,7 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("site.write")).Post("/sites/{uid}/backups/{bid}/restore", restoreBackupHandler(d))
 					r.With(requirePermission("site.write")).Delete("/sites/{uid}/backups/{bid}", deleteBackupHandler(d))
 					// Panel self-backup: the panel's own database, sealed. Restore
-					// is out-of-band by design (`hpd decrypt` + docs/22 §7).
+					// is out-of-band by design (`npd decrypt` + docs/22 §7).
 					r.With(requirePermission("system.read")).Get("/system/backups", listPanelBackupsHandler(d))
 					r.With(requirePermission("system.write")).Post("/system/backups", createPanelBackupHandler(d))
 					r.With(requirePermission("system.write")).Delete("/system/backups/{uid}", deletePanelBackupHandler(d))

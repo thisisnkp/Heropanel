@@ -129,7 +129,7 @@ var apiDocs = map[string]opMeta{
 			"events": arrayOf(prop("string", "Resource types to subscribe to (e.g. \"sites\", \"dns\"), or \"*\" for all. Defaults to [\"*\"].")),
 		}, "url"),
 		RespStatus: 201,
-		RespDesc:   "Registers the subscription and returns the signing secret once. Deliveries are HMAC-signed: X-HeroPanel-Signature = \"sha256=\" + HMAC-SHA256(secret, timestamp + \".\" + body).",
+		RespDesc:   "Registers the subscription and returns the signing secret once. Deliveries are HMAC-signed: X-NexPanel-Signature = \"sha256=\" + HMAC-SHA256(secret, timestamp + \".\" + body).",
 	},
 	"DELETE /api/v1/webhooks/{uid}": {
 		Summary: "Delete a webhook", Tags: []string{"Webhooks"}, Permission: "webhook.write",
@@ -153,6 +153,10 @@ var apiDocs = map[string]opMeta{
 		Summary: "Install a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
 		RespStatus: 201,
 		RespDesc:   "Verifies the module's manifest against a trusted publisher key and records it as installed. Refused (403) for any module a trusted key has not signed.",
+	},
+	"POST /api/v1/marketplace/modules/{slug}/update": {
+		Summary: "Update a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
+		RespDesc: "Moves an installed module to the version the catalog now offers. Re-verifies the manifest, and refuses (403) a version signed by a different publisher than the installed one, or (409) one that is not strictly newer. The module's enable state is preserved.",
 	},
 	"POST /api/v1/marketplace/modules/{slug}/enable": {
 		Summary: "Enable a module", Tags: []string{"Marketplace"}, Permission: "module.manage",
@@ -411,6 +415,43 @@ var apiDocs = map[string]opMeta{
 		}, "name", "primary_domain", "type"),
 		RespSchema: ref("Site"), RespStatus: 201,
 	},
+	// ── self-update ───────────────────────────────────────────────────────────
+	"GET /api/v1/system/update": {
+		Summary: "Get self-update status", Tags: []string{"System"}, Permission: "system.read",
+		RespSchema: ref("UpdateStatus"),
+		RespDesc: "The running version, the configured channel, and what that channel offers. " +
+			"An unreachable release server is reported in `reason`, not as an error — the panel is not broken because a release feed is down.",
+	},
+	"GET /api/v1/system/updates": {
+		Summary: "List update attempts", Tags: []string{"System"}, Permission: "system.read",
+		RespSchema: arrayOf(ref("UpdateAttempt")),
+		RespDesc: "Recent attempts, newest first. This is where a rolled-back update is visible after the fact: " +
+			"the operator who started it was disconnected by the restart.",
+	},
+	"POST /api/v1/system/update/check": {
+		Summary: "Check for a newer release", Tags: []string{"System"}, Permission: "system.write",
+		RespSchema: ref("UpdateStatus"),
+		RespDesc:   "Forces a signed manifest fetch rather than serving the last look.",
+	},
+	"POST /api/v1/system/update/apply": {
+		Summary: "Apply an update", Tags: []string{"System"}, Permission: "system.write",
+		ReqSchema: object(map[string]any{
+			"version": prop("string", "Release to install. Omit to take whatever the channel currently offers."),
+		}),
+		RespStatus: 202,
+		RespSchema: object(map[string]any{
+			"started": prop("boolean", ""),
+			"uid":     prop("string", "The update attempt's id, for /system/updates."),
+			"from":    prop("string", ""),
+			"to":      prop("string", ""),
+			"note":    prop("string", ""),
+		}),
+		RespDesc: "202, not 200: the release is downloaded and verified, then handed to np-installer running as a " +
+			"detached systemd unit. This endpoint cannot report the result — the panel is restarted underneath it — " +
+			"so the outcome appears in /system/updates once the panel is back. If the new version does not answer, " +
+			"the previous binaries are restored automatically.",
+	},
+
 	"POST /api/v1/sites/temp-domain": {
 		Summary: "Mint a temporary site address", Tags: []string{"Sites"}, Permission: "site.write",
 		RespSchema: object(map[string]any{
@@ -603,7 +644,7 @@ var apiDocs = map[string]opMeta{
 			"level":  prop("string", "full | incr; empty picks automatically (full for a fresh chain, incremental after)."),
 			"target": prop("string", "local | s3 (default local)."),
 		}),
-		RespDesc: "Archives the site (GNU tar --listed-incremental, zstd), seals it, and stores it on the target. Requires a data key (HP_SECRET_KEY) — encrypted-at-rest is not optional. 503 without one.",
+		RespDesc: "Archives the site (GNU tar --listed-incremental, zstd), seals it, and stores it on the target. Requires a data key (NP_SECRET_KEY) — encrypted-at-rest is not optional. 503 without one.",
 	},
 	"PUT /api/v1/sites/{uid}/backups/config": {
 		Summary: "Set the backup policy", Tags: []string{"Backups"}, Permission: "site.write",
@@ -631,11 +672,11 @@ var apiDocs = map[string]opMeta{
 	},
 	"GET /api/v1/system/backups": {
 		Summary: "List panel self-backups", Tags: []string{"Backups"}, Permission: "system.read",
-		RespDesc: "Sealed snapshots of the panel's own database (newest first) plus the active policy. Every snapshot is full and stands alone. Restore is deliberately out-of-band: `hpd decrypt` on the sealed object plus the documented manual steps — a panel that needs its database back cannot be trusted to serve that request.",
+		RespDesc: "Sealed snapshots of the panel's own database (newest first) plus the active policy. Every snapshot is full and stands alone. Restore is deliberately out-of-band: `npd decrypt` on the sealed object plus the documented manual steps — a panel that needs its database back cannot be trusted to serve that request.",
 	},
 	"POST /api/v1/system/backups": {
 		Summary: "Snapshot the panel now", Tags: []string{"Backups"}, Permission: "system.write",
-		RespDesc: "Snapshots the panel's database (SQLite VACUUM INTO, or mysqldump via the broker), seals it, and stores it on the policy's target. Requires a data key (HP_SECRET_KEY).",
+		RespDesc: "Snapshots the panel's database (SQLite VACUUM INTO, or mysqldump via the broker), seals it, and stores it on the policy's target. Requires a data key (NP_SECRET_KEY).",
 	},
 	"DELETE /api/v1/system/backups/{uid}": {
 		Summary: "Delete a panel self-backup", Tags: []string{"Backups"}, Permission: "system.write",
@@ -941,7 +982,7 @@ var apiDocs = map[string]opMeta{
 	},
 	"GET /api/v1/mail/tls": {
 		Summary: "Mail TLS status", Tags: []string{"Mail"}, Permission: "mail.read",
-		RespDesc: "The mail host FQDN and the submission/imaps/smtps ports it serves. ready=false means no hostname is configured (HP_MAIL_HOSTNAME); enabled=false means TLS has not been wired yet.",
+		RespDesc: "The mail host FQDN and the submission/imaps/smtps ports it serves. ready=false means no hostname is configured (NP_MAIL_HOSTNAME); enabled=false means TLS has not been wired yet.",
 	},
 	"POST /api/v1/mail/tls": {
 		Summary: "Enable mail TLS", Tags: []string{"Mail"}, Permission: "mail.write",
@@ -1077,7 +1118,7 @@ var apiDocs = map[string]opMeta{
 	},
 	"GET /api/v1/docker/containers": {
 		Summary: "List containers", Tags: []string{"Docker"}, Permission: "docker.read",
-		RespDesc: "Every container on the host, running or stopped, each flagged `managed` — whether HeroPanel created it. Unmanaged containers are listed (an admin must be able to see what is consuming the host) but cannot be modified. Query: site.",
+		RespDesc: "Every container on the host, running or stopped, each flagged `managed` — whether NexPanel created it. Unmanaged containers are listed (an admin must be able to see what is consuming the host) but cannot be modified. Query: site.",
 	},
 	"GET /api/v1/docker/containers/{id}": {
 		Summary: "Inspect a container", Tags: []string{"Docker"}, Permission: "docker.read",
@@ -1110,7 +1151,7 @@ var apiDocs = map[string]opMeta{
 			"memory_mb": prop("integer", "Memory limit in MB (16 … 1048576)."),
 			"command":   prop("array", "Optional command. Everything after the image operand is the container's own argv, so a leading dash here is the program's flag, not docker's."),
 		}, "name", "image"),
-		RespDesc: "The container is created with HeroPanel's managed label and `no-new-privileges`. `--privileged`, `--cap-add`, `--device`, `--userns` and host namespaces have no corresponding field and cannot be produced.",
+		RespDesc: "The container is created with NexPanel's managed label and `no-new-privileges`. `--privileged`, `--cap-add`, `--device`, `--userns` and host namespaces have no corresponding field and cannot be produced.",
 	},
 	"POST /api/v1/docker/compose": {
 		Summary: "Bring a compose stack up", Tags: []string{"Docker"}, Permission: "docker.write",
@@ -1131,7 +1172,7 @@ var apiDocs = map[string]opMeta{
 	},
 	"DELETE /api/v1/docker/compose/{project}": {
 		Summary: "Tear a stack down", Tags: []string{"Docker"}, Permission: "docker.write",
-		RespDesc: "Removes the stack's containers and networks but never its volumes. Refused with 403 for a stack HeroPanel did not create.",
+		RespDesc: "Removes the stack's containers and networks but never its volumes. Refused with 403 for a stack NexPanel did not create.",
 	},
 	"GET /api/v1/apps/templates": {
 		Summary: "The one-click app catalog", Tags: []string{"Apps"}, Permission: "docker.read",
@@ -1178,7 +1219,7 @@ var apiDocs = map[string]opMeta{
 		Summary: "Open a shell inside a container", Tags: []string{"Docker"}, Permission: "docker.write",
 		RespDesc: "WebSocket upgrade. Binary frames carry terminal bytes in both directions; JSON text frames carry resize/exit. " +
 			"`docker.write` rather than `docker.read`: a shell inside a container can stop the process, read its secrets and edit its data. " +
-			"Refused with 403 unless the container carries HeroPanel's managed label — a shell in someone else's container would bypass every other refusal in this module. " +
+			"Refused with 403 unless the container carries NexPanel's managed label — a shell in someone else's container would bypass every other refusal in this module. " +
 			"Query: shell (/bin/sh, /bin/bash, /bin/ash), cols, rows.",
 	},
 	"GET /api/v1/docker/volumes": {
@@ -1195,11 +1236,11 @@ var apiDocs = map[string]opMeta{
 			"name": prop("string", "Volume name."),
 			"site": prop("string", "Optional site uid to attribute it to."),
 		}, "name"),
-		RespDesc: "Creates a named volume carrying HeroPanel's managed label.",
+		RespDesc: "Creates a named volume carrying NexPanel's managed label.",
 	},
 	"DELETE /api/v1/docker/volumes/{name}": {
 		Summary: "Remove a volume", Tags: []string{"Docker"}, Permission: "docker.write",
-		RespDesc: "Deletes the volume **and its contents**. Refused with 403 for volumes HeroPanel did not create — this is the one operation in the module that destroys data, and an unmanaged volume usually belongs to a database.",
+		RespDesc: "Deletes the volume **and its contents**. Refused with 403 for volumes NexPanel did not create — this is the one operation in the module that destroys data, and an unmanaged volume usually belongs to a database.",
 	},
 	"GET /api/v1/docker/networks": {
 		Summary: "List networks", Tags: []string{"Docker"}, Permission: "docker.read",
@@ -1227,7 +1268,7 @@ var apiDocs = map[string]opMeta{
 	},
 	"POST /api/v1/docker/containers/{id}/start": {
 		Summary: "Start a container", Tags: []string{"Docker"}, Permission: "docker.write",
-		RespDesc: "Refused with 403 unless the container carries HeroPanel's managed label, enforced in the broker.",
+		RespDesc: "Refused with 403 unless the container carries NexPanel's managed label, enforced in the broker.",
 	},
 	"POST /api/v1/docker/containers/{id}/stop": {
 		Summary: "Stop a container", Tags: []string{"Docker"}, Permission: "docker.write",

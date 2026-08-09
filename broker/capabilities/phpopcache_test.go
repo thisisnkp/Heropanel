@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
 )
 
-const debianOpcachePath = "/etc/php/8.3/fpm/conf.d/99-heropanel-opcache.ini"
+const debianOpcachePath = "/etc/php/8.3/fpm/conf.d/99-nexpanel-opcache.ini"
 
 func TestPHPWriteOpcacheTestsThenRestarts(t *testing.T) {
 	fs := debianFS()

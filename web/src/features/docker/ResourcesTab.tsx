@@ -79,7 +79,7 @@ export function VolumesPanel({ canWrite }: { canWrite: boolean }) {
                   <td className="px-4 py-2.5 font-mono text-xs text-fg">{v.name}</td>
                   <td className="px-4 py-2.5 text-muted">{v.driver}</td>
                   <td className="px-4 py-2.5 text-xs text-muted">
-                    {v.managed ? <Badge>{v.site_uid || "HeroPanel"}</Badge> : "not managed by HeroPanel"}
+                    {v.managed ? <Badge>{v.site_uid || "NexPanel"}</Badge> : "not managed by NexPanel"}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <Button variant="ghost" className="h-8 px-3" onClick={() => setInspect(v.name)}>
@@ -246,7 +246,7 @@ export function NetworksPanel({ canWrite }: { canWrite: boolean }) {
                 <td className="px-4 py-2.5 text-muted">{n.driver}</td>
                 <td className="px-4 py-2.5 text-muted">{n.scope}</td>
                 <td className="px-4 py-2.5 text-xs text-muted">
-                  {n.managed ? <Badge>{n.site_uid || "HeroPanel"}</Badge> : "not managed by HeroPanel"}
+                  {n.managed ? <Badge>{n.site_uid || "NexPanel"}</Badge> : "not managed by NexPanel"}
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   <Button variant="ghost" className="h-8 px-3" onClick={() => setInspect(n.name)}>

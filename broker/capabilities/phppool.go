@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // phpPoolBase is the PHP-FPM pool directory base (Debian/Ubuntu layout):
@@ -14,7 +14,7 @@ import (
 const phpPoolBase = "/etc/php"
 
 // PHPWritePool writes a per-site PHP-FPM pool config and reloads the matching
-// php-fpm service. The pool config is rendered by hpd; the broker writes the
+// php-fpm service. The pool config is rendered by npd; the broker writes the
 // validated path and reloads, rolling back on failure.
 type PHPWritePool struct{}
 

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/config"
 )
 
 // rateLimiter is a simple per-client token-bucket limiter kept in process. It is

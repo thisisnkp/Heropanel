@@ -1,4 +1,4 @@
--- HeroPanel authoritative DNS: zones and records (SQLite).
+-- NexPanel authoritative DNS: zones and records (SQLite).
 
 CREATE TABLE dns_zones (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

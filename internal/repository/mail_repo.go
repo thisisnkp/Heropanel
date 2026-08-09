@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/mail"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // MailStore implements mail.Repo over the datastore.

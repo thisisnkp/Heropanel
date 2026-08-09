@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/dns"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // DNSStore implements dns.Repo over the datastore.

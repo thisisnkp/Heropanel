@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/pwhash"
+	"github.com/thisisnkp/nexpanel/pkg/pwhash"
 )
 
 func TestHashVerifyRoundTrip(t *testing.T) {

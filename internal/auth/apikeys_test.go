@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func newServiceWithKeys(t *testing.T, db *repository.DB) *auth.Service {
@@ -27,7 +27,7 @@ func TestAPIKeyCreateAuthenticateRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if !strings.HasPrefix(key, "hp_") || view.Prefix != key[:14] {
+	if !strings.HasPrefix(key, "np_") || view.Prefix != key[:14] {
 		t.Fatalf("bad key/view: key=%q view=%+v", key, view)
 	}
 

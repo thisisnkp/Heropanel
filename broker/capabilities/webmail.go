@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Webmail: lay down Roundcube's runtime so the panel's OpenLiteSpeed + PHP can
@@ -20,8 +20,8 @@ import (
 
 const (
 	webmailUser    = "webmail"
-	webmailAppDir  = "/usr/share/heropanel/roundcube"
-	webmailDataDir = "/var/lib/heropanel/webmail"
+	webmailAppDir  = "/usr/share/nexpanel/roundcube"
+	webmailDataDir = "/var/lib/nexpanel/webmail"
 	webmailConf    = webmailAppDir + "/config/config.inc.php"
 )
 

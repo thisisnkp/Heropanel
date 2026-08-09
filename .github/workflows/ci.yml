@@ -19,7 +19,7 @@ jobs:
       - name: Ensure embed dir
         run: |
           mkdir -p web/dist
-          [ -f web/dist/index.html ] || echo '<!doctype html><title>HeroPanel</title>' > web/dist/index.html
+          [ -f web/dist/index.html ] || echo '<!doctype html><title>NexPanel</title>' > web/dist/index.html
 
       - name: gofmt
         run: |
@@ -52,7 +52,7 @@ jobs:
           node-version: "20"
 
       # Build the real SPA so it is embedded via //go:embed all:dist — run-ui.sh
-      # asserts hpd serves the built bundle, not a placeholder.
+      # asserts npd serves the built bundle, not a placeholder.
       - name: Build frontend
         run: |
           cd web
@@ -67,13 +67,13 @@ jobs:
       - name: Build linux binaries (amd64 + arm64)
         run: |
           for arch in amd64 arm64; do
-            for b in hpd hp-broker hp-installer; do
+            for b in npd np-broker np-installer; do
               CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -o bin/linux-$arch/$b ./cmd/$b
             done
           done
           # A WebSocket client for the terminal e2e. It is a test tool, not a
           # shipped binary, so it lives under deploy/docker/e2e rather than cmd/.
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/hp-termtest ./deploy/docker/e2e/termclient
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/np-termtest ./deploy/docker/e2e/termclient
           # A hub-protocol WebSocket probe: subscribes to a channel and prints the
           # first pushed event, so the monitor e2e can prove live delivery.
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux-amd64/wsprobe ./deploy/docker/e2e/wsprobe
@@ -84,7 +84,7 @@ jobs:
         with:
           platforms: arm64
 
-      # Browser-level tests, against the real hpd serving the real bundle. They
+      # Browser-level tests, against the real npd serving the real bundle. They
       # cover what only a browser can prove — routing, forms, keyboard handling,
       # error states. Privileged behaviour (file ops as the site user, a PTY,
       # session recording) is covered by the container e2e below, which is the
@@ -93,7 +93,7 @@ jobs:
         run: |
           cd web
           npx playwright install --with-deps chromium
-          # test:e2e rebuilds the bundle and hpd itself: the suite runs a
+          # test:e2e rebuilds the bundle and npd itself: the suite runs a
           # prebuilt binary with the bundle embedded, so building it anywhere
           # else risks the two drifting apart and the suite testing a stale UI.
           npm run test:e2e
@@ -107,25 +107,25 @@ jobs:
           retention-days: 7
 
       - name: Build e2e image (OLS + php-fpm + MariaDB)
-        run: docker build -t heropanel-e2e -f deploy/docker/e2e/Dockerfile deploy/docker/e2e
+        run: docker build -t nexpanel-e2e -f deploy/docker/e2e/Dockerfile deploy/docker/e2e
 
       - name: Static site served by OpenLiteSpeed + real MariaDB
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run.sh)
           echo "$out"
           grep -q 'server: LiteSpeed'   <<<"$out" || { echo '::error::OpenLiteSpeed did not respond'; exit 1; }
-          grep -q 'Hello from HeroPanel' <<<"$out" || { echo '::error::static page was not served'; exit 1; }
+          grep -q 'Hello from NexPanel' <<<"$out" || { echo '::error::static page was not served'; exit 1; }
           grep -q 'acme_db'             <<<"$out" || { echo '::error::MariaDB db.create failed'; exit 1; }
 
       - name: PHP site served by OpenLiteSpeed + php-fpm
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-php.sh)
           echo "$out"
-          grep -q 'live via HeroPanel'  <<<"$out" || { echo '::error::PHP page was not served'; exit 1; }
+          grep -q 'live via NexPanel'  <<<"$out" || { echo '::error::PHP page was not served'; exit 1; }
 
       - name: Per-site WAF (ModSecurity + OWASP CRS) blocks a real attack
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-waf.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-waf.sh)
           echo "$out"
           # THE invariant: the same attack request is allowed with the WAF off and
           # blocked (403) with it on, while normal traffic keeps serving.
@@ -135,20 +135,20 @@ jobs:
 
       - name: Git deploy (clone + build + atomic swap + rollback) served by OpenLiteSpeed
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-git.sh)
           echo "$out"
-          grep -q 'v1 via HeroPanel Git'              <<<"$out" || { echo '::error::git deploy was not served'; exit 1; }
+          grep -q 'v1 via NexPanel Git'              <<<"$out" || { echo '::error::git deploy was not served'; exit 1; }
           grep -q 'after deploy #2: <h1>v2'           <<<"$out" || { echo '::error::second deploy did not swap'; exit 1; }
           grep -q 'after rollback:  <h1>v1'           <<<"$out" || { echo '::error::rollback did not revert the release'; exit 1; }
           grep -q '"capability":"git.rollback","outcome":"success"' <<<"$out" || { echo '::error::git.rollback did not succeed'; exit 1; }
 
       - name: Private Git repo over SSH (panel-generated deploy key, real sshd)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git-private.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-git-private.sh)
           echo "$out"
           grep -q 'private key absent from API response: OK'  <<<"$out" || { echo '::error::the private key leaked into the API response'; exit 1; }
           grep -q 'private key sealed at rest'                <<<"$out" || { echo '::error::the deploy key was stored in the clear'; exit 1; }
-          grep -q 'priv.test -> 200 <h1>private repo via HeroPanel</h1>' <<<"$out" || { echo '::error::the private repo was not deployed'; exit 1; }
+          grep -q 'priv.test -> 200 <h1>private repo via NexPanel</h1>' <<<"$out" || { echo '::error::the private repo was not deployed'; exit 1; }
           grep -q 'no credential material left on /run: OK'   <<<"$out" || { echo '::error::credential material survived the deploy'; exit 1; }
           grep -q '"capability":"git.deploy","outcome":"success"' <<<"$out" || { echo '::error::git.deploy did not succeed'; exit 1; }
           grep -q 'wrong pin rejected: OK'   <<<"$out" || { echo '::error::a wrong pinned host key was not rejected under strict checking'; exit 1; }
@@ -156,13 +156,13 @@ jobs:
 
       - name: Token/HTTPS clone against a real HTTPS git server (private-CA TLS)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-git-token.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-git-token.sh)
           echo "$out"
           grep -q 'run-git-token.sh : PASS' <<<"$out" || { echo '::error::the token/HTTPS clone path failed'; exit 1; }
 
       - name: Laravel-shaped app (private repo + Composer + MariaDB) and the database suite
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php-app.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-php-app.sh)
           echo "$out"
           grep -q 'composer dependency: loaded'  <<<"$out" || { echo '::error::Composer did not install the dependency'; exit 1; }
           grep -q 'db row: hello from mariadb'   <<<"$out" || { echo '::error::the app could not reach the panel-created database'; exit 1; }
@@ -177,14 +177,14 @@ jobs:
 
       - name: PHP tuning — sizing / php.ini editor / OPcache / extensions on real php-fpm
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-php-tuning.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-php-tuning.sh)
           echo "$out"
           # The php.ini editor and OPcache toggle, observed in a served phpinfo.
           grep -q 'ok   php.ini override is live'  <<<"$out" || { echo '::error::php.ini override did not take effect'; exit 1; }
           grep -q 'ok   memory_limit is live'      <<<"$out" || { echo '::error::memory_limit did not take effect'; exit 1; }
           grep -q 'ok   OPcache turned off is live' <<<"$out" || { echo '::error::OPcache toggle did not take effect'; exit 1; }
           # Two independent guards against a pool that would down every site on
-          # the version: hpd validation, and php-fpm -t before the reload.
+          # the version: npd validation, and php-fpm -t before the reload.
           grep -q 'ok   invalid sizing refused by the API'       <<<"$out" || { echo '::error::invalid FPM sizing was not rejected'; exit 1; }
           grep -q 'ok   site still serving the last good config' <<<"$out" || { echo '::error::a rejected change disrupted the running site'; exit 1; }
           # The pool file is where a site is confined; a value must not escape it.
@@ -197,7 +197,7 @@ jobs:
 
       - name: Site lifecycle — suspend / resume / clone / logs on real OpenLiteSpeed
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-lifecycle.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-lifecycle.sh)
           echo "$out"
           # Suspension is a claim about real OLS routing: a suspended site keeps
           # its vhost so its domains cannot fall through to the first vhost —
@@ -217,9 +217,9 @@ jobs:
 
       - name: Embedded SPA served + every UI page has a live endpoint
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-ui.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-ui.sh)
           echo "$out"
-          grep -q 'ok   it is the built bundle'          <<<"$out" || { echo '::error::the built SPA is not embedded in hpd'; exit 1; }
+          grep -q 'ok   it is the built bundle'          <<<"$out" || { echo '::error::the built SPA is not embedded in npd'; exit 1; }
           grep -q 'ok   deep links fall through to the SPA' <<<"$out" || { echo '::error::client-side routing deep links 404'; exit 1; }
           grep -q 'ok   capabilities returned'            <<<"$out" || { echo '::error::the capability set endpoint is missing'; exit 1; }
           grep -q 'ok   modules show running'             <<<"$out" || { echo '::error::in-core modules did not register'; exit 1; }
@@ -228,7 +228,7 @@ jobs:
 
       - name: File Manager on a real site (run-as-user + path confinement + baremetal gate)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-files.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-files.sh)
           echo "$out"
           # Invariant 1: a file written through the API is owned by the site's uid,
           # not root — the whole point of running every op as the site user.
@@ -266,7 +266,7 @@ jobs:
 
       - name: Web terminal (PTY as the site user, audited, confined)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-terminal.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-terminal.sh)
           echo "$out"
           # The invariant: the shell is the site's Linux account, never root.
           grep -q 'the PTY reported the site user' <<<"$out" || { echo '::error::the terminal did not run as the site user'; exit 1; }
@@ -294,7 +294,7 @@ jobs:
       # plainly rather than left as an unexplained flag.
       - name: Docker module (ownership boundary against a real daemon)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" -v /var/run/docker.sock:/var/run/docker.sock heropanel-e2e bash /e2e/run-docker.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" -v /var/run/docker.sock:/var/run/docker.sock nexpanel-e2e bash /e2e/run-docker.sh)
           echo "$out"
           # THE invariant: the panel must never touch a container it did not
           # create. Without it, a stop button is a remote off-switch for every
@@ -342,7 +342,7 @@ jobs:
 
       - name: Monitoring — live node metrics pushed over the realtime hub
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-monitor.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-monitor.sh)
           echo "$out"
           # The hub must run without Redis (local push needs none), so a Redis-less
           # install still gets live dashboards.
@@ -368,7 +368,7 @@ jobs:
 
       - name: Scheduler — cron jobs as systemd timers, running as the site user
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-cron.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-cron.sh)
           echo "$out"
           grep -q 'the timer and service units exist on disk' <<<"$out" || { echo '::error::cron units were not written'; exit 1; }
           grep -q 'the service runs as the site user, oneshot' <<<"$out" || { echo '::error::the cron service is not hardened as the site user'; exit 1; }
@@ -381,7 +381,7 @@ jobs:
 
       - name: Backups — encrypted full+incremental, restored into a new site
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-backup.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-backup.sh)
           echo "$out"
           # THE invariants: what sits at rest is ciphertext, and the chain
           # actually reproduces the site — in a NEW site, owned by its user.
@@ -394,20 +394,20 @@ jobs:
           grep -q 'deleting the full also removed the incremental' <<<"$out" || { echo '::error::a broken chain was left behind'; exit 1; }
           # The once-deferred legs, live: a real MinIO bucket, a real MariaDB
           # dump round-trip into a NEW database, and the panel's own snapshot
-          # opened offline with hpd decrypt.
+          # opened offline with npd decrypt.
           grep -q 'the sealed archive is IN the bucket' <<<"$out" || { echo '::error::the s3 backup never reached the live bucket'; exit 1; }
           grep -q 'RESTORED FROM THE BUCKET' <<<"$out" || { echo '::error::the s3 restore did not come from the bucket'; exit 1; }
           grep -q 'THE ROW CAME BACK IN A NEW DATABASE' <<<"$out" || { echo '::error::the database dump did not restore'; exit 1; }
           grep -q 'the original database is untouched' <<<"$out" || { echo '::error::the db restore modified the original database'; exit 1; }
           grep -q "THE SNAPSHOT HOLDS THE PANEL'S OWN DATA" <<<"$out" || { echo '::error::the panel self-backup is not a usable snapshot'; exit 1; }
-          grep -q 'a wrong key is refused' <<<"$out" || { echo '::error::hpd decrypt accepted a wrong key'; exit 1; }
+          grep -q 'a wrong key is refused' <<<"$out" || { echo '::error::npd decrypt accepted a wrong key'; exit 1; }
           grep -q 'RESTORED FROM THE SFTP SERVER' <<<"$out" || { echo '::error::the SFTP backup target did not round-trip'; exit 1; }
           grep -q 'RESTORED FROM THE RCLONE REMOTE' <<<"$out" || { echo '::error::the rclone backup target did not round-trip'; exit 1; }
           grep -q 'run-backup.sh : PASS' <<<"$out" || { echo '::error::run-backup.sh failed'; exit 1; }
 
       - name: Mail — Postfix/Dovecot/OpenDKIM end to end
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-mail.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-mail.sh)
           echo "$out"
           # THE invariants: the key is sealed at rest, the records resolve from
           # LIVE DNS, and a real SMTP message lands in the Maildir DKIM-signed.
@@ -425,7 +425,7 @@ jobs:
 
       - name: Webmail — Roundcube served by the panel, real IMAP login
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-webmail.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-webmail.sh)
           echo "$out"
           # THE invariant: a real mailbox user signs in THROUGH Roundcube, which
           # authenticates against the local Dovecot over TLS — the whole chain
@@ -438,7 +438,7 @@ jobs:
 
       - name: Security — firewall auto-revert + EICAR quarantine
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-security.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-security.sh)
           echo "$out"
           # THE exit criterion: an unconfirmed firewall change undoes itself, a
           # confirmed one sticks.
@@ -458,7 +458,7 @@ jobs:
 
       - name: File-integrity monitoring (AIDE) detects a tampered file
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-fim.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-fim.sh)
           echo "$out"
           grep -q 'the check is CLEAN immediately after the baseline' <<<"$out" || { echo '::error::FIM was not clean after init'; exit 1; }
           grep -q 'THE FIM CHECK DETECTED THE TAMPERING' <<<"$out" || { echo '::error::FIM did not detect a changed file'; exit 1; }
@@ -466,11 +466,11 @@ jobs:
           grep -q 'the real rkhunter rootkit scan ran through the panel' <<<"$out" || { echo '::error::the rkhunter scanner did not run'; exit 1; }
           grep -q 'run-fim.sh : PASS' <<<"$out" || { echo '::error::run-fim.sh failed'; exit 1; }
 
-      - name: Audit chain on real MariaDB (hpd's own store, not SQLite)
+      - name: Audit chain on real MariaDB (npd's own store, not SQLite)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-audit.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-audit.sh)
           echo "$out"
-          # The only suite that runs hpd's control-plane store on MariaDB, so it
+          # The only suite that runs npd's control-plane store on MariaDB, so it
           # is also the only thing exercising the mysql migrations at all.
           grep -q 'ok   all 40 mysql migrations applied' <<<"$out" || { echo '::error::the mysql migrations did not apply'; exit 1; }
           # The chain must verify against the engine that ships, not just SQLite:
@@ -489,7 +489,7 @@ jobs:
 
       - name: FastAPI app via Git — auto-deploy (webhook) + rollback + cgroup slice
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-fastapi.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-fastapi.sh)
           echo "$out"
           # The python runtime, on a real venv built from a real requirements.txt.
           grep -q 'uvicorn installed in the release venv: OK' <<<"$out" || { echo '::error::the venv build did not produce uvicorn'; exit 1; }
@@ -503,32 +503,32 @@ jobs:
           # Rollback has to actually restart the app, or the bad release keeps serving.
           grep -q 'after rollback -> {"app":"fastapi","version":"v1"}' <<<"$out" || { echo '::error::rollback did not put the old release back in service'; exit 1; }
           # The app must run inside its site slice, and limits must reach it.
-          grep -q 'Slice=heropanel-site-hps1.slice' <<<"$out"              || { echo '::error::the app unit is not in its site slice'; exit 1; }
+          grep -q 'Slice=nexpanel-site-nps1.slice' <<<"$out"              || { echo '::error::the app unit is not in its site slice'; exit 1; }
           grep -q 'CPUQuota=50%'                    <<<"$out"              || { echo '::error::the site slice did not get its CPU limit'; exit 1; }
           grep -q 'MemoryMax=536870912'             <<<"$out"              || { echo '::error::the site slice did not get its memory limit'; exit 1; }
 
       - name: Next.js app via Git (async job path — a real build cannot finish inside a request)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-nextjs.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-nextjs.sh)
           echo "$out"
           grep -q 'job queue enabled'              <<<"$out" || { echo '::error::the queue was not enabled'; exit 1; }
           grep -q 'next build output present: OK'  <<<"$out" || { echo '::error::next build did not produce .next'; exit 1; }
-          grep -q 'Next.js live via HeroPanel'     <<<"$out" || { echo '::error::the Next.js app was not served'; exit 1; }
+          grep -q 'Next.js live via NexPanel'     <<<"$out" || { echo '::error::the Next.js app was not served'; exit 1; }
           grep -qi 'x-powered-by: Next.js'         <<<"$out" || { echo '::error::next start is not serving'; exit 1; }
 
       - name: Go app via Git (compiled as the unprivileged site user)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-go.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-go.sh)
           echo "$out"
           grep -q 'compiled binary present: OK'          <<<"$out" || { echo '::error::go build did not produce a binary'; exit 1; }
-          grep -q 'binary is owned by the site user: hps1' <<<"$out" || { echo '::error::the binary is not owned by the site user'; exit 1; }
-          grep -q 'Go app live via HeroPanel pid'        <<<"$out" || { echo '::error::the Go app was not reverse-proxied'; exit 1; }
+          grep -q 'binary is owned by the site user: nps1' <<<"$out" || { echo '::error::the binary is not owned by the site user'; exit 1; }
+          grep -q 'Go app live via NexPanel pid'        <<<"$out" || { echo '::error::the Go app was not reverse-proxied'; exit 1; }
 
       - name: App runtime (git-deployed Node app reverse-proxied by OpenLiteSpeed)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-app.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-app.sh)
           echo "$out"
-          grep -q 'HeroPanel app live on port 3000'    <<<"$out" || { echo '::error::app was not reverse-proxied'; exit 1; }
+          grep -q 'NexPanel app live on port 3000'    <<<"$out" || { echo '::error::app was not reverse-proxied'; exit 1; }
           grep -q '"capability":"app.unit_apply","outcome":"success"' <<<"$out" || { echo '::error::app.unit_apply did not succeed'; exit 1; }
           grep -q '"healthy":true'                     <<<"$out" || { echo '::error::the health probe did not pass for a live app'; exit 1; }
           # systemd "started" is not "working": a crashing app must report error.
@@ -536,7 +536,7 @@ jobs:
 
       - name: Authoritative DNS (BIND9 serves zones/records created via the API)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-dns.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-dns.sh)
           echo "$out"
           grep -q 'www.example.test A  = 203.0.113.20' <<<"$out" || { echo '::error::DNS record not resolved by dig'; exit 1; }
           grep -q '"capability":"dns.write_zone","outcome":"success"' <<<"$out" || { echo '::error::dns.write_zone did not succeed'; exit 1; }
@@ -547,51 +547,81 @@ jobs:
 
       - name: Domains (alias serves, redirect 301s, force-HTTPS 301s)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-domains.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-domains.sh)
           echo "$out"
-          grep -q 'www.acme.test      -> 200 <h1>Hello from HeroPanel</h1>' <<<"$out" || { echo '::error::alias did not serve the site'; exit 1; }
+          grep -q 'www.acme.test      -> 200 <h1>Hello from NexPanel</h1>' <<<"$out" || { echo '::error::alias did not serve the site'; exit 1; }
           grep -q 'old.acme.test      -> 301 Location: https://acme.test/'  <<<"$out" || { echo '::error::redirect domain did not 301'; exit 1; }
           grep -q 'acme.test (force)  -> 301 Location: https://acme.test/'  <<<"$out" || { echo '::error::force-HTTPS did not redirect'; exit 1; }
           grep -q 'acme.test (off)    -> 200'                               <<<"$out" || { echo '::error::force-HTTPS off did not serve'; exit 1; }
           grep -q 'alias dropped from map: OK'                              <<<"$out" || { echo '::error::deleted alias still mapped'; exit 1; }
 
-      # The installer runs on a *fresh* distro image (not heropanel-e2e) so it
+      # The installer runs on a *fresh* distro image (not nexpanel-e2e) so it
       # proves cross-distro package management. Once on apt (Ubuntu), once on dnf
       # (Rocky): each does a real execute → resume → rollback and confirms the
       # panel comes up.
       - name: Real ACME HTTP-01 issuance against Pebble (a live test CA)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-acme.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-acme.sh)
           echo "$out"
           grep -q 'run-acme.sh : PASS' <<<"$out" || { echo '::error::real ACME issuance against Pebble failed'; exit 1; }
 
       - name: ZeroSSL EAB issuance against Pebble (external account binding)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-zerossl.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-zerossl.sh)
           echo "$out"
           grep -q 'run-zerossl.sh : PASS' <<<"$out" || { echo '::error::ZeroSSL EAB issuance failed'; exit 1; }
 
       - name: PostgreSQL engine (create/role/grant + export→import round trip)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-postgres.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-postgres.sh)
           echo "$out"
           grep -q 'run-postgres.sh : PASS' <<<"$out" || { echo '::error::PostgreSQL engine e2e failed'; exit 1; }
 
       - name: Rotating data-key envelope (rotate + persist + reload on restart)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" heropanel-e2e bash /e2e/run-keyring.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-keyring.sh)
           echo "$out"
           grep -q 'run-keyring.sh : PASS' <<<"$out" || { echo '::error::data-key rotation e2e failed'; exit 1; }
 
+      - name: Build systemd e2e image (real PID 1)
+        run: docker build -t nexpanel-systemd -f deploy/docker/e2e/systemd/Dockerfile deploy/docker/e2e/systemd
+
+      - name: Units, hardening, transient unit and cgroups under real systemd
+        run: |
+          # --privileged + a private cgroup namespace is what lets systemd be
+          # PID 1 and manage cgroups. It is a test machine for one run.
+          cid=$(docker run -d --privileged --cgroupns=private \
+            --tmpfs /tmp --tmpfs /run --tmpfs /run/lock \
+            -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" \
+            nexpanel-systemd)
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          # Wait for the boot to settle. "degraded" is acceptable: some units
+          # cannot succeed in a container and are irrelevant to what is tested.
+          for _ in $(seq 1 60); do
+            state=$(docker exec "$cid" systemctl is-system-running 2>/dev/null || true)
+            case "$state" in running|degraded) break;; esac
+            sleep 1
+          done
+          echo "system state: ${state:-unknown}"
+          out=$(docker exec "$cid" bash /e2e/run-systemd.sh)
+          echo "$out"
+          grep -q 'run-systemd.sh : PASS' <<<"$out" || { echo '::error::systemd e2e failed'; exit 1; }
+
+      - name: Performance budgets (idle RSS + cold start)
+        run: |
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" nexpanel-e2e bash /e2e/run-budget.sh)
+          echo "$out"
+          grep -q 'run-budget.sh : PASS' <<<"$out" || { echo '::error::performance budget exceeded'; exit 1; }
+
       - name: Installer execute/resume/rollback on Ubuntu (apt)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" ubuntu:24.04 bash /e2e/run-installer.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" ubuntu:24.04 bash /e2e/run-installer.sh)
           echo "$out"
           grep -q 'run-installer.sh : PASS' <<<"$out" || { echo '::error::installer failed on Ubuntu'; exit 1; }
 
       - name: Installer execute/resume/rollback on Rocky (dnf)
         run: |
-          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" rockylinux:9 bash /e2e/run-installer.sh)
+          out=$(docker run --rm -v "$PWD/bin/linux-amd64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" rockylinux:9 bash /e2e/run-installer.sh)
           echo "$out"
           grep -q 'run-installer.sh : PASS' <<<"$out" || { echo '::error::installer failed on Rocky'; exit 1; }
 
@@ -604,7 +634,7 @@ jobs:
         run: |
           for img in ubuntu:24.04 rockylinux:9; do
             echo "=== arm64 smoke on $img ==="
-            out=$(docker run --rm --platform linux/arm64 -v "$PWD/bin/linux-arm64:/hp:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" "$img" bash /e2e/run-arch-smoke.sh)
+            out=$(docker run --rm --platform linux/arm64 -v "$PWD/bin/linux-arm64:/np:ro" -v "$PWD/deploy/docker/e2e:/e2e:ro" "$img" bash /e2e/run-arch-smoke.sh)
             echo "$out"
             grep -q 'run-arch-smoke.sh : PASS' <<<"$out" || { echo "::error::arm64 smoke failed on $img"; exit 1; }
           done

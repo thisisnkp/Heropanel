@@ -1,6 +1,6 @@
 #!/bin/bash
 # Container shim for `systemctl` (no systemd in a test container). It is enough of
-# a systemd stand-in to run HeroPanel's per-site app units (parsing User /
+# a systemd stand-in to run NexPanel's per-site app units (parsing User /
 # WorkingDirectory / Environment / ExecStart out of the unit file and supervising
 # the process), plus the php-fpm reload the broker issues. Production uses real
 # systemd; this only exists so the app-runtime e2e can prove the reverse proxy.
@@ -102,8 +102,8 @@ case "$verb" in
     stop_app "$unit"; exit 0 ;;
   start|restart)
     case "$unit" in
-      heropanel-cron-*) run_oneshot "$unit"; exit $? ;;
-      heropanel-app-*) start_app "$unit" ;;
+      nexpanel-cron-*) run_oneshot "$unit"; exit $? ;;
+      nexpanel-app-*) start_app "$unit" ;;
       opendkim)
         # The broker restarts the DKIM signer after pushing keys (it has no
         # reload). Real systemd supervises it in production.

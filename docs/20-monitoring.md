@@ -30,7 +30,7 @@ started watching.
 ## 2. Where the numbers come from
 
 Node metrics are read straight from `/proc` and `statfs`, which are world-
-readable, so **hpd reads them itself and never crosses the broker** — the broker
+readable, so **npd reads them itself and never crosses the broker** — the broker
 is for privilege, and there is none here. CPU comes from `/proc/stat` (a rate, so
 two reads are diffed; idle folds in iowait, matching `top`); memory from
 `/proc/meminfo` (honest `MemAvailable`, with the free+buffers+cached fallback for
@@ -92,7 +92,7 @@ never triggers the other's work.
 
 - **Per-site** usage — memory, CPU %, task count — is read from each site's
   **cgroup v2 accounting** directly: `memory.current`, `cpu.stat` and
-  `pids.current` are mode-0444 files the kernel publishes to everyone, so hpd
+  `pids.current` are mode-0444 files the kernel publishes to everyone, so npd
   reads them with no broker (there is no privilege in reading a public number).
   This is the payoff of Phase 1 turning accounting on at slice creation. CPU is a
   rate, so a per-slice baseline is kept and diffed; a site whose slice has no
@@ -102,7 +102,7 @@ never triggers the other's work.
   endpoint shape is proven live.
 - **Service health** is systemd's view of a unit, so — unlike a /proc number — it
   goes through the broker's read-only `service.status` capability (the read twin
-  of `service.restart`, sharing its allowlist; hpd never execs systemctl itself).
+  of `service.restart`, sharing its allowlist; npd never execs systemctl itself).
   A broker error yields "unknown" rather than dropping the tiles. Proven live: the
   services endpoint reports a real state per service (the running OpenLiteSpeed as
   `active`, the unstarted database/cache as `inactive`), the call lands on the

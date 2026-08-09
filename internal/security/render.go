@@ -17,7 +17,7 @@ type RenderRule struct {
 }
 
 // RenderRuleset turns the ordered rules into an nftables ruleset for the inet
-// "heropanel" table. The base is **default-drop** on input with the two rules
+// "nexpanel" table. The base is **default-drop** on input with the two rules
 // no reachable host can live without — established/related and loopback — so a
 // ruleset that forgets to allow anything still lets existing connections and
 // local traffic through (and the rollback timer catches the rest). forward is
@@ -36,13 +36,13 @@ func RenderRuleset(rules []RenderRule, lists []IPListEntry) string {
 
 	var b strings.Builder
 	b.WriteString("flush ruleset\n")
-	b.WriteString("table inet heropanel {\n")
+	b.WriteString("table inet nexpanel {\n")
 	// Named interval sets carry the allow/block CIDRs efficiently — one set
 	// membership test covers thousands of ranges (a country block, say).
-	writeSet(&b, "hp_allow4", "ipv4_addr", allow4)
-	writeSet(&b, "hp_allow6", "ipv6_addr", allow6)
-	writeSet(&b, "hp_block4", "ipv4_addr", block4)
-	writeSet(&b, "hp_block6", "ipv6_addr", block6)
+	writeSet(&b, "np_allow4", "ipv4_addr", allow4)
+	writeSet(&b, "np_allow6", "ipv6_addr", allow6)
+	writeSet(&b, "np_block4", "ipv4_addr", block4)
+	writeSet(&b, "np_block6", "ipv6_addr", block6)
 	b.WriteString("\tchain input {\n")
 	b.WriteString("\t\ttype filter hook input priority 0; policy drop;\n")
 	b.WriteString("\t\tct state established,related accept\n")
@@ -50,16 +50,16 @@ func RenderRuleset(rules []RenderRule, lists []IPListEntry) string {
 	// Allow-list wins first (trusted sources are always let in), then block-list
 	// drops, then the ordinary rules.
 	if len(allow4) > 0 {
-		b.WriteString("\t\tip saddr @hp_allow4 accept\n")
+		b.WriteString("\t\tip saddr @np_allow4 accept\n")
 	}
 	if len(allow6) > 0 {
-		b.WriteString("\t\tip6 saddr @hp_allow6 accept\n")
+		b.WriteString("\t\tip6 saddr @np_allow6 accept\n")
 	}
 	if len(block4) > 0 {
-		b.WriteString("\t\tip saddr @hp_block4 drop\n")
+		b.WriteString("\t\tip saddr @np_block4 drop\n")
 	}
 	if len(block6) > 0 {
-		b.WriteString("\t\tip6 saddr @hp_block6 drop\n")
+		b.WriteString("\t\tip6 saddr @np_block6 drop\n")
 	}
 	for _, r := range ordered {
 		b.WriteString("\t\t" + renderRuleLine(r) + "\n")

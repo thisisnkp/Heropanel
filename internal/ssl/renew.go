@@ -19,7 +19,7 @@ const (
 // repeats whatever flow originally produced the certificate: HTTP-01 when a
 // webroot was recorded, DNS-01 otherwise (including wildcards), and a fresh
 // self-signed for self-signed certs. Uploaded (custom) certs are never touched —
-// HeroPanel has no way to obtain a new one.
+// NexPanel has no way to obtain a new one.
 type Renewer struct {
 	svc      *Service
 	log      *slog.Logger

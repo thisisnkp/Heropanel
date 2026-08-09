@@ -13,9 +13,9 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 func newDispatcher(t *testing.T) *job.Dispatcher {

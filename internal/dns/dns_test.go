@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/internal/dns"
 )
 
 func TestRenderZoneFile(t *testing.T) {
@@ -44,11 +44,11 @@ func TestRenderZoneSplitsLongTXT(t *testing.T) {
 		Name: "example.test", PrimaryNS: "ns1.example.test", AdminEmail: "admin@example.test",
 		Serial: 1, Refresh: 3600, Retry: 900, Expire: 1209600, Minimum: 300, TTL: 3600,
 	}
-	out := dns.RenderZoneFile(z, []dns.RecordRow{{Name: "hp1._domainkey", Type: "TXT", Content: long, TTL: 3600}})
+	out := dns.RenderZoneFile(z, []dns.RecordRow{{Name: "np1._domainkey", Type: "TXT", Content: long, TTL: 3600}})
 
 	var txtLine string
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "hp1._domainkey") {
+		if strings.Contains(line, "np1._domainkey") {
 			txtLine = line
 		}
 	}

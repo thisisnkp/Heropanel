@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ── disable_functions policy ────────────────────────────────────────────────

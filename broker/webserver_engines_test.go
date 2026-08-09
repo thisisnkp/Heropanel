@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	brokerd "github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/exec"
+	brokerd "github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/exec"
 )
 
 // webserver.apply with engine=nginx writes the nginx config, tests it with
@@ -30,7 +30,7 @@ func TestWebserverApplyNginx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply nginx: %v", err)
 	}
-	if got, ok := fs.Written("/etc/nginx/conf.d/heropanel.conf"); !ok || !strings.Contains(got, "listen 80") {
+	if got, ok := fs.Written("/etc/nginx/conf.d/nexpanel.conf"); !ok || !strings.Contains(got, "listen 80") {
 		t.Fatalf("nginx config not written: %q", got)
 	}
 	var tested, reloaded bool
@@ -59,7 +59,7 @@ func TestWebserverApplyNginxRollback(t *testing.T) {
 		return exec.Result{ExitCode: 0}, nil
 	}}
 	b, fs := newBrokerWithFS(t, runner)
-	_ = fs.WriteFile("/etc/nginx/conf.d/heropanel.conf", []byte("PRIOR"), 0o644)
+	_ = fs.WriteFile("/etc/nginx/conf.d/nexpanel.conf", []byte("PRIOR"), 0o644)
 
 	_, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "webserver.apply",
@@ -68,7 +68,7 @@ func TestWebserverApplyNginxRollback(t *testing.T) {
 	if err == nil {
 		t.Fatal("an invalid nginx config reported success")
 	}
-	if got, _ := fs.Written("/etc/nginx/conf.d/heropanel.conf"); got != "PRIOR" {
+	if got, _ := fs.Written("/etc/nginx/conf.d/nexpanel.conf"); got != "PRIOR" {
 		t.Fatalf("nginx config not rolled back: %q", got)
 	}
 }
@@ -93,7 +93,7 @@ func TestWebserverApplyApacheDebian(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply apache: %v", err)
 	}
-	if _, ok := fs.Written("/etc/apache2/conf-enabled/heropanel.conf"); !ok {
+	if _, ok := fs.Written("/etc/apache2/conf-enabled/nexpanel.conf"); !ok {
 		t.Fatal("apache config not written to the Debian path")
 	}
 	var tested, reloaded bool

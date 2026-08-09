@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // CertStore implements ssl.Repo over the datastore.
@@ -20,7 +20,7 @@ const certCols = `id, uid, owner_id, provider, common_name, sans, is_wildcard, c
 	COALESCE(issued_at,'') AS issued_at, COALESCE(expires_at,'') AS expires_at, auto_renew, status, created_at, webroot`
 
 // ListDueForRenewal implements ssl.Repo: auto-renewing, currently-valid certs
-// expiring at or before `before`. Custom uploads are excluded — HeroPanel cannot
+// expiring at or before `before`. Custom uploads are excluded — NexPanel cannot
 // re-obtain someone else's certificate.
 func (s *CertStore) ListDueForRenewal(ctx context.Context, before string) ([]ssl.Record, error) {
 	var recs []ssl.Record

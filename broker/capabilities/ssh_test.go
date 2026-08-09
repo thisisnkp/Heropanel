@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 // ssh.harden writes the drop-in, config-tests it with `sshd -t`, then reloads.
@@ -23,7 +23,7 @@ func TestSSHHardenWritesTestsReloads(t *testing.T) {
 	if res.Data["hardened"] != true {
 		t.Error("harden did not report success")
 	}
-	got, ok := fs.Written("/etc/ssh/sshd_config.d/50-heropanel.conf")
+	got, ok := fs.Written("/etc/ssh/sshd_config.d/50-nexpanel.conf")
 	if !ok || !strings.Contains(got, "Port 2222") {
 		t.Errorf("drop-in not written: %q", got)
 	}
@@ -53,7 +53,7 @@ func TestSSHHardenRollsBackOnBadConfig(t *testing.T) {
 		return exec.Result{ExitCode: 0}, nil
 	}}
 	fs := fsys.NewFake()
-	_ = fs.WriteFile("/etc/ssh/sshd_config.d/50-heropanel.conf", []byte("Port 22\n"), 0o644)
+	_ = fs.WriteFile("/etc/ssh/sshd_config.d/50-nexpanel.conf", []byte("Port 22\n"), 0o644)
 
 	_, err := (capabilities.SSHHarden{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
 		"config": "Port totally-invalid\n",
@@ -61,7 +61,7 @@ func TestSSHHardenRollsBackOnBadConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("a config sshd rejected reported success")
 	}
-	if got, _ := fs.Written("/etc/ssh/sshd_config.d/50-heropanel.conf"); got != "Port 22\n" {
+	if got, _ := fs.Written("/etc/ssh/sshd_config.d/50-nexpanel.conf"); got != "Port 22\n" {
 		t.Errorf("drop-in was not rolled back: %q", got)
 	}
 	// The bad config must never reach a reload.

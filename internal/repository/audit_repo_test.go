@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 func newAuditService(t *testing.T) (*audit.Service, *repository.AuditRepository) {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	brokerd "github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerd "github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestSystemUserDelete(t *testing.T) {
@@ -16,12 +16,12 @@ func TestSystemUserDelete(t *testing.T) {
 
 	if _, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "system_user.delete",
-		Input:      mustJSON(t, map[string]string{"username": "hps1"}),
+		Input:      mustJSON(t, map[string]string{"username": "nps1"}),
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	last, _ := fake.Last()
-	if last.Path != "/usr/sbin/userdel" || !equalArgs(last.Args, []string{"hps1"}) {
+	if last.Path != "/usr/sbin/userdel" || !equalArgs(last.Args, []string{"nps1"}) {
 		t.Fatalf("command = %+v", last)
 	}
 }
@@ -32,7 +32,7 @@ func TestSystemUserDeleteIdempotent(t *testing.T) {
 	b, _ := newTestBroker(t, policy.Default(), fake)
 	if _, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "system_user.delete",
-		Input:      mustJSON(t, map[string]string{"username": "hps1"}),
+		Input:      mustJSON(t, map[string]string{"username": "nps1"}),
 	}); err != nil {
 		t.Fatalf("exit 6 should be success (idempotent), got %v", err)
 	}
@@ -40,15 +40,15 @@ func TestSystemUserDeleteIdempotent(t *testing.T) {
 
 func TestSiteRemoveDirs(t *testing.T) {
 	b, fs := newBrokerWithFS(t, &exec.FakeRunner{})
-	_ = fs.WriteFile("/srv/heropanel/sites/1/public/index.html", []byte("x"), 0o644)
+	_ = fs.WriteFile("/srv/nexpanel/sites/1/public/index.html", []byte("x"), 0o644)
 
 	if _, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "site.remove_dirs",
-		Input:      mustJSON(t, map[string]string{"root": "/srv/heropanel/sites/1"}),
+		Input:      mustJSON(t, map[string]string{"root": "/srv/nexpanel/sites/1"}),
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if _, ok := fs.Written("/srv/heropanel/sites/1/public/index.html"); ok {
+	if _, ok := fs.Written("/srv/nexpanel/sites/1/public/index.html"); ok {
 		t.Fatal("directory tree should have been removed")
 	}
 }

@@ -129,14 +129,14 @@ func TestParseCgroupFiles(t *testing.T) {
 
 func TestSiteSamplesReadCgroupAndDetectAbsence(t *testing.T) {
 	// One site has a cgroup, one does not.
-	present := siteCgroupDir("hps1")
+	present := siteCgroupDir("nps1")
 	fs := fakeFS{
 		present + "/memory.current": "8388608",
 		present + "/pids.current":   "12",
 		present + "/cpu.stat":       "usage_usec 2000000\n",
 	}
 	svc := &Service{readFile: fs.read, sleep: func(time.Duration) {}}
-	samples := svc.SiteSamples([]SiteRef{{VhostName: "hps1", SiteUID: "S1"}, {VhostName: "hps2", SiteUID: "S2"}})
+	samples := svc.SiteSamples([]SiteRef{{VhostName: "nps1", SiteUID: "S1"}, {VhostName: "nps2", SiteUID: "S2"}})
 	if len(samples) != 2 {
 		t.Fatalf("got %d samples, want 2", len(samples))
 	}

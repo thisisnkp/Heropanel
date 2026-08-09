@@ -5,27 +5,27 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Web-server config paths + binaries on the target systems, per engine.
 const (
 	// OpenLiteSpeed.
 	olsVhostRoot    = "/usr/local/lsws/conf/vhosts"
-	olsListenerConf = "/usr/local/lsws/conf/heropanel.conf"
+	olsListenerConf = "/usr/local/lsws/conf/nexpanel.conf"
 	olsBin          = "/usr/local/lsws/bin/lshttpd"
 	lswsctrl        = "/usr/local/lsws/bin/lswsctrl"
 	// LiteSpeed Enterprise reads an Apache-style config; the panel renders Apache
 	// and writes it here, then reloads via lswsctrl.
 	lswsEntConf = "/usr/local/lsws/conf/httpd_config.conf"
 	// Nginx.
-	nginxConf = "/etc/nginx/conf.d/heropanel.conf"
+	nginxConf = "/etc/nginx/conf.d/nexpanel.conf"
 	nginxBin  = "/usr/sbin/nginx"
 	// Apache (Debian conf-enabled, RHEL conf.d).
-	apacheConfDebian = "/etc/apache2/conf-enabled/heropanel.conf"
-	apacheConfRHEL   = "/etc/httpd/conf.d/heropanel.conf"
+	apacheConfDebian = "/etc/apache2/conf-enabled/nexpanel.conf"
+	apacheConfRHEL   = "/etc/httpd/conf.d/nexpanel.conf"
 	apache2ctl       = "/usr/sbin/apache2ctl"
 	httpdBin         = "/usr/sbin/httpd"
 )
@@ -35,7 +35,7 @@ const (
 // failed test. This declarative "render-all, apply, test, reload, rollback" model
 // avoids per-site config drift (docs/05 §2).
 //
-// The configuration text is rendered by hpd (per engine); the broker only writes
+// The configuration text is rendered by npd (per engine); the broker only writes
 // validated paths and runs the (fixed) test/reload commands for the chosen
 // engine. An empty engine means OpenLiteSpeed — the panel's original behavior.
 type WebServerApply struct{}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // APIKeyRow is a persisted API key. Only the key's hash is stored; the plaintext

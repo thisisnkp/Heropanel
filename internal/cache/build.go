@@ -9,8 +9,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 // Wiring is the assembled cache and its owned resources.

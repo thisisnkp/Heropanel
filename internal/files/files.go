@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // deployBaremetal is the only deploy mode the File Manager operates on. It is
@@ -78,7 +78,7 @@ func NewService(sites Sites, broker Broker) *Service {
 	return &Service{sites: sites, broker: broker}
 }
 
-// ChunkSize is the read/write chunk hpd streams with; it matches the broker's
+// ChunkSize is the read/write chunk npd streams with; it matches the broker's
 // per-chunk cap so a single frame always fits the wire.
 const ChunkSize = 512 * 1024
 
@@ -454,7 +454,7 @@ func (s *Service) UploadAndExtract(ctx context.Context, siteUID, dir, filename s
 	if _, err := rand.Read(suffix); err != nil {
 		return errx.Wrap(err, errx.KindInternal, "upload_failed", "Could not prepare the upload.")
 	}
-	archive := joinRel(dir, ".hp-upload-"+hex.EncodeToString(suffix)+ext)
+	archive := joinRel(dir, ".np-upload-"+hex.EncodeToString(suffix)+ext)
 	// Always remove the staged archive, even if the extract fails or the context
 	// is already cancelled (a fresh context carries the cleanup).
 	defer func() {
@@ -523,7 +523,7 @@ func (s *Service) DownloadArchive(ctx context.Context, siteUID, dir string, w io
 	// The archive is built in the *parent* of the directory being archived, so it
 	// never lands inside the tree it is compressing.
 	parent, _ := splitPath(dir)
-	archive := joinRel(parent, ".hp-download-"+hex.EncodeToString(suffix)+".zip")
+	archive := joinRel(parent, ".np-download-"+hex.EncodeToString(suffix)+".zip")
 
 	// Every source of one archive must share a parent (see file.compress), which
 	// the site root cannot: it has no parent inside the tree. Archiving the root

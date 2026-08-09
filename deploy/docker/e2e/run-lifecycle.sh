@@ -19,15 +19,15 @@ mariadbd --user=mysql >/tmp/mariadb.log 2>&1 &
 for i in $(seq 1 40); do mysqladmin ping >/dev/null 2>&1 && break; sleep 0.5; done
 /usr/local/lsws/bin/lswsctrl start 2>&1; sleep 1
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf http://127.0.0.1:18443/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -35,7 +35,7 @@ curl -s -X POST http://127.0.0.1:18443/api/v1/auth/bootstrap -H 'Content-Type: a
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST http://127.0.0.1:18443/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 uidof(){ printf '%s' "$1" | grep -o '"uid":"[^"]*"' | head -1 | cut -d'"' -f4; }
 get(){ curl -s -H "Host: $1" -o /tmp/body -w '%{http_code}' http://127.0.0.1/; }
@@ -45,10 +45,10 @@ get(){ curl -s -H "Host: $1" -o /tmp/body -w '%{http_code}' http://127.0.0.1/; }
 # this container we widen it by hand, exactly as run.sh does. Not part of what
 # this suite is testing — just the price of a real web server reading real files.
 serve_perms(){
-  chmod o+x  "/srv/heropanel/sites/$1"
-  chmod o+rx "/srv/heropanel/sites/$1/public"
-  chmod o+rwx "/srv/heropanel/sites/$1/logs"
-  [ -f "/srv/heropanel/sites/$1/public/index.html" ] && chmod o+r "/srv/heropanel/sites/$1/public/index.html"
+  chmod o+x  "/srv/nexpanel/sites/$1"
+  chmod o+rx "/srv/nexpanel/sites/$1/public"
+  chmod o+rwx "/srv/nexpanel/sites/$1/logs"
+  [ -f "/srv/nexpanel/sites/$1/public/index.html" ] && chmod o+r "/srv/nexpanel/sites/$1/public/index.html"
   return 0
 }
 
@@ -61,8 +61,8 @@ S2=$(api -X POST http://127.0.0.1:18443/api/v1/sites -H 'Content-Type: applicati
 U2=$(uidof "$S2"); echo "site 2: $U2"
 
 # Distinct content, so "which site answered" is unambiguous.
-echo '<h1>ACME CONTENT</h1>'  > /srv/heropanel/sites/1/public/index.html
-echo '<h1>OTHER CONTENT</h1>' > /srv/heropanel/sites/2/public/index.html
+echo '<h1>ACME CONTENT</h1>'  > /srv/nexpanel/sites/1/public/index.html
+echo '<h1>OTHER CONTENT</h1>' > /srv/nexpanel/sites/2/public/index.html
 serve_perms 1; serve_perms 2
 /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
 
@@ -97,8 +97,8 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/c.txt -H "X-CSRF-Token: $C
   -X POST "http://127.0.0.1:18443/api/v1/sites/$U1/resume")
 check "resume answers 200" "$CODE" '^200$'
 
-sec "LOGS  (0750, owned by the site user — hpd cannot read them itself)"
-echo "site log dir: $(stat -c '%a %U:%G' /srv/heropanel/sites/1/logs)"
+sec "LOGS  (0750, owned by the site user — npd cannot read them itself)"
+echo "site log dir: $(stat -c '%a %U:%G' /srv/nexpanel/sites/1/logs)"
 curl -s -o /dev/null -H 'Host: acme.test' http://127.0.0.1/    # generate a hit
 curl -s -o /dev/null -H 'Host: acme.test' http://127.0.0.1/nope
 sleep 1
@@ -118,8 +118,8 @@ echo "$C" | head -c 250; echo
 U3=$(uidof "$C"); echo "clone: $U3"
 check "clone is active" "$C" '"status":"active"'
 
-check "clone got its own Linux user"      "$(printf '%s' "$C" | grep -o '"system_user":"[^"]*"')" 'hps3'
-check "clone got its own document root"   "$(printf '%s' "$C" | grep -o '"document_root":"[^"]*"')" '/srv/heropanel/sites/3/public'
+check "clone got its own Linux user"      "$(printf '%s' "$C" | grep -o '"system_user":"[^"]*"')" 'nps3'
+check "clone got its own document root"   "$(printf '%s' "$C" | grep -o '"document_root":"[^"]*"')" '/srv/nexpanel/sites/3/public'
 serve_perms 3; /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
 get staging.test >/dev/null; check "clone content was copied" "$(cat /tmp/body)" 'OTHER CONTENT'
 check "clone serves 200"                  "$(get staging.test)" '^200$'
@@ -127,9 +127,9 @@ get other.test >/dev/null; check "source site still serves" "$(cat /tmp/body)" '
 
 # The isolation assertion: a clone whose files are still owned by the source's
 # user means two sites can read and write each other's data.
-OWNER=$(stat -c '%U:%G' /srv/heropanel/sites/3/public/index.html)
+OWNER=$(stat -c '%U:%G' /srv/nexpanel/sites/3/public/index.html)
 echo "cloned file owner: $OWNER"
-check "cloned content is owned by the clone's user, not the source's" "$OWNER" '^hps3:hps3$'
+check "cloned content is owned by the clone's user, not the source's" "$OWNER" '^nps3:nps3$'
 
 sec "clone refuses a site onto itself / bad input"
 check "invalid domain refused" \

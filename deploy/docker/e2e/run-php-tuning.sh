@@ -12,17 +12,17 @@ sec(){ echo; echo "======== $* ========"; }
 fail=0
 check(){ if printf '%s' "$2" | grep -q -- "$3"; then echo "  ok   $1"; else echo "  FAIL $1 (want: $3)"; echo "       got: $(printf '%s' "$2" | head -c 300)"; fail=1; fi }
 
-sec "start php-fpm + OpenLiteSpeed + hp stack"
+sec "start php-fpm + OpenLiteSpeed + np stack"
 service php8.3-fpm start 2>&1 | tail -1 || /usr/sbin/php-fpm8.3 -D 2>&1
 /usr/local/lsws/bin/lswsctrl start 2>&1; sleep 1
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites /run/heropanel/fpm
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites /run/nexpanel/fpm
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf http://127.0.0.1:18443/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -30,7 +30,7 @@ curl -s -X POST http://127.0.0.1:18443/api/v1/auth/bootstrap -H 'Content-Type: a
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST http://127.0.0.1:18443/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 uidof(){ printf '%s' "$1" | grep -o '"uid":"[^"]*"' | head -1 | cut -d'"' -f4; }
 
@@ -38,8 +38,8 @@ sec "create a PHP site"
 S=$(api -X POST http://127.0.0.1:18443/api/v1/sites -H 'Content-Type: application/json' \
   -d '{"name":"PHP","primary_domain":"php.test","type":"php"}')
 U=$(uidof "$S"); echo "site: $U"
-chmod o+x /srv/heropanel/sites/1; chmod o+rx /srv/heropanel/sites/1/public; chmod o+rwx /srv/heropanel/sites/1/logs
-cat > /srv/heropanel/sites/1/public/index.php <<'PHP'
+chmod o+x /srv/nexpanel/sites/1; chmod o+rx /srv/nexpanel/sites/1/public; chmod o+rwx /srv/nexpanel/sites/1/logs
+cat > /srv/nexpanel/sites/1/public/index.php <<'PHP'
 <?php
 echo "max_execution_time=" . ini_get('max_execution_time') . "\n";
 echo "memory_limit=" . ini_get('memory_limit') . "\n";
@@ -48,14 +48,14 @@ echo "opcache_mem=" . ini_get('opcache.memory_consumption') . "\n";
 echo "opcache_files=" . ini_get('opcache.max_accelerated_files') . "\n";
 echo "exif=" . (extension_loaded('exif') ? 'yes' : 'no') . "\n";
 PHP
-chmod o+r /srv/heropanel/sites/1/public/index.php
+chmod o+r /srv/nexpanel/sites/1/public/index.php
 
 # OpenLiteSpeed serves as `nobody`; the FPM socket is 0660 owned by the site
 # user. In production the installer places OLS in the right group; in this
 # container we widen the socket by hand, as run-php.sh does. It must be re-done
 # after anything that restarts FPM (an extension toggle), because the master
 # recreates the socket at its configured 0660 on restart.
-open_socket(){ for i in $(seq 1 20); do [ -S /run/heropanel/fpm/hps1.sock ] && { chmod 0666 /run/heropanel/fpm/hps1.sock; return; }; sleep 0.25; done; }
+open_socket(){ for i in $(seq 1 20); do [ -S /run/nexpanel/fpm/nps1.sock ] && { chmod 0666 /run/nexpanel/fpm/nps1.sock; return; }; sleep 0.25; done; }
 serve(){ open_socket; /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1; curl -s -H 'Host: php.test' http://127.0.0.1/index.php; }
 open_socket
 
@@ -86,7 +86,7 @@ R=$(api -X PUT http://127.0.0.1:18443/api/v1/sites/$U/php -H 'Content-Type: appl
   "version":"8.3",
   "fpm":{"pm":"dynamic","pm_max_children":5,"pm_start_servers":9,"pm_min_spare_servers":8,"pm_max_spare_servers":2}
 }')
-# hpd rejects this in validation before the broker even sees it — the first guard.
+# npd rejects this in validation before the broker even sees it — the first guard.
 check "invalid sizing refused by the API" "$R" 'error'
 # And the previous good config is still what serves.
 OUT=$(serve); check "site still serving the last good config" "$OUT" 'max_execution_time=77'

@@ -11,12 +11,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/tenancy"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/tenancy"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

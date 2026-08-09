@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/keyring"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/keyring"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 func newCipher(t *testing.T) (*secrets.Cipher, string) {

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { bootstrapOnce } from "./helpers";
 
-// The application shell: that hpd serves the *built* bundle, that client-side
+// The application shell: that npd serves the *built* bundle, that client-side
 // routing works including on a hard reload, and that features whose module is
 // absent degrade rather than 404 on click.
 
@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await bootstrapOnce(page);
 });
 
-test("hpd serves the built SPA, not a placeholder", async ({ page }) => {
+test("npd serves the built SPA, not a placeholder", async ({ page }) => {
   await page.goto("/");
   // The placeholder used when the frontend has not been built has no app shell
   // and no script bundle; both must be present.
@@ -28,7 +28,7 @@ test("every primary navigation destination renders", async ({ page }) => {
 });
 
 test("a deep link survives a hard reload", async ({ page }) => {
-  // Client-side routes only work if hpd falls through unknown paths to the SPA.
+  // Client-side routes only work if npd falls through unknown paths to the SPA.
   // A 404 here means the fallback is broken, which no unit test would notice.
   await page.goto("/sites");
   await page.reload();

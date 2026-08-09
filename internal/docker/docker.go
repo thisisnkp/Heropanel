@@ -4,7 +4,7 @@
 // Nothing here is privileged. Every operation is a named broker capability
 // (broker/capabilities/docker.go), because the Docker daemon socket is
 // root-equivalent — anyone who can reach it can run `docker run -v /:/host
-// --privileged` and own the machine. Putting hpd in the `docker` group would
+// --privileged` and own the machine. Putting npd in the `docker` group would
 // have made the network-facing process root by another name, so this package
 // only ever asks the broker, exactly as the File Manager does.
 //
@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Broker is the privileged gateway (a subset of internal/broker.Gateway).
@@ -368,12 +368,12 @@ func (s *Service) PruneImages(ctx context.Context, all bool) (string, error) {
 
 // ── parsing docker's CLI output ──────────────────────────────────────────────
 
-// The label keys the broker stamps. Duplicated here rather than imported: hpd
+// The label keys the broker stamps. Duplicated here rather than imported: npd
 // does not depend on the broker package (they are separate binaries with
 // separate privilege), and the wire between them is the capability contract.
 const (
-	labelManaged = "io.heropanel.managed"
-	labelSite    = "io.heropanel.site"
+	labelManaged = "io.nexpanel.managed"
+	labelSite    = "io.nexpanel.site"
 )
 
 // jsonRows normalises the broker's list payload. It survives a round trip

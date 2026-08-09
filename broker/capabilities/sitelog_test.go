@@ -4,16 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestSiteReadLogTailsTheRightFile(t *testing.T) {
 	fr := &exec.FakeRunner{Result: exec.Result{Stdout: []byte("line one\nline two\n")}}
 	res, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-		"root": "/srv/heropanel/sites/1", "kind": "access", "lines": 20,
+		"root": "/srv/nexpanel/sites/1", "kind": "access", "lines": 20,
 	}))
 	if err != nil {
 		t.Fatalf("read_log: %v", err)
@@ -27,7 +27,7 @@ func TestSiteReadLogTailsTheRightFile(t *testing.T) {
 	}
 	// The "--" matters: without it a path that began with "-" would be read as a
 	// flag. Paths here are policy-confined, but the habit is the point.
-	want := []string{"-n", "20", "--", "/srv/heropanel/sites/1/logs/access.log"}
+	want := []string{"-n", "20", "--", "/srv/nexpanel/sites/1/logs/access.log"}
 	if strings.Join(cmd.Args, " ") != strings.Join(want, " ") {
 		t.Errorf("args = %v, want %v", cmd.Args, want)
 	}
@@ -45,11 +45,11 @@ func TestSiteReadLogTailsTheRightFile(t *testing.T) {
 func TestSiteReadLogMapsErrorKind(t *testing.T) {
 	fr := &exec.FakeRunner{Result: exec.Result{Stdout: []byte("")}}
 	if _, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-		"root": "/srv/heropanel/sites/1", "kind": "error", "lines": 5,
+		"root": "/srv/nexpanel/sites/1", "kind": "error", "lines": 5,
 	})); err != nil {
 		t.Fatalf("read_log: %v", err)
 	}
-	if got := fr.Calls[0].Args[3]; got != "/srv/heropanel/sites/1/logs/error.log" {
+	if got := fr.Calls[0].Args[3]; got != "/srv/nexpanel/sites/1/logs/error.log" {
 		t.Errorf("path = %q, want the error log", got)
 	}
 }
@@ -66,7 +66,7 @@ func TestSiteReadLogRejectsAKindOutsideTheAllowlist(t *testing.T) {
 	} {
 		fr := &exec.FakeRunner{}
 		_, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-			"root": "/srv/heropanel/sites/1", "kind": kind, "lines": 10,
+			"root": "/srv/nexpanel/sites/1", "kind": kind, "lines": 10,
 		}))
 		if err == nil {
 			t.Errorf("accepted kind %q", kind)
@@ -78,7 +78,7 @@ func TestSiteReadLogRejectsAKindOutsideTheAllowlist(t *testing.T) {
 }
 
 func TestSiteReadLogConfinesTheRoot(t *testing.T) {
-	for _, root := range []string{"/etc", "/srv/heropanel/sites/../../etc", "/root", "relative/path"} {
+	for _, root := range []string{"/etc", "/srv/nexpanel/sites/../../etc", "/root", "relative/path"} {
 		fr := &exec.FakeRunner{}
 		_, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
 			"root": root, "kind": "access", "lines": 10,
@@ -96,7 +96,7 @@ func TestSiteReadLogBoundsTheTailDepth(t *testing.T) {
 	for _, lines := range []int{-1, 5001, 1 << 20} {
 		fr := &exec.FakeRunner{}
 		_, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-			"root": "/srv/heropanel/sites/1", "kind": "access", "lines": lines,
+			"root": "/srv/nexpanel/sites/1", "kind": "access", "lines": lines,
 		}))
 		if err == nil {
 			t.Errorf("accepted lines=%d", lines)
@@ -107,7 +107,7 @@ func TestSiteReadLogBoundsTheTailDepth(t *testing.T) {
 func TestSiteReadLogDefaultsTheTailDepth(t *testing.T) {
 	fr := &exec.FakeRunner{Result: exec.Result{Stdout: []byte("x\n")}}
 	if _, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-		"root": "/srv/heropanel/sites/1", "kind": "access",
+		"root": "/srv/nexpanel/sites/1", "kind": "access",
 	})); err != nil {
 		t.Fatalf("read_log: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSiteReadLogDefaultsTheTailDepth(t *testing.T) {
 func TestSiteReadLogTreatsAMissingFileAsEmpty(t *testing.T) {
 	fr := &exec.FakeRunner{Result: exec.Result{ExitCode: 1, Stderr: []byte("No such file or directory")}}
 	res, err := (capabilities.SiteReadLog{}).Execute(sliceCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-		"root": "/srv/heropanel/sites/1", "kind": "access", "lines": 10,
+		"root": "/srv/nexpanel/sites/1", "kind": "access", "lines": 10,
 	}))
 	if err != nil {
 		t.Fatalf("read_log on a missing file returned an error: %v", err)

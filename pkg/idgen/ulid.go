@@ -1,4 +1,4 @@
-// Package idgen generates HeroPanel identifiers. External IDs are ULIDs
+// Package idgen generates NexPanel identifiers. External IDs are ULIDs
 // (lexicographically sortable, time-ordered, non-enumerable) rendered as 26
 // Crockford base32 characters, optionally with a short type prefix such as
 // "sit_" for sites or "job_" for jobs (see docs/03-database-schema.md).

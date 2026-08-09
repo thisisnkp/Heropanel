@@ -8,9 +8,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/docker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/docker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The Docker HTTP edge.

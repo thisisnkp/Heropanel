@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // DatabaseStore implements database.Repo over the datastore.

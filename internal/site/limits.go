@@ -3,13 +3,13 @@ package site
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Per-site resource limits.
 //
-// Every site gets a systemd **slice** (`heropanel-site-<user>.slice`) at
-// provisioning time, and everything HeroPanel supervises for that site runs
+// Every site gets a systemd **slice** (`nexpanel-site-<user>.slice`) at
+// provisioning time, and everything NexPanel supervises for that site runs
 // inside it. The slice is what makes a limit real: without it a runaway app is
 // bounded only by the size of the node, and one tenant can take the box down for
 // everyone.

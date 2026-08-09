@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 var reName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
@@ -47,9 +47,9 @@ func brokerCap(engine, op string) string {
 }
 
 // DumpDir is where exports are produced and imports are staged. It must match
-// the broker's dumpRoot: hpd writes uploads here and reads dumps back, while the
+// the broker's dumpRoot: npd writes uploads here and reads dumps back, while the
 // broker is the only thing that ever runs SQL against them.
-const DumpDir = "/var/lib/heropanel/dumps"
+const DumpDir = "/var/lib/nexpanel/dumps"
 
 // Instance is the API view of a database.
 type Instance struct {
@@ -397,7 +397,7 @@ func (s *Service) DiscardExport(path string) error {
 // ImportStagePath returns where the caller must write an upload before calling
 // Import, along with the bare filename Import expects.
 //
-// hpd stages the upload itself rather than shipping the bytes through the
+// npd stages the upload itself rather than shipping the bytes through the
 // broker: the broker's transport is length-prefixed JSON, and a database dump is
 // arbitrarily large.
 func (s *Service) ImportStagePath(gzipped bool) (path, file string) {

@@ -23,7 +23,7 @@ func (g *mockGW) Invoke(_ context.Context, cap string, _ any) (map[string]any, e
 		return nil, errors.New(cap + " failed")
 	}
 	if cap == "firewall.status" {
-		return map[string]any{"ruleset": "table inet heropanel {}", "running": true}, nil
+		return map[string]any{"ruleset": "table inet nexpanel {}", "running": true}, nil
 	}
 	return map[string]any{}, nil
 }

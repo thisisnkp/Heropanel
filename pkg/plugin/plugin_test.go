@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/plugin"
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/plugin"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // stubModule is a minimal Module, the kind an SDK user writes.

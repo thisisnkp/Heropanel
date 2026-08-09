@@ -14,14 +14,14 @@ func TestRenderConfigWiresLocalMTAs(t *testing.T) {
 	cfg := RenderConfig(Config{
 		IMAPHost: "tls://127.0.0.1", IMAPPort: 143,
 		SMTPHost: "tls://127.0.0.1", SMTPPort: 587,
-		DESKey: "SECRETKEY", DBPath: "/var/lib/heropanel/webmail/roundcube.db",
-		TempDir: "/var/lib/heropanel/webmail/temp", LogDir: "/var/lib/heropanel/webmail/logs",
-		SkipCertVerify: true, ProductName: "HeroPanel Webmail",
+		DESKey: "SECRETKEY", DBPath: "/var/lib/nexpanel/webmail/roundcube.db",
+		TempDir: "/var/lib/nexpanel/webmail/temp", LogDir: "/var/lib/nexpanel/webmail/logs",
+		SkipCertVerify: true, ProductName: "NexPanel Webmail",
 	})
 	for _, want := range []string{
 		"$config['imap_host'] = 'tls://127.0.0.1:143';",
 		"$config['smtp_host'] = 'tls://127.0.0.1:587';",
-		"sqlite:////var/lib/heropanel/webmail/roundcube.db",
+		"sqlite:////var/lib/nexpanel/webmail/roundcube.db",
 		"$config['des_key'] = 'SECRETKEY';",
 		"'verify_peer' => false",
 		"enable_installer'] = false",

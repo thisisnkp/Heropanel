@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // KeyringStore persists the rotating data-key envelope (data_keys table): each

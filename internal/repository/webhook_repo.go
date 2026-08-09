@@ -7,9 +7,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // WebhookStore persists outbound webhook subscriptions and their delivery queue.
@@ -71,7 +71,7 @@ func webhookAAD(uid string) string { return "webhook:" + uid }
 func (s *WebhookStore) CreateWebhook(ctx context.Context, ownerID int64, url, secret string, events []string) (string, error) {
 	if s.cipher == nil || !s.cipher.Configured() {
 		return "", errx.New(errx.KindUnavailable, "secrets_unavailable",
-			"A data key (HP_SECRET_KEY) is required to store a webhook secret.")
+			"A data key (NP_SECRET_KEY) is required to store a webhook secret.")
 	}
 	uid := idgen.NewULID()
 	sealed, err := s.cipher.Seal([]byte(secret), webhookAAD(uid))

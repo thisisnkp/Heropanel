@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 // Provision prepares a host idempotently: vmail user (exit 9 = exists is
@@ -38,12 +38,12 @@ func TestMailProvisionSeedsAHostIdempotently(t *testing.T) {
 			sawUseradd = strings.Contains(argv, "--system") && strings.Contains(argv, "vmail") &&
 				strings.Contains(argv, "/usr/sbin/nologin")
 		case "/usr/bin/install":
-			if strings.Contains(argv, "-o vmail") && strings.Contains(argv, "/var/lib/heropanel/mail") {
+			if strings.Contains(argv, "-o vmail") && strings.Contains(argv, "/var/lib/nexpanel/mail") {
 				sawVmailDir = strings.Contains(argv, "0770")
 			}
 		case "/usr/sbin/postconf":
 			sawPostconf = strings.Contains(argv, "virtual_transport=lmtp:unix:private/dovecot-lmtp") &&
-				strings.Contains(argv, "virtual_mailbox_domains=hash:/etc/postfix/heropanel/domains")
+				strings.Contains(argv, "virtual_mailbox_domains=hash:/etc/postfix/nexpanel/domains")
 		case "/usr/sbin/postmap":
 			postmapped[call.Args[len(call.Args)-1]] = true
 		}
@@ -57,27 +57,27 @@ func TestMailProvisionSeedsAHostIdempotently(t *testing.T) {
 	if !sawPostconf {
 		t.Error("the fixed postfix virtual settings were not applied")
 	}
-	for _, m := range []string{"/etc/postfix/heropanel/domains", "/etc/postfix/heropanel/mailboxes", "/etc/postfix/heropanel/aliases"} {
+	for _, m := range []string{"/etc/postfix/nexpanel/domains", "/etc/postfix/nexpanel/mailboxes", "/etc/postfix/nexpanel/aliases"} {
 		if !postmapped[m] {
 			t.Errorf("%s was not postmapped", m)
 		}
 	}
 
-	conf, ok := fs.Written("/etc/dovecot/conf.d/95-heropanel.conf")
+	conf, ok := fs.Written("/etc/dovecot/conf.d/95-nexpanel.conf")
 	if !ok {
 		t.Fatal("the dovecot drop-in was not written")
 	}
 	for _, want := range []string{
-		"passwd-file", "/etc/dovecot/heropanel-users",
+		"passwd-file", "/etc/dovecot/nexpanel-users",
 		"unix_listener /var/spool/postfix/private/dovecot-lmtp",
-		"maildir:/var/lib/heropanel/mail/%d/%n/Maildir",
+		"maildir:/var/lib/nexpanel/mail/%d/%n/Maildir",
 		"quota = maildir",
 	} {
 		if !strings.Contains(conf, want) {
 			t.Errorf("dovecot drop-in missing %q", want)
 		}
 	}
-	if _, ok := fs.Written("/etc/dovecot/heropanel-users"); !ok {
+	if _, ok := fs.Written("/etc/dovecot/nexpanel-users"); !ok {
 		t.Error("the empty users file was not seeded")
 	}
 }
@@ -100,10 +100,10 @@ func TestMailApplyWritesMapsAndReloads(t *testing.T) {
 	if res.Data["applied"] != true {
 		t.Error("apply did not report success")
 	}
-	if got, _ := fs.Written("/etc/postfix/heropanel/domains"); !strings.Contains(got, "example.com OK") {
+	if got, _ := fs.Written("/etc/postfix/nexpanel/domains"); !strings.Contains(got, "example.com OK") {
 		t.Errorf("domains map = %q", got)
 	}
-	if got, _ := fs.Written("/etc/dovecot/heropanel-users"); !strings.Contains(got, "{BLF-CRYPT}") {
+	if got, _ := fs.Written("/etc/dovecot/nexpanel-users"); !strings.Contains(got, "{BLF-CRYPT}") {
 		t.Errorf("users file = %q", got)
 	}
 
@@ -116,7 +116,7 @@ func TestMailApplyWritesMapsAndReloads(t *testing.T) {
 		case "/usr/sbin/postfix", "/usr/bin/doveadm":
 			reloads = append(reloads, call.Path+" "+strings.Join(call.Args, " "))
 		case "/bin/chown":
-			if strings.Join(call.Args, " ") == "dovecot:dovecot /etc/dovecot/heropanel-users" {
+			if strings.Join(call.Args, " ") == "dovecot:dovecot /etc/dovecot/nexpanel-users" {
 				ownedUsers = true
 			}
 		}
@@ -145,8 +145,8 @@ func TestMailApplyRollsBackOnPostmapFailure(t *testing.T) {
 		return exec.Result{ExitCode: 0}, nil
 	}}
 	fs := fsys.NewFake()
-	_ = fs.WriteFile("/etc/postfix/heropanel/domains", []byte("old.example OK\n"), 0o644)
-	_ = fs.WriteFile("/etc/dovecot/heropanel-users", []byte("old@old.example:{BLF-CRYPT}x\n"), 0o600)
+	_ = fs.WriteFile("/etc/postfix/nexpanel/domains", []byte("old.example OK\n"), 0o644)
+	_ = fs.WriteFile("/etc/dovecot/nexpanel-users", []byte("old@old.example:{BLF-CRYPT}x\n"), 0o600)
 
 	_, err := (capabilities.MailApply{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
 		"domains": "new.example OK\n", "mailboxes": "", "aliases": "", "users": "",
@@ -154,10 +154,10 @@ func TestMailApplyRollsBackOnPostmapFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("a failed postmap reported success")
 	}
-	if got, _ := fs.Written("/etc/postfix/heropanel/domains"); got != "old.example OK\n" {
+	if got, _ := fs.Written("/etc/postfix/nexpanel/domains"); got != "old.example OK\n" {
 		t.Errorf("domains map was not rolled back: %q", got)
 	}
-	if got, _ := fs.Written("/etc/dovecot/heropanel-users"); got != "old@old.example:{BLF-CRYPT}x\n" {
+	if got, _ := fs.Written("/etc/dovecot/nexpanel-users"); got != "old@old.example:{BLF-CRYPT}x\n" {
 		t.Errorf("users file was not rolled back: %q", got)
 	}
 }
@@ -173,7 +173,7 @@ func TestMailPurgeDerivesThePathAndRefusesBadInput(t *testing.T) {
 		t.Fatalf("purge: %v", err)
 	}
 	last, _ := fr.Last()
-	if last.Path != "/bin/rm" || strings.Join(last.Args, " ") != "-rf -- /var/lib/heropanel/mail/example.com/info" {
+	if last.Path != "/bin/rm" || strings.Join(last.Args, " ") != "-rf -- /var/lib/nexpanel/mail/example.com/info" {
 		t.Errorf("rm argv = %s %v", last.Path, last.Args)
 	}
 

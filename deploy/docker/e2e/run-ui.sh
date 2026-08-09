@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies the embedded SPA is actually served by hpd and that the endpoints the
+# Verifies the embedded SPA is actually served by npd and that the endpoints the
 # UI depends on answer. It is not a browser test — the e2e image has no headless
 # Chrome — but it proves the binary ships the built frontend and that every page
 # the UI renders has a live endpoint behind it. The per-feature behaviour is
@@ -15,14 +15,14 @@ mkdir -p /run/mysqld && chown mysql:mysql /run/mysqld
 [ -d /var/lib/mysql/mysql ] || mariadb-install-db --user=mysql --datadir=/var/lib/mysql >/dev/null 2>&1
 mariadbd --user=mysql >/tmp/mariadb.log 2>&1 &
 for i in $(seq 1 40); do mysqladmin ping >/dev/null 2>&1 && break; sleep 0.5; done
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf http://127.0.0.1:18443/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "the built SPA is embedded and served"
@@ -45,7 +45,7 @@ curl -s -X POST http://127.0.0.1:18443/api/v1/auth/bootstrap -H 'Content-Type: a
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST http://127.0.0.1:18443/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 check "me returns the principal" "$(api http://127.0.0.1:18443/api/v1/auth/me)" '"email":"a@h.io"'
 
@@ -72,7 +72,7 @@ OA=$(api http://127.0.0.1:18443/api/v1/openapi.json)
 check "openapi 3.1 document"     "$OA" '"openapi": "3.1.0"'
 check "spec documents /sites"    "$OA" '/api/v1/sites'
 DOCS=$(curl -s http://127.0.0.1:18443/api/docs)
-check "docs viewer html"         "$DOCS" '<title>HeroPanel API reference'
+check "docs viewer html"         "$DOCS" '<title>NexPanel API reference'
 check "docs viewer loads its js" "$DOCS" '/api/docs.js'
 DJS=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18443/api/docs.js)
 check "docs js asset served"     "$DJS" '200'

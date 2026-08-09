@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 func newCipher(t *testing.T) *secrets.Cipher {
@@ -33,7 +33,7 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	if strings.Contains(blob, "ghp_supersecret") {
 		t.Fatalf("plaintext leaked into the stored blob: %q", blob)
 	}
-	if !strings.HasPrefix(blob, "hp1.") {
+	if !strings.HasPrefix(blob, "np1.") {
 		t.Fatalf("missing version prefix: %q", blob)
 	}
 
@@ -86,7 +86,7 @@ func TestTamperedCiphertextFails(t *testing.T) {
 	if _, err := c.Open(string(b), aad); err == nil {
 		t.Fatal("tampered ciphertext opened")
 	}
-	if _, err := c.Open("hp2."+strings.TrimPrefix(blob, "hp1."), aad); err == nil {
+	if _, err := c.Open("np2."+strings.TrimPrefix(blob, "np1."), aad); err == nil {
 		t.Fatal("unknown version opened")
 	}
 	if _, err := c.Open("garbage", aad); err == nil {
@@ -115,7 +115,7 @@ func TestUnconfiguredCipherRefuses(t *testing.T) {
 	if _, err := c.Seal([]byte("x"), "a:1:b"); !errors.Is(err, secrets.ErrNoCipher) {
 		t.Fatalf("want ErrNoCipher, got %v", err)
 	}
-	if _, err := c.Open("hp1.zzz", "a:1:b"); !errors.Is(err, secrets.ErrNoCipher) {
+	if _, err := c.Open("np1.zzz", "a:1:b"); !errors.Is(err, secrets.ErrNoCipher) {
 		t.Fatalf("want ErrNoCipher, got %v", err)
 	}
 }

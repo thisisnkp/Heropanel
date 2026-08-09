@@ -23,7 +23,7 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
   { code: "es", label: "Español" },
 ];
 
-const STORAGE_KEY = "hp_lang";
+const STORAGE_KEY = "np_lang";
 
 const loaders: Record<Lang, () => Promise<Catalog>> = {
   en: () => Promise.resolve(en),

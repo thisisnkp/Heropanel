@@ -12,7 +12,7 @@ import (
 // on from the moment it is created (that is *why* Phase 1 turns it on — see
 // broker siteslice.go). cgroup v2 exposes that accounting as plain files —
 // `memory.current`, `cpu.stat`, `pids.current` — mode 0444, world-readable, so
-// hpd reads them directly. No broker: there is no privilege in reading a number
+// npd reads them directly. No broker: there is no privilege in reading a number
 // the kernel publishes to everyone.
 //
 // A site whose slice has no cgroup yet (nothing has run in it, or the host has no
@@ -48,12 +48,12 @@ type siteCPUPrev struct {
 }
 
 // siteCgroupDir is the cgroup v2 path for a site's slice. The systemd hierarchy
-// heropanel.slice → heropanel-site.slice → heropanel-site-<vhost>.slice mirrors
-// straight onto the filesystem. Site vhosts are hps<id>, which need no slice-name
+// nexpanel.slice → nexpanel-site.slice → nexpanel-site-<vhost>.slice mirrors
+// straight onto the filesystem. Site vhosts are nps<id>, which need no slice-name
 // escaping.
 func siteCgroupDir(vhost string) string {
-	slice := "heropanel-site-" + vhost + ".slice"
-	return cgroupRoot + "/heropanel.slice/heropanel-site.slice/" + slice
+	slice := "nexpanel-site-" + vhost + ".slice"
+	return cgroupRoot + "/nexpanel.slice/nexpanel-site.slice/" + slice
 }
 
 // parseCPUUsageUsec pulls usage_usec from a cgroup v2 cpu.stat.

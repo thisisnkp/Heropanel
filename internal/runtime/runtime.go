@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Runtime labels (informational; the operator supplies the actual command).

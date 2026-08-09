@@ -1,4 +1,4 @@
-// Command termclient is an end-to-end test client for HeroPanel's web terminal.
+// Command termclient is an end-to-end test client for NexPanel's web terminal.
 //
 // It is not shipped with the product — it lives under deploy/docker/e2e because
 // the terminal is the one surface that cannot be exercised with curl: it is a
@@ -23,8 +23,8 @@ import (
 func main() {
 	var base, cookie, uid, script, cwd string
 	var timeout, step time.Duration
-	flag.StringVar(&base, "base", "127.0.0.1:18443", "host:port of hpd")
-	flag.StringVar(&cookie, "cookie", "", "session cookie, e.g. hp_session=…")
+	flag.StringVar(&base, "base", "127.0.0.1:18443", "host:port of npd")
+	flag.StringVar(&cookie, "cookie", "", "session cookie, e.g. np_session=…")
 	flag.StringVar(&uid, "site", "", "site uid")
 	flag.StringVar(&cwd, "cwd", "", "starting directory, relative to the site home")
 	flag.StringVar(&script, "script", "id -un; pwd; exit\n", "text typed into the shell")

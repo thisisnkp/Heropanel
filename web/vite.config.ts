@@ -2,8 +2,8 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
-// The panel serves the built SPA embedded in hpd (same origin). During `vite
-// dev`, API/health calls are proxied to the local hpd instance so cookies stay
+// The panel serves the built SPA embedded in npd (same origin). During `vite
+// dev`, API/health calls are proxied to the local npd instance so cookies stay
 // same-origin.
 export default defineConfig({
   plugins: [react()],

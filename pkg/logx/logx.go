@@ -1,4 +1,4 @@
-// Package logx provides HeroPanel's structured logging setup on top of the
+// Package logx provides NexPanel's structured logging setup on top of the
 // standard library log/slog. All components (core, broker, modules) use it so
 // logs share one JSON shape with correlation ids.
 package logx

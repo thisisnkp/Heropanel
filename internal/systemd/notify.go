@@ -1,4 +1,4 @@
-// Package systemd implements the small slice of the sd_notify protocol hpd needs
+// Package systemd implements the small slice of the sd_notify protocol npd needs
 // to be a Type=notify service with a watchdog: tell systemd when it is ready, and
 // periodically pet the watchdog so a hung (not just crashed) process is killed
 // and restarted. It is pure Go (no cgo, no dependency) and a safe no-op when not

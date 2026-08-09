@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// The files node metrics come from. All world-readable, so hpd reads them
+// The files node metrics come from. All world-readable, so npd reads them
 // directly rather than crossing the broker for a number that is not privileged.
 const (
 	statPath    = "/proc/stat"
@@ -29,7 +29,7 @@ const (
 // defaultDiskPaths are the filesystems a dashboard cares about: the root, and
 // the tree every site lives under. Duplicates and unmounted paths are dropped
 // when sampled.
-var defaultDiskPaths = []string{"/", "/srv/heropanel"}
+var defaultDiskPaths = []string{"/", "/srv/nexpanel"}
 
 // cpuWarmDelay is how long the first (cold) CPU sample waits between its two
 // /proc/stat reads. CPU is a rate and needs two points; without a previous read

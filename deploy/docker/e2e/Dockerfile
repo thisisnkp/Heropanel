@@ -1,5 +1,5 @@
 # End-to-end test image: a real Ubuntu with OpenLiteSpeed + LSPHP + MariaDB, used
-# to verify HeroPanel's broker capabilities against real software (not mocks).
+# to verify NexPanel's broker capabilities against real software (not mocks).
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -80,14 +80,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends php8.3-zip unzi
     && rm -f /tmp/composer-setup.php \
     && composer --version
 
-# BIND9 (authoritative) + tools for the DNS e2e. HeroPanel writes zone files into
+# BIND9 (authoritative) + tools for the DNS e2e. NexPanel writes zone files into
 # /etc/bind/zones and its zone declarations into an include file.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bind9 bind9-utils bind9-dnsutils \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /etc/bind/zones \
-    && : > /etc/bind/named.conf.heropanel \
-    && printf '\ninclude "/etc/bind/named.conf.heropanel";\n' >> /etc/bind/named.conf.local
+    && : > /etc/bind/named.conf.nexpanel \
+    && printf '\ninclude "/etc/bind/named.conf.nexpanel";\n' >> /etc/bind/named.conf.local
 
 # PostgreSQL — the second managed database engine. The broker runs psql/pg_dump
 # as the postgres OS user (peer auth), so run-postgres.sh starts the cluster and
@@ -99,7 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The Docker *client* only — the e2e talks to a daemon mounted in at run time
 # (the CI runner's own). No daemon runs inside this image: the module's job is
 # to drive a real dockerd, and running one here would be testing docker-in-docker
-# rather than HeroPanel. The broker execs /usr/bin/docker, which is where the
+# rather than NexPanel. The broker execs /usr/bin/docker, which is where the
 # distro package puts it.
 RUN apt-get update && apt-get install -y --no-install-recommends docker.io \
     && rm -rf /var/lib/apt/lists/* \
@@ -142,12 +142,12 @@ ARG ROUNDCUBE_VERSION=1.6.9
 RUN apt-get update && apt-get install -y --no-install-recommends \
       php8.3-intl php8.3-mbstring php8.3-xml php8.3-sqlite3 php8.3-gd php8.3-curl \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /usr/share/heropanel \
+    && mkdir -p /usr/share/nexpanel \
     && wget -qO /tmp/rc.tgz "https://github.com/roundcube/roundcubemail/releases/download/${ROUNDCUBE_VERSION}/roundcubemail-${ROUNDCUBE_VERSION}-complete.tar.gz" \
-    && tar -C /usr/share/heropanel -xzf /tmp/rc.tgz \
-    && mv "/usr/share/heropanel/roundcubemail-${ROUNDCUBE_VERSION}" /usr/share/heropanel/roundcube \
+    && tar -C /usr/share/nexpanel -xzf /tmp/rc.tgz \
+    && mv "/usr/share/nexpanel/roundcubemail-${ROUNDCUBE_VERSION}" /usr/share/nexpanel/roundcube \
     && rm -f /tmp/rc.tgz \
-    && test -f /usr/share/heropanel/roundcube/index.php
+    && test -f /usr/share/nexpanel/roundcube/index.php
 
 # MinIO: a real, independent S3 implementation for the backup e2e. The S3
 # signer is unit-tested against a recomputing fake; this closes the honest gap
@@ -190,14 +190,14 @@ COPY systemctl-shim.sh /usr/bin/systemctl
 RUN chmod +x /usr/bin/systemctl
 
 # Container shim for nft (real kernel nftables would disturb container
-# networking; the shim proves HeroPanel's snapshot/apply/revert logic).
+# networking; the shim proves NexPanel's snapshot/apply/revert logic).
 COPY nft-shim.sh /usr/sbin/nft
 RUN chmod +x /usr/sbin/nft
 
-# Wire HeroPanel's generated web-server config into OLS's main config. OLS runs
+# Wire NexPanel's generated web-server config into OLS's main config. OLS runs
 # as its default unprivileged user (nobody); the test script makes the demo site
 # docroot world-traversable so OLS can read it (production uses per-vhost suEXEC).
-RUN touch /usr/local/lsws/conf/heropanel.conf \
-    && printf '\ninclude /usr/local/lsws/conf/heropanel.conf\n' >> /usr/local/lsws/conf/httpd_config.conf
+RUN touch /usr/local/lsws/conf/nexpanel.conf \
+    && printf '\ninclude /usr/local/lsws/conf/nexpanel.conf\n' >> /usr/local/lsws/conf/httpd_config.conf
 
 EXPOSE 80 18443

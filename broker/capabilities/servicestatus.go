@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ServiceStatus reports whether allowlisted system services are running.
@@ -15,7 +15,7 @@ import (
 // It is the read twin of ServiceRestart, and it shares that capability's
 // allowlist: a caller may ask about exactly the services it may act on, and no
 // others. `systemctl is-active` is not privileged — a non-root user can read it —
-// but it is routed through the broker anyway so hpd never execs a system binary
+// but it is routed through the broker anyway so npd never execs a system binary
 // itself, keeping the "unprivileged process asks, privileged process acts" line
 // unbroken. The states drive the dashboard's service tiles.
 type ServiceStatus struct{}

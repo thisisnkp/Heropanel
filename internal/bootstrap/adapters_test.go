@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth"
 )
 
 // The realtime hub is the live-metrics transport, so its channel authorization is

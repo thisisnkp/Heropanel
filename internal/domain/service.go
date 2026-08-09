@@ -3,7 +3,7 @@ package domain
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Service manages a site's domains. Every mutation re-renders the site's

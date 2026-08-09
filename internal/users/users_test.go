@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/users"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/users"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // newSvc opens a migrated SQLite DB with the seeded RBAC catalog and returns the

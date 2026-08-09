@@ -1,4 +1,4 @@
-// Package broker is hpd's client to the privileged hp-broker daemon. Services
+// Package broker is npd's client to the privileged np-broker daemon. Services
 // call Gateway.Invoke to request privileged operations; the client dials the
 // broker's Unix socket, performs the token handshake, and exchanges one framed
 // request/response per call (ADR-0007).
@@ -6,14 +6,15 @@ package broker
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"log/slog"
 	"net"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/brokerwire"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/brokerwire"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Gateway is the interface services depend on to run privileged operations.
@@ -71,9 +72,16 @@ func TimeoutFor(capability string) time.Duration {
 	return DefaultTimeout
 }
 
-// Client is the concrete Gateway backed by the broker Unix socket.
+// Client is the concrete Gateway backed by a broker connection — the local Unix
+// socket by default, or a remote broker over mutual TLS.
 type Client struct {
-	socket string
+	// addr is the Unix socket path, or host:port when this client is remote.
+	addr string
+	// remote records that this client crosses a network. It is reported in logs
+	// and health errors because "the broker is unreachable" means something very
+	// different when the broker is a socket on this box and when it is a machine
+	// somewhere else.
+	remote bool
 	token  string
 	log    *slog.Logger
 	// dialer is overridable in tests (e.g. an in-memory pipe).
@@ -86,14 +94,37 @@ func NewClient(socket, token string, log *slog.Logger) *Client {
 	if log == nil {
 		log = slog.Default()
 	}
-	c := &Client{socket: socket, token: token, log: log}
+	c := &Client{addr: socket, token: token, log: log}
 	c.dialer = c.dialUnix
 	return c
 }
 
+// NewTLSClient constructs a Client for a broker on another host, authenticating
+// with a client certificate as well as the shared token.
+//
+// The certificate is what the far end authorizes on; the token stays because it
+// is a second, independent secret. A CA key that leaked would otherwise be
+// enough on its own to mint an identity and drive root on every node in the
+// installation.
+func NewTLSClient(addr, token string, cfg *tls.Config, log *slog.Logger) (*Client, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	if cfg == nil {
+		return nil, errx.New(errx.KindValidation, "broker_tls_missing",
+			"A remote broker requires a TLS configuration.")
+	}
+	c := &Client{addr: addr, remote: true, token: token, log: log}
+	c.dialer = func(ctx context.Context) (net.Conn, error) {
+		d := tls.Dialer{Config: cfg}
+		return d.DialContext(ctx, "tcp", addr)
+	}
+	return c, nil
+}
+
 func (c *Client) dialUnix(ctx context.Context) (net.Conn, error) {
 	var d net.Dialer
-	return d.DialContext(ctx, "unix", c.socket)
+	return d.DialContext(ctx, "unix", c.addr)
 }
 
 // Invoke runs a privileged capability with a JSON-serializable input and returns

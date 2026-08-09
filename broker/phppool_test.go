@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	brokerd "github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerd "github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestPHPWritePool(t *testing.T) {
@@ -22,14 +22,14 @@ func TestPHPWritePool(t *testing.T) {
 		Capability: "php.write_pool",
 		Input: mustJSON(t, map[string]string{
 			"version":   "8.2",
-			"pool_name": "hps1",
-			"config":    "[hps1]\nuser = hps1\n",
+			"pool_name": "nps1",
+			"config":    "[nps1]\nuser = nps1\n",
 		}),
 	})
 	if err != nil {
 		t.Fatalf("write pool: %v", err)
 	}
-	if got, ok := fs.Written("/etc/php/8.2/fpm/pool.d/hps1.conf"); !ok || !strings.Contains(got, "[hps1]") {
+	if got, ok := fs.Written("/etc/php/8.2/fpm/pool.d/nps1.conf"); !ok || !strings.Contains(got, "[nps1]") {
 		t.Fatalf("pool config not written correctly: %q", got)
 	}
 	// Config-test first (php-fpm -t), then reload — the reload-first discipline
@@ -55,16 +55,16 @@ func TestPHPWritePoolRollsBackOnFailedConfigTest(t *testing.T) {
 		return exec.Result{ExitCode: 0}, nil
 	}}
 	b, fs := newBrokerWithFS(t, runner)
-	_ = fs.WriteFile("/etc/php/8.2/fpm/pool.d/hps1.conf", []byte("PRIOR"), 0o644)
+	_ = fs.WriteFile("/etc/php/8.2/fpm/pool.d/nps1.conf", []byte("PRIOR"), 0o644)
 
 	_, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "php.write_pool",
-		Input:      mustJSON(t, map[string]string{"version": "8.2", "pool_name": "hps1", "config": "NEW"}),
+		Input:      mustJSON(t, map[string]string{"version": "8.2", "pool_name": "nps1", "config": "NEW"}),
 	})
 	if !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation error on a failed config test, got %v", err)
 	}
-	if got, _ := fs.Written("/etc/php/8.2/fpm/pool.d/hps1.conf"); got != "PRIOR" {
+	if got, _ := fs.Written("/etc/php/8.2/fpm/pool.d/nps1.conf"); got != "PRIOR" {
 		t.Fatalf("pool config not rolled back after a failed test, got %q", got)
 	}
 }
@@ -73,7 +73,7 @@ func TestPHPWritePoolRejectsBadVersion(t *testing.T) {
 	b, _ := newBrokerWithFS(t, &exec.FakeRunner{})
 	_, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "php.write_pool",
-		Input:      mustJSON(t, map[string]string{"version": "8.2; rm -rf", "pool_name": "hps1", "config": "x"}),
+		Input:      mustJSON(t, map[string]string{"version": "8.2; rm -rf", "pool_name": "nps1", "config": "x"}),
 	})
 	if !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation error for bad version, got %v", err)
@@ -90,16 +90,16 @@ func TestPHPWritePoolRollsBackOnReloadFailure(t *testing.T) {
 		return exec.Result{ExitCode: 1}, nil // reload fails
 	}}
 	b, fs := newBrokerWithFS(t, runner)
-	_ = fs.WriteFile("/etc/php/8.2/fpm/pool.d/hps1.conf", []byte("PRIOR"), 0o644)
+	_ = fs.WriteFile("/etc/php/8.2/fpm/pool.d/nps1.conf", []byte("PRIOR"), 0o644)
 
 	_, err := b.Invoke(context.Background(), brokerd.Request{
 		Capability: "php.write_pool",
-		Input:      mustJSON(t, map[string]string{"version": "8.2", "pool_name": "hps1", "config": "NEW"}),
+		Input:      mustJSON(t, map[string]string{"version": "8.2", "pool_name": "nps1", "config": "NEW"}),
 	})
 	if !errx.IsKind(err, errx.KindUpstream) {
 		t.Fatalf("want upstream error on reload failure, got %v", err)
 	}
-	if got, _ := fs.Written("/etc/php/8.2/fpm/pool.d/hps1.conf"); got != "PRIOR" {
+	if got, _ := fs.Written("/etc/php/8.2/fpm/pool.d/nps1.conf"); got != "PRIOR" {
 		t.Fatalf("pool config not rolled back, got %q", got)
 	}
 }

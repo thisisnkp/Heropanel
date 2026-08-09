@@ -52,7 +52,7 @@ canonical(row) = uid ␟ created_at ␟ actor_user_id ␟ actor_ip ␟ actor_kin
   predecessor. Editing a row, or deleting one, breaks every link after it.
 - **Appends are serialized in-process** (a mutex in `Service`). The chain is a
   linked list; two writers reading the same head would fork it permanently. This
-  is correct for the single `hpd` HeroPanel runs today; the multi-node HA path
+  is correct for the single `npd` NexPanel runs today; the multi-node HA path
   (Phase 10) needs the head claimed in the database (`SELECT … FOR UPDATE`), and
   the code says so at the mutex.
 - **A failed insert does not advance the head.** Otherwise the next row would
@@ -78,7 +78,7 @@ This is the subtle part, and it is engine-specific:
 - **MariaDB only.** MariaDB's `JSON` is an alias for LONGTEXT + `json_valid()`,
   so it returns the bytes it was given. MySQL 8's native JSON parses to a binary
   form and re-serializes on read — reordering keys and respacing — which would
-  change the hashed bytes. HeroPanel targets MariaDB ([02](02-tech-stack.md)); a
+  change the hashed bytes. NexPanel targets MariaDB ([02](02-tech-stack.md)); a
   port to MySQL means moving `detail` to TEXT first.
 
 ## 4. What tamper-evidence does and does not buy
@@ -174,7 +174,7 @@ grows.
 - [ ] Export to an external append-only sink (§2)
 
 **Live e2e — and why it runs on MariaDB.** `run-audit.sh` is the first suite to
-run hpd's *own* control-plane store on MariaDB rather than SQLite. Every other
+run npd's *own* control-plane store on MariaDB rather than SQLite. Every other
 suite uses SQLite, which meant the **mysql half of the migrations had never once
 been executed** and the chain had only ever been verified against an engine that
 returns TEXT verbatim. It asserts: all 15 mysql migrations apply; bootstrap and

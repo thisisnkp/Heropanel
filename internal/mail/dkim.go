@@ -11,18 +11,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // DKIM + the rest of the authentication trio (SPF, DMARC).
 //
-// The key pair is generated in hpd (stdlib RSA-2048 — the interoperability
+// The key pair is generated in npd (stdlib RSA-2048 — the interoperability
 // baseline every verifier accepts). The private key is SEALED with the panel
 // data key before it touches the database, write-only thereafter; it is
 // unsealed only to hand opendkim its key file through the broker. The public
 // half is a TXT record value, shown freely.
 
-const dkimSelector = "hp1"
+const dkimSelector = "np1"
 
 // dkimAAD binds a sealed DKIM key to its domain row.
 func dkimAAD(domainUID string) string { return "mail_domains:" + domainUID + ":dkim" }
@@ -47,7 +47,7 @@ func generateDKIM() (privPEM, pubTXT string, err error) {
 
 // DNSRecord is one record the domain needs for mail to authenticate.
 type DNSRecord struct {
-	Label    string `json:"label"` // relative: "@", "mail", "hp1._domainkey", "_dmarc"
+	Label    string `json:"label"` // relative: "@", "mail", "np1._domainkey", "_dmarc"
 	Type     string `json:"type"`
 	Value    string `json:"value"`
 	Priority int    `json:"priority,omitempty"`
@@ -116,7 +116,7 @@ type DNSCheck struct {
 }
 
 // resolver returns the checker's resolver: the system one, or a pinned
-// address (config mail.resolver / HP_MAIL_RESOLVER) for split-DNS setups and
+// address (config mail.resolver / NP_MAIL_RESOLVER) for split-DNS setups and
 // e2e against a local authoritative server.
 func (s *Service) resolver() *net.Resolver {
 	if s.resolverAddr == "" {
@@ -235,7 +235,7 @@ func (s *Service) applyDKIM(ctx context.Context) error {
 			"domain": d.Domain, "selector": d.DKIMSelector, "private_pem": string(priv),
 		})
 		id := d.DKIMSelector + "._domainkey." + d.Domain
-		keyTable.WriteString(id + " " + d.Domain + ":" + d.DKIMSelector + ":/etc/opendkim/heropanel/keys/" + d.Domain + "/" + d.DKIMSelector + ".private\n")
+		keyTable.WriteString(id + " " + d.Domain + ":" + d.DKIMSelector + ":/etc/opendkim/nexpanel/keys/" + d.Domain + "/" + d.DKIMSelector + ".private\n")
 		signingTable.WriteString("*@" + d.Domain + " " + id + "\n")
 	}
 	_, err = s.broker.Invoke(ctx, "mail.dkim.apply", map[string]any{

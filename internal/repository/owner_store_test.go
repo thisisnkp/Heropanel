@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	dnspkg "github.com/thisisnkp/heropanel/internal/database"
-	dns "github.com/thisisnkp/heropanel/internal/dns"
-	mail "github.com/thisisnkp/heropanel/internal/mail"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	site "github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	dnspkg "github.com/thisisnkp/nexpanel/internal/database"
+	dns "github.com/thisisnkp/nexpanel/internal/dns"
+	mail "github.com/thisisnkp/nexpanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	site "github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // TestResourceOwnerStore proves the generic owner lookup resolves every kind —
@@ -61,7 +61,7 @@ func TestResourceOwnerStore(t *testing.T) {
 
 	// Mail domain owned by A, with a mailbox beneath it.
 	mailStore := repository.NewMailStore(db)
-	dom := &mail.DomainRecord{UID: "mdom", OwnerID: a.ID, Domain: "a.example.com", DKIMSelector: "hp", Status: "active"}
+	dom := &mail.DomainRecord{UID: "mdom", OwnerID: a.ID, Domain: "a.example.com", DKIMSelector: "np", Status: "active"}
 	if err := mailStore.InsertDomain(ctx, dom); err != nil {
 		t.Fatal(err)
 	}

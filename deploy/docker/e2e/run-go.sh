@@ -2,7 +2,7 @@
 # A REAL Go app deployed from Git: the site's build command compiles a binary as
 # the unprivileged site user, and the runtime supervises that binary.
 #
-# Go is the third of the three runtime labels HeroPanel advertises
+# Go is the third of the three runtime labels NexPanel advertises
 # (node|python|go). The label itself is informational — the operator supplies the
 # command — but "you can host a Go app" is a claim, and a compiled binary is a
 # meaningfully different shape from an interpreter: the build produces the
@@ -11,7 +11,7 @@
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
 sec "start OpenLiteSpeed"
 /usr/local/lsws/bin/lswsctrl start >/dev/null 2>&1
@@ -22,11 +22,11 @@ mkdir -p /srv/git /home/git/.ssh
 git init --bare -q /srv/git/app.git
 work=$(mktemp -d)
 git init -q "$work"
-git -C "$work" config user.email ci@heropanel.test
+git -C "$work" config user.email ci@nexpanel.test
 git -C "$work" config user.name CI
 
 cat > "$work/go.mod" <<'EOF'
-module heropanel.test/e2e
+module nexpanel.test/e2e
 
 go 1.23
 EOF
@@ -44,7 +44,7 @@ func main() {
 		fmt.Fprint(w, `{"ok":true}`)
 	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Go app live via HeroPanel pid %d", os.Getpid())
+		fmt.Fprintf(w, "Go app live via NexPanel pid %d", os.Getpid())
 	})
 	addr := "127.0.0.1:" + os.Getenv("PORT")
 	if err := http.ListenAndServe(addr, nil); err != nil {
@@ -64,18 +64,18 @@ ssh-keygen -A >/dev/null 2>&1
 for i in $(seq 1 40); do (echo > /dev/tcp/127.0.0.1/22) >/dev/null 2>&1 && break; sleep 0.2; done
 echo "toolchain: $(go version)"
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 SECRET_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY="$SECRET_KEY" \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY="$SECRET_KEY" \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -83,7 +83,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "CREATE PROXY SITE + SOURCE (build = go build)"
@@ -119,7 +119,7 @@ api -X PUT $base/api/v1/sites/$uid/runtime -H 'Content-Type: application/json' -
 
 sec "health + slice placement"
 api $base/api/v1/sites/$uid/runtime/health; echo
-grep -E '^Slice=' /etc/systemd/system/heropanel-app-hps1.service 2>&1
+grep -E '^Slice=' /etc/systemd/system/nexpanel-app-nps1.service 2>&1
 
 sec "reload OLS"
 /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
@@ -127,7 +127,7 @@ sec "reload OLS"
 sec "*** CURL THE GO APP THROUGH OPENLITESPEED ***"
 curl -si -H 'Host: go.test' http://127.0.0.1/ 2>&1 | head -6
 echo "--- body ---"
-curl -s -H 'Host: go.test' http://127.0.0.1/ 2>&1 | grep -o 'Go app live via HeroPanel pid [0-9]*'
+curl -s -H 'Host: go.test' http://127.0.0.1/ 2>&1 | grep -o 'Go app live via NexPanel pid [0-9]*'
 
 sec "app log tail"
-tail -5 /tmp/app-heropanel-app-hps1.log 2>&1
+tail -5 /tmp/app-nexpanel-app-nps1.log 2>&1

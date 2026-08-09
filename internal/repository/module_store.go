@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/marketplace"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ModuleStore persists the panel's installed-marketplace-module records. It is

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Automatic security updates: on Debian/Ubuntu, drive `unattended-upgrades`
-// through a panel-owned apt config drop-in. hpd renders the apt.conf from
+// through a panel-owned apt config drop-in. npd renders the apt.conf from
 // validated options; the broker writes the one pinned path and enables the apt
 // timers, and reads the *effective* merged config back with `apt-config dump`
 // (the honest source of truth, the same way SSH uses `sshd -T`). On Rocky/Alma
@@ -106,7 +106,7 @@ func (u *Updates) Status(ctx context.Context) (map[string]string, error) {
 // widens the allowed origins but security is always included.
 func RenderUnattendedConfig(o UpdatesOptions) string {
 	var b strings.Builder
-	b.WriteString("// HeroPanel automatic security updates (rendered; do not edit).\n")
+	b.WriteString("// NexPanel automatic security updates (rendered; do not edit).\n")
 	enable := "1"
 	if !o.Enabled {
 		enable = "0"
@@ -140,7 +140,7 @@ func RenderUnattendedConfig(o UpdatesOptions) string {
 // becomes `reboot = when-needed` with a short delayed reboot command.
 func RenderDNFAutomaticConfig(o UpdatesOptions) string {
 	var b strings.Builder
-	b.WriteString("# HeroPanel automatic security updates (rendered; do not edit).\n")
+	b.WriteString("# NexPanel automatic security updates (rendered; do not edit).\n")
 	upgradeType := "default"
 	if o.SecurityOnly {
 		upgradeType = "security"
@@ -161,7 +161,7 @@ func RenderDNFAutomaticConfig(o UpdatesOptions) string {
 	// A delayed reboot gives an operator a window to cancel; the time-of-day
 	// preference apt honours has no dnf-automatic equivalent, so a short delay is
 	// the closest faithful behaviour.
-	b.WriteString("reboot_command = \"shutdown -r +5 'HeroPanel: rebooting to finish applying updates'\"\n\n")
+	b.WriteString("reboot_command = \"shutdown -r +5 'NexPanel: rebooting to finish applying updates'\"\n\n")
 	b.WriteString("[emitters]\n")
 	b.WriteString("emit_via = stdio\n")
 	return b.String()

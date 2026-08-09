@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/runtime"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // RuntimeStore implements runtime.Repo over the datastore.

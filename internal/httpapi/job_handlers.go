@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/job"
 )
 
 // jobView is the API representation of a job.

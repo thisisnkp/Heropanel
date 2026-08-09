@@ -13,7 +13,7 @@ Adopt the **Hybrid** model.
 
 ## Rationale
 - **Security first.** Splitting a tiny root **broker** from the large network-facing **core** means an RCE in the API does not yield root — the single most important control-panel security property. This split is mandatory regardless of module packaging.
-- **Independence where it matters.** Heavy/optional capabilities (Docker, Monitor, Mail, DNS, Backup, Security) run as separate `hp-mod-*` processes with their own systemd units and gRPC sockets — install/enable/disable/restart/update independently, exactly as required.
+- **Independence where it matters.** Heavy/optional capabilities (Docker, Monitor, Mail, DNS, Backup, Security) run as separate `np-mod-*` processes with their own systemd units and gRPC sockets — install/enable/disable/restart/update independently, exactly as required.
 - **RAM discipline.** Trivial always-on essentials (sites, PHP, git, SSL, cron, files) stay in-core as packages behind interfaces — no per-feature process tax. Satellite modules load only when enabled.
 - **Uniform contract.** Both tiers implement the same logical capability/lifecycle contract, so services and UI treat them identically; only transport differs.
 

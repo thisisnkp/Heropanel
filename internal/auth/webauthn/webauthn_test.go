@@ -115,7 +115,7 @@ func randChallenge() []byte {
 
 // A full round trip: register a passkey, then authenticate with it.
 func TestRegisterThenAssert(t *testing.T) {
-	v := New(Config{RPID: testRPID, RPName: "HeroPanel", Origin: testOrigin})
+	v := New(Config{RPID: testRPID, RPName: "NexPanel", Origin: testOrigin})
 	a := newVauth(t, testRPID, testOrigin)
 
 	regChal := randChallenge()
@@ -140,7 +140,7 @@ func TestRegisterThenAssert(t *testing.T) {
 
 // Every tamper the verifier must catch.
 func TestAssertionRejections(t *testing.T) {
-	v := New(Config{RPID: testRPID, RPName: "HeroPanel", Origin: testOrigin})
+	v := New(Config{RPID: testRPID, RPName: "NexPanel", Origin: testOrigin})
 	a := newVauth(t, testRPID, testOrigin)
 	regChal := randChallenge()
 	cred, _ := v.FinishRegistration(regChal, a.clientData(t, "webauthn.create", regChal), a.attestationObject(0))
@@ -194,7 +194,7 @@ func TestAssertionRejections(t *testing.T) {
 // Registration binds to the relying party: a create() for another RP-ID is
 // refused (its rpIdHash will not match).
 func TestRegistrationRPBinding(t *testing.T) {
-	v := New(Config{RPID: testRPID, RPName: "HeroPanel", Origin: testOrigin})
+	v := New(Config{RPID: testRPID, RPName: "NexPanel", Origin: testOrigin})
 	a := newVauth(t, "attacker.example.com", testOrigin)
 	regChal := randChallenge()
 	if _, err := v.FinishRegistration(regChal, a.clientData(t, "webauthn.create", regChal), a.attestationObject(0)); err == nil {

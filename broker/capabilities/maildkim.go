@@ -6,19 +6,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
-// DKIM signing via OpenDKIM. hpd renders the KeyTable/SigningTable and unseals
+// DKIM signing via OpenDKIM. npd renders the KeyTable/SigningTable and unseals
 // each domain's private key; this capability writes them to pinned paths
 // (key files 0600, opendkim-owned), owns the opendkim.conf (constant — nothing
 // in it is user input), wires postfix's milter settings (constant), and
 // reloads. Declarative render-all: the input is the COMPLETE signer state.
 
 const (
-	opendkimDir        = "/etc/opendkim/heropanel"
+	opendkimDir        = "/etc/opendkim/nexpanel"
 	opendkimKeysDir    = opendkimDir + "/keys"
 	opendkimConfPath   = "/etc/opendkim.conf"
 	opendkimUser       = "opendkim"
@@ -32,7 +32,7 @@ var reDKIMSelector = regexp.MustCompile(`^[a-z0-9]{1,32}$`)
 const maxDKIMKey = 16 << 10
 
 // opendkimConf is the complete opendkim configuration. Constant.
-const opendkimConf = `# HeroPanel DKIM configuration (rendered; do not edit).
+const opendkimConf = `# NexPanel DKIM configuration (rendered; do not edit).
 Syslog                  yes
 UMask                   007
 Mode                    sv

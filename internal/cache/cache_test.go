@@ -10,9 +10,9 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	icache "github.com/thisisnkp/heropanel/internal/cache"
-	"github.com/thisisnkp/heropanel/internal/config"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	icache "github.com/thisisnkp/nexpanel/internal/cache"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 func newMiniRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {

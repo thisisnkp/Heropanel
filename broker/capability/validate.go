@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Validation patterns shared by capabilities. These are strict allowlists — the

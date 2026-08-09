@@ -12,7 +12,7 @@ func TestRenderRulesetBaseIsSafeDefaultDrop(t *testing.T) {
 	out := RenderRuleset(nil, nil)
 	for _, want := range []string{
 		"flush ruleset",
-		"table inet heropanel {",
+		"table inet nexpanel {",
 		"type filter hook input priority 0; policy drop;",
 		"ct state established,related accept",
 		"iif \"lo\" accept",
@@ -75,25 +75,25 @@ func TestRenderRulesetIPLists(t *testing.T) {
 		{CIDR: "10.0.0.0/8", Mode: "allow"},
 	})
 	for _, want := range []string{
-		"set hp_block4 {",
+		"set np_block4 {",
 		"203.0.113.0/24",
-		"set hp_block6 {",
+		"set np_block6 {",
 		"2001:db8:bad::/48",
-		"set hp_allow4 {",
-		"ip saddr @hp_allow4 accept",
-		"ip saddr @hp_block4 drop",
-		"ip6 saddr @hp_block6 drop",
+		"set np_allow4 {",
+		"ip saddr @np_allow4 accept",
+		"ip saddr @np_block4 drop",
+		"ip6 saddr @np_block6 drop",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("ruleset missing %q\n%s", want, out)
 		}
 	}
 	// Allow must be evaluated before block.
-	if strings.Index(out, "@hp_allow4 accept") > strings.Index(out, "@hp_block4 drop") {
+	if strings.Index(out, "@np_allow4 accept") > strings.Index(out, "@np_block4 drop") {
 		t.Error("allow set is evaluated after block")
 	}
 	// Empty lists emit no set at all.
-	if strings.Contains(RenderRuleset(nil, nil), "set hp_") {
+	if strings.Contains(RenderRuleset(nil, nil), "set np_") {
 		t.Error("an empty list still emitted a set")
 	}
 }

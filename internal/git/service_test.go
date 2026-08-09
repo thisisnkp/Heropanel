@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ── test doubles ─────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ func itoa(n int64) string {
 }
 
 func gitSite() *git.SiteRef {
-	return &git.SiteRef{ID: 1, LinuxUser: "hps1", HomeDir: "/srv/heropanel/sites/1", DeployMode: "git"}
+	return &git.SiteRef{ID: 1, LinuxUser: "nps1", HomeDir: "/srv/nexpanel/sites/1", DeployMode: "git"}
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ func TestRunDeployRecordsAndInvokesBroker(t *testing.T) {
 	if call == nil {
 		t.Fatalf("git.deploy was not invoked: %+v", gw.calls)
 	}
-	if call.input["username"] != "hps1" || call.input["home"] != "/srv/heropanel/sites/1" ||
+	if call.input["username"] != "nps1" || call.input["home"] != "/srv/nexpanel/sites/1" ||
 		call.input["repo_url"] != "https://github.com/acme/app.git" || call.input["branch"] != "main" ||
 		call.input["build_command"] != "npm ci" || call.input["web_root"] != "dist" {
 		t.Fatalf("git.deploy input = %+v", call.input)
@@ -456,10 +456,10 @@ func TestRunRollbackActivatesPriorRelease(t *testing.T) {
 			rbCall = &gw.calls[i]
 		}
 	}
-	if rbCall == nil || rbCall.input["home"] != "/srv/heropanel/sites/1" || rbCall.input["username"] != "hps1" {
+	if rbCall == nil || rbCall.input["home"] != "/srv/nexpanel/sites/1" || rbCall.input["username"] != "nps1" {
 		t.Fatalf("git.rollback input = %+v", rbCall)
 	}
-	if rd, _ := rbCall.input["release_dir"].(string); !strings.HasPrefix(rd, "/srv/heropanel/sites/1/releases/") {
+	if rd, _ := rbCall.input["release_dir"].(string); !strings.HasPrefix(rd, "/srv/nexpanel/sites/1/releases/") {
 		t.Fatalf("rollback release_dir = %v", rbCall.input["release_dir"])
 	}
 }

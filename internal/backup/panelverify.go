@@ -8,8 +8,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/thisisnkp/heropanel/pkg/blobcrypt"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/blobcrypt"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // A backup you have never restored is not a backup — it is a hope. These
@@ -22,7 +22,7 @@ import (
 // disaster.
 
 // panelManifestKind is the marker written into a panel snapshot's manifest.json.
-const panelManifestKind = "heropanel-panel-backup"
+const panelManifestKind = "nexpanel-panel-backup"
 
 // VerifyPanelBackup checks that a specific panel snapshot can be decrypted and
 // unpacked. It is read-only: nothing is restored, and the decrypted copy is
@@ -140,7 +140,7 @@ func validatePanelArchive(path string) error {
 			}
 			if m["kind"] != panelManifestKind {
 				return errx.New(errx.KindConflict, "backup_invalid",
-					"The panel backup manifest is not a HeroPanel panel snapshot.")
+					"The panel backup manifest is not a NexPanel panel snapshot.")
 			}
 			sawManifest = true
 		case "panel.db", "panel.sql.gz":

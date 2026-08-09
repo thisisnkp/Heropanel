@@ -207,7 +207,7 @@ deploy_runs
   id PK · uid · git_deployment_id FK→git_deployments · commit_sha · commit_msg
   status ENUM(queued,building,deploying,succeeded,failed,rolled_back)
   triggered_by ENUM(webhook,manual,schedule) · started_at · finished_at
-  log_ref (→ /var/log/heropanel/jobs/…) · artifact_ref   IX(git_deployment_id,started_at)
+  log_ref (→ /var/log/nexpanel/jobs/…) · artifact_ref   IX(git_deployment_id,started_at)
 
 ssh_keys                     # panel-managed keypairs (deploy keys, user keys)
   id PK · uid · owner_id FK→users · name · public_key · private_key_enc (nullable)
@@ -304,7 +304,7 @@ alert_events
 ## 14. Modules, Notifications, Settings, Jobs
 
 ```
-modules                      # installed module registry (mirrors /opt/heropanel/modules)
+modules                      # installed module registry (mirrors /opt/nexpanel/modules)
   id PK · slug U · name · version · state ENUM(installed,enabled,disabled,error)
   arch · checksum · signature · installed_at · enabled_at · config_ref · health
 
@@ -323,7 +323,7 @@ jobs                         # durable mirror of Redis Stream job entries
 ```
 
 ## 15. Encryption of secrets at rest
-Columns suffixed `_enc` are encrypted with **AES-256-GCM** using a data key wrapped by a master key from `/etc/heropanel/secrets.env` (or OS keyring). The DB never stores plaintext credentials, private keys, or tokens. Rotation re-wraps data keys without re-encrypting every row (envelope encryption). Details in [05](05-security-architecture.md).
+Columns suffixed `_enc` are encrypted with **AES-256-GCM** using a data key wrapped by a master key from `/etc/nexpanel/secrets.env` (or OS keyring). The DB never stores plaintext credentials, private keys, or tokens. Rotation re-wraps data keys without re-encrypting every row (envelope encryption). Details in [05](05-security-architecture.md).
 
 ## 16. Indexing & Partitioning strategy
 - Hot list endpoints (`sites`, `jobs`, `audit_log`, `metric_samples`) get covering composite indexes matching their default sort/filter.

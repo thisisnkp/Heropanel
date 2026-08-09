@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 // PermWildcard is the superuser permission slug.

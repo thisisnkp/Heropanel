@@ -1,4 +1,4 @@
-// Package installer implements HeroPanel's system detection, compatibility
+// Package installer implements NexPanel's system detection, compatibility
 // checks, and install planning (docs/07). The pure functions (parsers, compat,
 // plan) are unit-tested; Detect() reads the live system on Linux.
 package installer
@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/arch"
+	"github.com/thisisnkp/nexpanel/pkg/arch"
 )
 
 // Profile is a snapshot of the host relevant to installation.

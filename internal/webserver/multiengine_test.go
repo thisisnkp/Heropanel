@@ -4,16 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
 )
 
 func phpSite() webserver.Site {
 	return webserver.Site{
-		VhostName: "hps1", PrimaryDomain: "acme.example.com",
+		VhostName: "nps1", PrimaryDomain: "acme.example.com",
 		Domains:      []string{"acme.example.com", "www.acme.example.com"},
-		DocumentRoot: "/srv/heropanel/sites/1/public",
-		Home:         "/srv/heropanel/sites/1", LogDir: "/srv/heropanel/sites/1/logs",
-		IsPHP: true, FpmSocket: "/run/heropanel/fpm/hps1.sock", PhpBin: "/usr/sbin/php-fpm8.3",
+		DocumentRoot: "/srv/nexpanel/sites/1/public",
+		Home:         "/srv/nexpanel/sites/1", LogDir: "/srv/nexpanel/sites/1/logs",
+		IsPHP: true, FpmSocket: "/run/nexpanel/fpm/nps1.sock", PhpBin: "/usr/sbin/php-fpm8.3",
 	}
 }
 
@@ -28,10 +28,10 @@ func TestRenderNginxPHP(t *testing.T) {
 		"server {",
 		"listen 80;",
 		"server_name acme.example.com www.acme.example.com;",
-		"root /srv/heropanel/sites/1/public;",
-		"fastcgi_pass unix:/run/heropanel/fpm/hps1.sock;",
+		"root /srv/nexpanel/sites/1/public;",
+		"fastcgi_pass unix:/run/nexpanel/fpm/nps1.sock;",
 		"location ~ \\.php$ {",
-		"access_log /srv/heropanel/sites/1/logs/access.log;",
+		"access_log /srv/nexpanel/sites/1/logs/access.log;",
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Fatalf("nginx config missing %q:\n%s", want, cfg)
@@ -87,8 +87,8 @@ func TestRenderApachePHP(t *testing.T) {
 		"<VirtualHost *:80>",
 		"ServerName acme.example.com",
 		"ServerAlias www.acme.example.com",
-		"DocumentRoot /srv/heropanel/sites/1/public",
-		`SetHandler "proxy:unix:/run/heropanel/fpm/hps1.sock|fcgi://localhost"`,
+		"DocumentRoot /srv/nexpanel/sites/1/public",
+		`SetHandler "proxy:unix:/run/nexpanel/fpm/nps1.sock|fcgi://localhost"`,
 		"AllowOverride All",
 	} {
 		if !strings.Contains(cfg, want) {
@@ -134,7 +134,7 @@ func TestRenderForDefaultsToOLS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(cfg, "listener HeroPanelHTTP {") {
+	if !strings.Contains(cfg, "listener NexPanelHTTP {") {
 		t.Fatalf("empty engine should render OLS:\n%s", cfg)
 	}
 }

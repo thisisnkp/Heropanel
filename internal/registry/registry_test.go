@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/registry"
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/internal/registry"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // fakeProvider is a stand-in module. It records shutdown and can answer Invoke.
@@ -62,7 +62,7 @@ func TestRegisterAdvertisesCapabilities(t *testing.T) {
 func TestRegisterRefusesAnIncompatibleModule(t *testing.T) {
 	r := registry.New()
 	p := newProvider("old", "old.thing")
-	p.apiVersion = "heropanel.io/v0"
+	p.apiVersion = "nexpanel.io/v0"
 	if err := r.Register(context.Background(), p); err == nil {
 		t.Fatal("registered a module speaking an incompatible API version")
 	}

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Metric alerts.

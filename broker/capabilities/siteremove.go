@@ -3,8 +3,8 @@ package capabilities
 import (
 	"encoding/json"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // SiteRemoveDirs recursively removes a site's directory tree. The root must be

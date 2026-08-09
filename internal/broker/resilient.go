@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Resilient wraps a Gateway with two failsafes so a sick broker cannot take the
 // whole control plane down with it:
 //
 //   - a bulkhead — a bound on how many broker calls may be in flight at once. A
-//     hung broker would otherwise let request goroutines pile up until hpd runs
+//     hung broker would otherwise let request goroutines pile up until npd runs
 //     out of them and stops serving even the pages that need no broker at all.
 //     Beyond the bound, callers are shed fast with an "unavailable" error instead
 //     of blocking, and a caller whose own context expires while queued is
@@ -50,7 +50,7 @@ const (
 	cbHalfOpen                // one probe in flight to test recovery
 )
 
-// Defaults tuned for hpd's broker: a handful of concurrent privileged ops is
+// Defaults tuned for npd's broker: a handful of concurrent privileged ops is
 // plenty, five consecutive connect failures is a clear "it's down", and fifteen
 // seconds is long enough to stop hammering yet short enough to recover quickly.
 const (

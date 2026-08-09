@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestInvokeSiteCreateDirs(t *testing.T) {
@@ -16,7 +16,7 @@ func TestInvokeSiteCreateDirs(t *testing.T) {
 
 	_, err := b.Invoke(context.Background(), broker.Request{
 		Capability: "site.create_dirs",
-		Input:      mustJSON(t, map[string]string{"username": "hps1", "root": "/srv/heropanel/sites/1"}),
+		Input:      mustJSON(t, map[string]string{"username": "nps1", "root": "/srv/nexpanel/sites/1"}),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -29,15 +29,15 @@ func TestInvokeSiteCreateDirs(t *testing.T) {
 
 	// Root dir, 0750, owned by the site user.
 	if got := fake.Calls[0]; got.Path != "/usr/bin/install" ||
-		!equalArgs(got.Args, []string{"-d", "-m", "0750", "-o", "hps1", "-g", "hps1", "/srv/heropanel/sites/1"}) {
+		!equalArgs(got.Args, []string{"-d", "-m", "0750", "-o", "nps1", "-g", "nps1", "/srv/nexpanel/sites/1"}) {
 		t.Fatalf("root command = %+v", got)
 	}
 	// public dir, 0750.
-	if got := fake.Calls[1]; !equalArgs(got.Args, []string{"-d", "-m", "0750", "-o", "hps1", "-g", "hps1", "/srv/heropanel/sites/1/public"}) {
+	if got := fake.Calls[1]; !equalArgs(got.Args, []string{"-d", "-m", "0750", "-o", "nps1", "-g", "nps1", "/srv/nexpanel/sites/1/public"}) {
 		t.Fatalf("public command = %+v", got)
 	}
 	// tmp dir must be private (0700).
-	if got := fake.Calls[3]; !equalArgs(got.Args, []string{"-d", "-m", "0700", "-o", "hps1", "-g", "hps1", "/srv/heropanel/sites/1/tmp"}) {
+	if got := fake.Calls[3]; !equalArgs(got.Args, []string{"-d", "-m", "0700", "-o", "nps1", "-g", "nps1", "/srv/nexpanel/sites/1/tmp"}) {
 		t.Fatalf("tmp command = %+v", got)
 	}
 }
@@ -48,7 +48,7 @@ func TestInvokeSiteCreateDirsRejectsRootOutsidePolicy(t *testing.T) {
 
 	_, err := b.Invoke(context.Background(), broker.Request{
 		Capability: "site.create_dirs",
-		Input:      mustJSON(t, map[string]string{"username": "hps1", "root": "/etc"}),
+		Input:      mustJSON(t, map[string]string{"username": "nps1", "root": "/etc"}),
 	})
 	if !errx.IsKind(err, errx.KindForbidden) {
 		t.Fatalf("want forbidden for out-of-policy root, got %v", err)

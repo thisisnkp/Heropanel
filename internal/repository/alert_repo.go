@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // AlertStore implements monitor.AlertRepo and monitor.AlertAdmin over the
@@ -41,7 +41,7 @@ func (s *AlertStore) CreateRule(ctx context.Context, in monitor.AlertRuleInput) 
 	if in.NotifyKind != "log" {
 		if s.cipher == nil || !s.cipher.Configured() {
 			return nil, errx.New(errx.KindUnavailable, "secrets_unavailable",
-				"A data key (HP_SECRET_KEY) is required to store a notification target.")
+				"A data key (NP_SECRET_KEY) is required to store a notification target.")
 		}
 		raw, _ := json.Marshal(in.NotifyTarget)
 		blob, err := s.cipher.Seal(raw, targetAAD(uid))

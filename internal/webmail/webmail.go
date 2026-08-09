@@ -13,10 +13,10 @@ import (
 	"encoding/base64"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/webserver"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Pinned paths, shared conceptually with the broker capability. The app tree is
@@ -26,9 +26,9 @@ const (
 	// vhostUser is the dedicated Linux identity Roundcube's FPM pool runs as.
 	vhostUser = "webmail"
 	// AppDir holds the read-only Roundcube application files.
-	AppDir = "/usr/share/heropanel/roundcube"
+	AppDir = "/usr/share/nexpanel/roundcube"
 	// DataDir is the writable tree (temp, logs, roundcube.db).
-	DataDir = "/var/lib/heropanel/webmail"
+	DataDir = "/var/lib/nexpanel/webmail"
 	logDir  = DataDir + "/logs"
 )
 
@@ -50,7 +50,7 @@ type Status struct {
 type Service struct {
 	broker   broker.Gateway
 	reloader VhostReloader
-	hostname string // webmail FQDN (HP_WEBMAIL_HOSTNAME); "" = disabled
+	hostname string // webmail FQDN (NP_WEBMAIL_HOSTNAME); "" = disabled
 	phpVer   string // php-fpm version for the webmail pool (e.g. "8.3")
 }
 
@@ -79,7 +79,7 @@ func (s *Service) Enabled() bool { return s != nil && s.hostname != "" }
 func (s *Service) Install(ctx context.Context) (*Status, error) {
 	if !s.Available() {
 		return nil, errx.New(errx.KindUnavailable, "webmail_unavailable",
-			"Webmail needs the broker and a hostname (HP_WEBMAIL_HOSTNAME).")
+			"Webmail needs the broker and a hostname (NP_WEBMAIL_HOSTNAME).")
 	}
 	desKey, err := desKey()
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Service) Install(ctx context.Context) (*Status, error) {
 		// A real cert for the mail host verifies normally; the self-signed
 		// fallback on the loopback does not, so tolerate it there.
 		SkipCertVerify: true,
-		ProductName:    "HeroPanel Webmail",
+		ProductName:    "NexPanel Webmail",
 	})
 	if _, err := s.broker.Invoke(ctx, "webmail.install", map[string]any{
 		"config": cfg,

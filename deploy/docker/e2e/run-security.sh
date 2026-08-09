@@ -16,14 +16,14 @@ fail(){ echo "FAIL: $*"; FAILED=1; }
 FAILED=0
 base=http://127.0.0.1:18499
 
-sec "start hp-broker + hpd (short firewall window so the auto-revert is observable)"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-export HP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0)
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker-sec.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+sec "start np-broker + npd (short firewall window so the auto-revert is observable)"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+export NP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0)
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker-sec.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 
 # A local stand-in for the public geo-CIDR mirror, so the country import exercises
 # the real HTTP fetch → parse → bulk-store → render path without leaving the box.
@@ -33,12 +33,12 @@ printf '2a0f:dead::/32\n' >/tmp/geo/v6/tl.zone
 ( cd /tmp/geo && python3 -m http.server 18477 >/tmp/geo.log 2>&1 & )
 for i in $(seq 1 40); do curl -sf http://127.0.0.1:18477/v4/tl.zone >/dev/null 2>&1 && break; sleep 0.2; done
 
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18499 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp-sec.db \
-  HP_FIREWALL_WINDOW_SEC=10 \
-  HP_SECURITY_GEODB_URL='http://127.0.0.1:18477/v4/%s.zone' \
-  HP_SECURITY_GEODB_URL6='http://127.0.0.1:18477/v6/%s.zone' \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd-sec.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18499 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-sec.db \
+  NP_FIREWALL_WINDOW_SEC=10 \
+  NP_SECURITY_GEODB_URL='http://127.0.0.1:18477/v4/%s.zone' \
+  NP_SECURITY_GEODB_URL6='http://127.0.0.1:18477/v6/%s.zone' \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd-sec.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -46,7 +46,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/cs.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/cs.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/cs.txt)
 api(){ curl -s -b /tmp/cs.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 juid(){ python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["uid"])'; }
 
@@ -57,7 +57,7 @@ applied=$(api -X POST $base/api/v1/firewall/apply -H 'Content-Type: application/
 echo "$applied"
 token=$(echo "$applied" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
 [ -n "$token" ] && pass "apply armed a pending change (token issued)" || fail "apply did not return a token"
-api $base/api/v1/firewall/status | grep -q 'heropanel' \
+api $base/api/v1/firewall/status | grep -q 'nexpanel' \
   && pass "the new ruleset is live in nft after apply" || fail "the ruleset was not applied"
 api $base/api/v1/firewall | grep -q '"pending":true' && pass "the change is pending confirmation" || fail "the change is not pending"
 
@@ -65,7 +65,7 @@ echo "... not confirming; waiting out the 10s window ..."
 sleep 14
 api $base/api/v1/firewall | grep -q '"pending":false' \
   && pass "the unconfirmed change is no longer pending (guard fired)" || fail "the change is still pending after the window"
-if api $base/api/v1/firewall/status | grep -q 'heropanel'; then
+if api $base/api/v1/firewall/status | grep -q 'nexpanel'; then
   fail "THE FIREWALL DID NOT AUTO-REVERT — the unconfirmed ruleset is still live"
 else
   pass "THE FIREWALL AUTO-REVERTED to the previous ruleset (unconfirmed change undone)"
@@ -89,17 +89,17 @@ api -X POST $base/api/v1/firewall/confirm -H 'Content-Type: application/json' -d
 sleep 13
 api $base/api/v1/firewall | grep -q '"pending":false' && pass "the confirmed change is settled" || fail "still pending after confirm"
 rs=$(api $base/api/v1/firewall/status)
-echo "$rs" | grep -q 'heropanel' \
+echo "$rs" | grep -q 'nexpanel' \
   && pass "the CONFIRMED ruleset is still live after the window (it stuck)" || fail "a confirmed change was reverted"
 echo "$rs" | grep -q 'ip6 saddr 2001:db8::/32' \
   && pass "the IPv6 source rule rendered on ip6 saddr (dual-stack inet table)" || fail "no ip6 saddr in the live ruleset"
 echo "$rs" | grep -q 'dport 8000-9000' \
   && pass "the port RANGE rendered as dport 8000-9000" || fail "no port range in the live ruleset"
-echo "$rs" | grep -q 'set hp_block4' && echo "$rs" | grep -q '203.0.113.0/24' \
-  && pass "the block-list rendered as an nftables set (hp_block4 with the CIDR)" || fail "no block set in the live ruleset"
-echo "$rs" | grep -q 'ip saddr @hp_block4 drop' \
+echo "$rs" | grep -q 'set np_block4' && echo "$rs" | grep -q '203.0.113.0/24' \
+  && pass "the block-list rendered as an nftables set (np_block4 with the CIDR)" || fail "no block set in the live ruleset"
+echo "$rs" | grep -q 'ip saddr @np_block4 drop' \
   && pass "the input chain DROPS traffic from the block set" || fail "no block drop rule in the live ruleset"
-echo "$rs" | grep -q 'ip saddr @hp_allow4 accept' \
+echo "$rs" | grep -q 'ip saddr @np_allow4 accept' \
   && pass "the allow set is accepted ahead of the block set" || fail "no allow rule in the live ruleset"
 
 sec "COUNTRY IMPORT: bulk-load a country's CIDR ranges and render them into the block set"
@@ -119,7 +119,7 @@ rs=$(api $base/api/v1/firewall/status)
 echo "$rs" | grep -q '45.66.0.0/16' && echo "$rs" | grep -q '45.67.0.0/16' \
   && pass "the country's v4 ranges rendered into the live block set" || fail "country v4 ranges not in ruleset"
 echo "$rs" | grep -q '2a0f:dead::/32' \
-  && pass "the country's v6 range rendered into hp_block6" || fail "country v6 range not in ruleset"
+  && pass "the country's v6 range rendered into np_block6" || fail "country v6 range not in ruleset"
 # Remove the country and confirm it clears out of the set.
 api -X DELETE $base/api/v1/firewall/countries/tl >/dev/null
 applied=$(api -X POST $base/api/v1/firewall/apply -H 'Content-Type: application/json')
@@ -141,9 +141,9 @@ uid=$(api -X POST $base/api/v1/sites -H 'Content-Type: application/json' \
 [ -n "$uid" ] && pass "site created ($uid)" || fail "site create failed"
 # The exact 68-byte EICAR test string.
 printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' \
-  > /srv/heropanel/sites/1/public/eicar.txt
-chown hps1:hps1 /srv/heropanel/sites/1/public/eicar.txt
-[ "$(md5sum /srv/heropanel/sites/1/public/eicar.txt | cut -d' ' -f1)" = "44d88612fea8a8f36de82e1278abb02f" ] \
+  > /srv/nexpanel/sites/1/public/eicar.txt
+chown nps1:nps1 /srv/nexpanel/sites/1/public/eicar.txt
+[ "$(md5sum /srv/nexpanel/sites/1/public/eicar.txt | cut -d' ' -f1)" = "44d88612fea8a8f36de82e1278abb02f" ] \
   && pass "the EICAR test file is in place (correct MD5)" || fail "EICAR file MD5 mismatch"
 
 scan=$(api -X POST "$base/api/v1/sites/$uid/scan" -H 'Content-Type: application/json')
@@ -157,21 +157,21 @@ q=$(api -X POST "$base/api/v1/security/quarantine" -H 'Content-Type: application
   -d "{\"site_uid\":\"$uid\",\"path\":\"$detpath\",\"signature\":\"Eicar-Test-Signature\"}")
 echo "$q"
 qid=$(echo "$q" | juid)
-[ ! -f /srv/heropanel/sites/1/public/eicar.txt ] \
+[ ! -f /srv/nexpanel/sites/1/public/eicar.txt ] \
   && pass "the infected file is GONE from the site tree" || fail "the infected file is still in the site"
-qfile="/var/lib/heropanel/quarantine/$qid"
+qfile="/var/lib/nexpanel/quarantine/$qid"
 [ -f "$qfile" ] && pass "the file is held in the root-only quarantine area" || fail "no quarantined file on disk"
 [ "$(stat -c '%U %a' "$qfile" 2>/dev/null)" = "root 600" ] \
   && pass "the quarantined file is locked down (root, 0600)" || fail "quarantine perms are $(stat -c '%U %a' "$qfile" 2>/dev/null)"
 # The site user can no longer read it (it left their tree, now root-only).
-runuser -u hps1 -- cat "$qfile" >/dev/null 2>&1 \
+runuser -u nps1 -- cat "$qfile" >/dev/null 2>&1 \
   && fail "the site user can still read the quarantined file" || pass "the site user cannot read the quarantined file"
 
 sec "restore it (a false positive) — back to the site, owned by the site user"
 api -X POST "$base/api/v1/security/quarantine/$qid/restore" -H 'Content-Type: application/json' >/dev/null
-[ -f /srv/heropanel/sites/1/public/eicar.txt ] \
+[ -f /srv/nexpanel/sites/1/public/eicar.txt ] \
   && pass "the file was restored to its original path" || fail "restore did not return the file"
-[ "$(stat -c %U /srv/heropanel/sites/1/public/eicar.txt 2>/dev/null)" = "hps1" ] \
+[ "$(stat -c %U /srv/nexpanel/sites/1/public/eicar.txt 2>/dev/null)" = "nps1" ] \
   && pass "the restored file belongs to the site user again" || fail "restored file owner wrong"
 
 sec "*** SSH HARDENING: a panel-owned sshd drop-in, sshd -t tested, effective ***"
@@ -183,7 +183,7 @@ h=$(api -X POST $base/api/v1/security/ssh -H 'Content-Type: application/json' \
   -d '{"port":2222,"permit_root_login":"no","password_authentication":false}')
 echo "$h"
 echo "$h" | grep -q '"ok":true' && pass "the hardening was applied" || fail "ssh harden failed: $h"
-[ -f /etc/ssh/sshd_config.d/50-heropanel.conf ] && pass "the panel sshd drop-in was written" || fail "no sshd drop-in"
+[ -f /etc/ssh/sshd_config.d/50-nexpanel.conf ] && pass "the panel sshd drop-in was written" || fail "no sshd drop-in"
 # sshd -T is the honest source of truth: what the daemon WOULD enforce.
 eff=$(/usr/sbin/sshd -T 2>/dev/null)
 echo "$eff" | grep -qi '^port 2222' && pass "sshd would listen on the new port (2222)" || fail "port not effective"
@@ -204,8 +204,8 @@ up=$(api -X POST $base/api/v1/security/updates -H 'Content-Type: application/jso
   -d '{"enabled":true,"security_only":true,"automatic_reboot":false}')
 echo "$up"
 echo "$up" | grep -q '"ok":true' && pass "the update policy was applied" || fail "updates configure failed: $up"
-[ -f /etc/apt/apt.conf.d/52heropanel-unattended ] && pass "the unattended-upgrades drop-in was written" || fail "no updates drop-in"
-grep -q 'distro_codename}-security' /etc/apt/apt.conf.d/52heropanel-unattended \
+[ -f /etc/apt/apt.conf.d/52nexpanel-unattended ] && pass "the unattended-upgrades drop-in was written" || fail "no updates drop-in"
+grep -q 'distro_codename}-security' /etc/apt/apt.conf.d/52nexpanel-unattended \
   && pass "the policy scopes to the security origin" || fail "security origin missing"
 # apt-config dump is the effective, merged truth — like sshd -T for SSH.
 apt-config dump 2>/dev/null | grep -q 'APT::Periodic::Unattended-Upgrade "1"' \
@@ -225,6 +225,6 @@ for cap in firewall.apply firewall.rollback firewall.confirm malware.scan malwar
 done
 
 sec "cleanup"
-pkill -f 'hpd' 2>/dev/null; pkill -f 'hp-broker' 2>/dev/null; true
+pkill -f 'npd' 2>/dev/null; pkill -f 'np-broker' 2>/dev/null; true
 
 if [ "$FAILED" = "0" ]; then echo "run-security.sh : PASS"; else echo "run-security.sh : FAIL"; fi

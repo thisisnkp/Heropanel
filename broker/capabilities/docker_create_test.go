@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // createOK builds a minimal valid create request, which each test then spoils in
 // exactly one way.
 func createOK(extra map[string]any) map[string]any {
-	in := map[string]any{"name": "hp-site1-web", "image": "ghost:5-alpine"}
+	in := map[string]any{"name": "np-site1-web", "image": "ghost:5-alpine"}
 	for k, v := range extra {
 		in[k] = v
 	}
@@ -40,7 +40,7 @@ func mustCreate(t *testing.T, in map[string]any) exec.Command {
 func TestHostPathsCanNeverBeMounted(t *testing.T) {
 	for _, bad := range []string{
 		"/", "/etc", "/var/run/docker.sock", "./relative", "../escape",
-		"/var/lib/heropanel", "vol/../../etc",
+		"/var/lib/nexpanel", "vol/../../etc",
 	} {
 		t.Run(bad, func(t *testing.T) {
 			fr := &exec.FakeRunner{}

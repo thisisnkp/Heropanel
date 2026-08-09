@@ -4,7 +4,7 @@ import { useOpenApiSpec } from "./help";
 import { countEndpoints, filterEndpoints, groupEndpoints, type ApiEndpoint } from "./openapi";
 
 // HelpPage is the in-app help centre: how to get around, and a live reference of
-// the panel's REST API rendered straight from the OpenAPI document hpd serves —
+// the panel's REST API rendered straight from the OpenAPI document npd serves —
 // so the reference always matches the running server rather than a doc that
 // drifts. No auth is needed to read it; the API surface is public knowledge, and
 // each endpoint shows the permission it actually requires.
@@ -78,7 +78,7 @@ function ApiReference() {
         <div>
           <h2 className="text-sm font-semibold text-fg">API reference</h2>
           <p className="text-xs text-muted">
-            {spec.data?.info?.title ?? "HeroPanel"} {spec.data?.info?.version ? `· ${spec.data.info.version}` : ""} · rendered
+            {spec.data?.info?.title ?? "NexPanel"} {spec.data?.info?.version ? `· ${spec.data.info.version}` : ""} · rendered
             live from{" "}
             <a href="/api/v1/openapi.json" className="font-mono text-brand hover:underline" target="_blank" rel="noreferrer">
               /api/v1/openapi.json

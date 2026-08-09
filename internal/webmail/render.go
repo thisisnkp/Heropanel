@@ -40,7 +40,7 @@ type Config struct {
 func RenderConfig(c Config) string {
 	var b strings.Builder
 	b.WriteString("<?php\n")
-	b.WriteString("// HeroPanel webmail configuration (rendered; do not edit).\n")
+	b.WriteString("// NexPanel webmail configuration (rendered; do not edit).\n")
 	b.WriteString("$config = [];\n")
 	// Roundcube stores only its own metadata (contacts, prefs) — sqlite is
 	// plenty and keeps webmail from needing a database server of its own.

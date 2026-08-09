@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // User is the persisted identity row (core columns; timestamps are managed by

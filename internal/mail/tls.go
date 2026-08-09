@@ -4,14 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
-// Mail TLS on the hpd side: submission/587, imaps/993 and smtps/465 all present
+// Mail TLS on the npd side: submission/587, imaps/993 and smtps/465 all present
 // ONE certificate — the mail host's own (mail.example.com), not a per-domain
-// cert. hpd ensures that certificate is installed (delegating to the SSL
+// cert. npd ensures that certificate is installed (delegating to the SSL
 // module) and asks the broker to wire it into Postfix and Dovecot. The hostname
-// is operator configuration (HP_MAIL_HOSTNAME): a mail server's identity is a
+// is operator configuration (NP_MAIL_HOSTNAME): a mail server's identity is a
 // deployment decision, not something a hosted domain gets to choose.
 
 // CertProvider ensures a server certificate is installed on disk for the mail
@@ -53,7 +53,7 @@ func (s *Service) EnableTLS(ctx context.Context) (*TLSStatus, error) {
 	}
 	if s.hostname == "" {
 		return nil, errx.Validation("mail_hostname_unset",
-			"Set a mail hostname (HP_MAIL_HOSTNAME) before enabling TLS.")
+			"Set a mail hostname (NP_MAIL_HOSTNAME) before enabling TLS.")
 	}
 	if !reDomain.MatchString(s.hostname) || len(s.hostname) > 253 {
 		return nil, errx.Validation("invalid_mail_hostname", "The mail hostname is not a valid FQDN.")

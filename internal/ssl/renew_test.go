@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeDNSACME satisfies both ACME (HTTP-01) and ACMEDNS (DNS-01).
@@ -173,7 +173,7 @@ func TestRenewerSkipsUploadedCerts(t *testing.T) {
 	}
 	_ = self
 
-	// A custom cert must never be auto-renewed: HeroPanel cannot re-obtain it.
+	// A custom cert must never be auto-renewed: NexPanel cannot re-obtain it.
 	r := ssl.NewRenewer(svc, nil).WithSchedule(time.Hour, 100*365*24*time.Hour)
 	if n, err := r.RenewDue(ctx); err != nil || n != 0 {
 		t.Fatalf("no certs in this store should renew: n=%d err=%v", n, err)

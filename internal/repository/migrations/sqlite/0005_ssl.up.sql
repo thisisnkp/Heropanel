@@ -1,4 +1,4 @@
--- HeroPanel SSL: certificates and ACME accounts (SQLite).
+-- NexPanel SSL: certificates and ACME accounts (SQLite).
 CREATE TABLE ssl_certificates (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     uid         TEXT NOT NULL UNIQUE,

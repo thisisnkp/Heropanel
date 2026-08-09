@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // The apply window: how long an unconfirmed change is allowed to stand before
@@ -380,7 +380,7 @@ func (f *Firewall) Status(ctx context.Context) (map[string]any, error) {
 
 // RunGuard is the crash-recovery net: on start and every tick it reverts any
 // pending change whose deadline has passed. The in-process timer handles the
-// prompt case; this handles an hpd that restarted mid-window (the deadline is
+// prompt case; this handles an npd that restarted mid-window (the deadline is
 // persisted, so a fresh process still honours it).
 func (f *Firewall) RunGuard(ctx context.Context, log interface{ Info(string, ...any) }) {
 	if !f.Available() {

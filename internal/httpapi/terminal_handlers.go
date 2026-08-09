@@ -10,11 +10,11 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/internal/terminal"
-	"github.com/thisisnkp/heropanel/pkg/brokerwire"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/pkg/brokerwire"
 )
 
 // The web terminal's HTTP edge: a WebSocket that bridges the browser to a

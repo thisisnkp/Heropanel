@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The File Manager capabilities. Every one runs as the *site's* Linux user (via
@@ -23,7 +23,7 @@ import (
 //
 // I/O is chunked because the broker's wire framing caps a frame at 1 MiB
 // (pkg/brokerwire): reads take an offset+length, writes take an append flag, so
-// hpd streams large files by looping rather than trying to move them in one
+// npd streams large files by looping rather than trying to move them in one
 // frame.
 
 const (
@@ -132,7 +132,7 @@ func findType(y string) string {
 // ── file.read ────────────────────────────────────────────────────────────────
 
 // FileRead reads up to fileChunkMax bytes from a file at a byte offset, as the
-// site user. hpd loops over offsets to stream a whole file.
+// site user. npd loops over offsets to stream a whole file.
 type FileRead struct{}
 
 func (FileRead) Name() string { return "file.read" }
@@ -192,7 +192,7 @@ func (FileRead) Execute(c capability.Context, raw json.RawMessage) (capability.R
 
 // FileWrite writes a chunk to a file as the site user. append=false truncates
 // then writes (editor save / first upload chunk); append=true appends (later
-// upload chunks) — so hpd streams an upload by looping.
+// upload chunks) — so npd streams an upload by looping.
 type FileWrite struct{}
 
 func (FileWrite) Name() string { return "file.write" }

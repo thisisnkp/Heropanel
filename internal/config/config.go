@@ -1,11 +1,13 @@
-// Package config loads HeroPanel's layered configuration:
-// compiled defaults -> /etc/heropanel/config.yaml -> HP_* environment vars.
+// Package config loads NexPanel's layered configuration:
+// compiled defaults -> /etc/nexpanel/config.yaml -> NP_* environment vars.
 // Later layers override earlier ones. Secrets are expected via env or a
 // separate secrets file, never committed to the YAML. See docs/01 §5.
 package config
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -14,7 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the full hpd configuration.
+// Config is the full npd configuration.
 type Config struct {
 	Server      Server      `yaml:"server"`
 	Database    Database    `yaml:"database"`
@@ -28,6 +30,26 @@ type Config struct {
 	Mail        Mail        `yaml:"mail"`
 	Webmail     Webmail     `yaml:"webmail"`
 	Marketplace Marketplace `yaml:"marketplace"`
+	Update      Update      `yaml:"update"`
+}
+
+// Update configures panel self-update (docs/26). BaseURL is the release root a
+// channel manifest and its artifacts are published under; Channel selects which
+// line this installation follows. PubKey is the ed25519 **release** key — the
+// same anchor np-installer pins as NP_RELEASE_PUBKEY, because the update path
+// verifies the identical SHA256SUMS chain the installer does; a public key, so
+// yaml is fine.
+//
+// Every field is optional and the feature is off unless BaseURL *and* PubKey
+// are both set: an update source with no anchor would let whoever serves that
+// URL replace the root component on this host, which is the one thing this
+// design exists to prevent. AutoCheck only ever *checks* — nothing installs
+// itself without an operator pressing the button.
+type Update struct {
+	Channel   string `yaml:"channel"`    // stable | beta | nightly
+	BaseURL   string `yaml:"base_url"`   // e.g. https://releases.nexpanel.io
+	PubKey    string `yaml:"pubkey"`     // base64 / hex / @path ed25519 public key
+	AutoCheck bool   `yaml:"auto_check"` // poll for a newer release in the background
 }
 
 // Marketplace configures the module marketplace. Catalog is a path to the module
@@ -35,7 +57,7 @@ type Config struct {
 // are the ed25519 publisher public keys the panel pins to decide which modules it
 // trusts to install — base64, hex, or a "@/path/to/key" reference. These are
 // public keys, so unlike credentials they may live in the yaml file;
-// HP_MARKETPLACE_KEYS (comma-separated) and HP_MARKETPLACE_CATALOG override them.
+// NP_MARKETPLACE_KEYS (comma-separated) and NP_MARKETPLACE_CATALOG override them.
 type Marketplace struct {
 	Catalog string   `yaml:"catalog"`
 	Keys    []string `yaml:"keys"`
@@ -93,13 +115,13 @@ type BackupSFTP struct {
 type BackupRclone struct {
 	Bin    string `yaml:"bin"`    // rclone binary (default "rclone")
 	Config string `yaml:"config"` // path to rclone.conf ("" = rclone default)
-	Remote string `yaml:"remote"` // e.g. "gdrive:heropanel-backups"
+	Remote string `yaml:"remote"` // e.g. "gdrive:nexpanel-backups"
 }
 
 // BackupPanel drives the panel's self-backup: a sealed snapshot of the panel's
 // own database on a schedule. Enabled by default (it costs a few MB and is the
 // difference between a bad day and a disaster) — it still only runs when
-// HP_SECRET_KEY is set, because sealed-at-rest is not optional.
+// NP_SECRET_KEY is set, because sealed-at-rest is not optional.
 type BackupPanel struct {
 	Enabled       bool   `yaml:"enabled"`
 	IntervalHours int    `yaml:"interval_hours"`
@@ -108,7 +130,7 @@ type BackupPanel struct {
 }
 
 // BackupS3 is an S3-compatible target (AWS, R2, B2, MinIO). The secret key may
-// come from HP_BACKUP_S3_SECRET_KEY rather than the file.
+// come from NP_BACKUP_S3_SECRET_KEY rather than the file.
 type BackupS3 struct {
 	Endpoint  string `yaml:"endpoint"`
 	Region    string `yaml:"region"`
@@ -137,11 +159,62 @@ type Recording struct {
 	RetentionDays int    `yaml:"retention_days"`
 }
 
-// Broker configures the connection to the privileged hp-broker daemon. An empty
-// Socket disables the connection (hpd runs without privileged operations).
+// Broker configures the connection to the privileged np-broker daemon. An empty
+// Socket disables the connection (npd runs without privileged operations).
+//
+// Remote is the multi-node case (docs/27): the broker being driven runs on
+// another host, so the Unix socket's kernel-attested peer credentials are not
+// available and a client certificate takes their place. Remote and Socket are
+// alternatives, not layers — a panel talks to one broker.
 type Broker struct {
-	Socket string `yaml:"socket"`
-	Token  string `yaml:"token"`
+	Socket string       `yaml:"socket"`
+	Token  string       `yaml:"token"`
+	Remote BrokerRemote `yaml:"remote"`
+}
+
+// BrokerRemote points npd at a broker on another node over mutual TLS. It is
+// off unless Addr is set, and incomplete settings are a startup error rather
+// than a silent fallback to something less authenticated.
+type BrokerRemote struct {
+	// Addr is host:port of the remote broker's TLS listener.
+	Addr string `yaml:"addr"`
+	// ServerName must match a SAN on the broker's certificate. Defaults to the
+	// host part of Addr when empty.
+	ServerName string `yaml:"server_name"`
+	// CAFile verifies the broker; CertFile/KeyFile are this node's own identity.
+	// Paths rather than inline PEM: a private key does not belong in a config
+	// file that gets copied around, and the installer already manages file modes.
+	CAFile   string `yaml:"ca_file"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
+}
+
+// Enabled reports whether a remote broker is configured.
+func (r BrokerRemote) Enabled() bool { return r.Addr != "" }
+
+// Validate refuses a half-configured remote broker.
+func (r BrokerRemote) Validate() error {
+	if !r.Enabled() {
+		return nil
+	}
+	switch {
+	case r.CAFile == "":
+		return errors.New("broker.remote.ca_file is required (there is no way to verify the broker without it)")
+	case r.CertFile == "" || r.KeyFile == "":
+		return errors.New("broker.remote.cert_file and key_file are required (the broker requires a client certificate)")
+	}
+	return nil
+}
+
+// EffectiveServerName is the name the broker's certificate must carry.
+func (r BrokerRemote) EffectiveServerName() string {
+	if r.ServerName != "" {
+		return r.ServerName
+	}
+	if host, _, err := net.SplitHostPort(r.Addr); err == nil {
+		return host
+	}
+	return r.Addr
 }
 
 // SSL configures ACME (Let's Encrypt). Self-signed and custom uploads work
@@ -152,7 +225,7 @@ type SSL struct {
 	Directory string `yaml:"directory"`
 	// ZeroSSL is an optional second ACME CA. It requires External Account
 	// Binding: ZeroSSLEABKID from the yaml/env, and the HMAC key from the secret
-	// env only (HP_SSL_ZEROSSL_EAB_HMAC) — never the yaml file. ZeroSSLDirectory
+	// env only (NP_SSL_ZEROSSL_EAB_HMAC) — never the yaml file. ZeroSSLDirectory
 	// defaults to ZeroSSL production when empty but EAB is set.
 	ZeroSSLDirectory string `yaml:"zerossl_directory"`
 	ZeroSSLEABKID    string `yaml:"zerossl_eab_kid"`
@@ -210,14 +283,14 @@ type Security struct {
 	CORS           CORS      `yaml:"cors"`
 	CSRF           CSRF      `yaml:"csrf"`
 	// SecretKey is the base64-encoded 32-byte master key that encrypts the *_enc
-	// columns (Git credentials today). Supply it via HP_SECRET_KEY or the
+	// columns (Git credentials today). Supply it via NP_SECRET_KEY or the
 	// secrets.env file, never in config.yaml. Empty disables features that must
 	// store a secret at rest — they report "unavailable" rather than falling back
 	// to plaintext storage.
 	SecretKey string `yaml:"-"`
 	// PanelIPAllowlist restricts panel/API access to these CIDRs (or bare IPs).
 	// Empty = open to all (the default). A misconfigured allowlist can lock the
-	// operator out, so it is opt-in and set deliberately. HP_PANEL_IP_ALLOWLIST
+	// operator out, so it is opt-in and set deliberately. NP_PANEL_IP_ALLOWLIST
 	// is a comma-separated override.
 	PanelIPAllowlist []string `yaml:"panel_ip_allowlist"`
 	// WebAuthn configures passkeys. Empty RPID keeps them disabled — the
@@ -231,7 +304,7 @@ type Security struct {
 	// ISO country code) for the aggregated-CIDR zone files a country geo-import
 	// fetches. They default to the public ipdeny aggregated mirrors; point them
 	// at an internal copy to keep the panel's outbound reach in your control.
-	// Overridable via HP_SECURITY_GEODB_URL / HP_SECURITY_GEODB_URL6.
+	// Overridable via NP_SECURITY_GEODB_URL / NP_SECURITY_GEODB_URL6.
 	GeoDBURLv4 string `yaml:"geodb_url_v4"`
 	GeoDBURLv6 string `yaml:"geodb_url_v6"`
 }
@@ -239,13 +312,13 @@ type Security struct {
 // WebAuthn identifies the relying party for passkeys.
 type WebAuthn struct {
 	RPID   string `yaml:"rp_id"`   // the panel's registrable domain, e.g. panel.example.com
-	RPName string `yaml:"rp_name"` // display name, e.g. "HeroPanel"
+	RPName string `yaml:"rp_name"` // display name, e.g. "NexPanel"
 	Origin string `yaml:"origin"`  // the full origin, e.g. https://panel.example.com
 }
 
 // CSRF configures double-submit CSRF protection for cookie-authenticated
 // mutations. Disabled by default; SameSite=Strict cookies already mitigate CSRF,
-// and enabling this requires clients to echo the hp_csrf cookie in X-CSRF-Token.
+// and enabling this requires clients to echo the np_csrf cookie in X-CSRF-Token.
 type CSRF struct {
 	Enabled bool `yaml:"enabled"`
 }
@@ -286,7 +359,7 @@ func Default() Config {
 		// audit trail to off means it is missing exactly when someone thinks to
 		// look for it. Set terminal.recording.dir to "" to switch it off.
 		Terminal: Terminal{Recording: Recording{
-			Dir:           "/var/lib/heropanel/recordings",
+			Dir:           "/var/lib/nexpanel/recordings",
 			RetentionDays: 30,
 		}},
 		Log: Log{Level: "info", Format: "json"},
@@ -300,11 +373,15 @@ func Default() Config {
 		Backup: Backup{
 			Panel: BackupPanel{Enabled: true, IntervalHours: 24, Target: "local", Keep: 7},
 		},
+		// Only the channel has a default. BaseURL and PubKey are left empty on
+		// purpose — self-update stays off until an operator names both a release
+		// source and the key that vouches for it.
+		Update: Update{Channel: "stable"},
 	}
 }
 
 // Load builds the effective config: defaults, then the YAML file at path (if
-// path is non-empty), then HP_* environment overrides, then validation.
+// path is non-empty), then NP_* environment overrides, then validation.
 func Load(path string) (Config, error) {
 	cfg := Default()
 	if path != "" {
@@ -323,12 +400,12 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// applyEnv overlays a curated set of HP_* environment variables.
+// applyEnv overlays a curated set of NP_* environment variables.
 func (c *Config) applyEnv() {
-	if v := os.Getenv("HP_SERVER_HOST"); v != "" {
+	if v := os.Getenv("NP_SERVER_HOST"); v != "" {
 		c.Server.Host = v
 	}
-	if v := os.Getenv("HP_SERVER_PORT"); v != "" {
+	if v := os.Getenv("NP_SERVER_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			c.Server.Port = p
 		}
@@ -336,112 +413,112 @@ func (c *Config) applyEnv() {
 	// The write timeout bounds a synchronous response. Long-running privileged
 	// reads (a full rkhunter/lynis audit that takes minutes) need it raised, so
 	// it is env-overridable (e.g. "600s").
-	if v := os.Getenv("HP_TERMINAL_IDLE_TIMEOUT"); v != "" {
+	if v := os.Getenv("NP_TERMINAL_IDLE_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			c.Terminal.IdleTimeout = Duration(d)
 		}
 	}
-	if v := os.Getenv("HP_SERVER_WRITE_TIMEOUT"); v != "" {
+	if v := os.Getenv("NP_SERVER_WRITE_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			c.Server.WriteTimeout = Duration(d)
 		}
 	}
-	if v := os.Getenv("HP_LOG_LEVEL"); v != "" {
+	if v := os.Getenv("NP_LOG_LEVEL"); v != "" {
 		c.Log.Level = v
 	}
-	if v := os.Getenv("HP_LOG_FORMAT"); v != "" {
+	if v := os.Getenv("NP_LOG_FORMAT"); v != "" {
 		c.Log.Format = v
 	}
-	if v := os.Getenv("HP_DATABASE_DRIVER"); v != "" {
+	if v := os.Getenv("NP_DATABASE_DRIVER"); v != "" {
 		c.Database.Driver = v
 	}
-	if v := os.Getenv("HP_DATABASE_DSN"); v != "" {
+	if v := os.Getenv("NP_DATABASE_DSN"); v != "" {
 		c.Database.DSN = v
 	}
-	if v := os.Getenv("HP_BACKUP_S3_ENDPOINT"); v != "" {
+	if v := os.Getenv("NP_BACKUP_S3_ENDPOINT"); v != "" {
 		c.Backup.S3.Endpoint = v
 	}
-	if v := os.Getenv("HP_BACKUP_S3_REGION"); v != "" {
+	if v := os.Getenv("NP_BACKUP_S3_REGION"); v != "" {
 		c.Backup.S3.Region = v
 	}
-	if v := os.Getenv("HP_BACKUP_S3_BUCKET"); v != "" {
+	if v := os.Getenv("NP_BACKUP_S3_BUCKET"); v != "" {
 		c.Backup.S3.Bucket = v
 	}
-	if v := os.Getenv("HP_BACKUP_S3_ACCESS_KEY"); v != "" {
+	if v := os.Getenv("NP_BACKUP_S3_ACCESS_KEY"); v != "" {
 		c.Backup.S3.AccessKey = v
 	}
-	if v := os.Getenv("HP_BACKUP_S3_SECRET_KEY"); v != "" {
+	if v := os.Getenv("NP_BACKUP_S3_SECRET_KEY"); v != "" {
 		c.Backup.S3.SecretKey = v
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_HOST"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_HOST"); v != "" {
 		c.Backup.SFTP.Host = v
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_PORT"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Backup.SFTP.Port = n
 		}
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_USER"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_USER"); v != "" {
 		c.Backup.SFTP.User = v
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_BASE_PATH"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_BASE_PATH"); v != "" {
 		c.Backup.SFTP.BasePath = v
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_HOST_KEY"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_HOST_KEY"); v != "" {
 		c.Backup.SFTP.HostKey = v
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_PASSWORD"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_PASSWORD"); v != "" {
 		c.Backup.SFTP.Password = v
 	}
-	if v := os.Getenv("HP_BACKUP_SFTP_PRIVATE_KEY"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SFTP_PRIVATE_KEY"); v != "" {
 		c.Backup.SFTP.PrivateKey = v
 	}
-	if v := os.Getenv("HP_BACKUP_RCLONE_REMOTE"); v != "" {
+	if v := os.Getenv("NP_BACKUP_RCLONE_REMOTE"); v != "" {
 		c.Backup.Rclone.Remote = v
 	}
-	if v := os.Getenv("HP_BACKUP_RCLONE_CONFIG"); v != "" {
+	if v := os.Getenv("NP_BACKUP_RCLONE_CONFIG"); v != "" {
 		c.Backup.Rclone.Config = v
 	}
-	if v := os.Getenv("HP_BACKUP_RCLONE_BIN"); v != "" {
+	if v := os.Getenv("NP_BACKUP_RCLONE_BIN"); v != "" {
 		c.Backup.Rclone.Bin = v
 	}
-	if v := os.Getenv("HP_BACKUP_SWEEP_INTERVAL_SEC"); v != "" {
+	if v := os.Getenv("NP_BACKUP_SWEEP_INTERVAL_SEC"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Backup.SweepIntervalSec = n
 		}
 	}
-	if v := os.Getenv("HP_BACKUP_PANEL_ENABLED"); v != "" {
+	if v := os.Getenv("NP_BACKUP_PANEL_ENABLED"); v != "" {
 		c.Backup.Panel.Enabled = v == "1" || strings.EqualFold(v, "true")
 	}
-	if v := os.Getenv("HP_BACKUP_PANEL_HOURS"); v != "" {
+	if v := os.Getenv("NP_BACKUP_PANEL_HOURS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Backup.Panel.IntervalHours = n
 		}
 	}
-	if v := os.Getenv("HP_BACKUP_PANEL_TARGET"); v != "" {
+	if v := os.Getenv("NP_BACKUP_PANEL_TARGET"); v != "" {
 		c.Backup.Panel.Target = v
 	}
-	if v := os.Getenv("HP_BACKUP_PANEL_KEEP"); v != "" {
+	if v := os.Getenv("NP_BACKUP_PANEL_KEEP"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Backup.Panel.Keep = n
 		}
 	}
-	if v := os.Getenv("HP_MAIL_RESOLVER"); v != "" {
+	if v := os.Getenv("NP_MAIL_RESOLVER"); v != "" {
 		c.Mail.Resolver = v
 	}
-	if v := os.Getenv("HP_MAIL_HOSTNAME"); v != "" {
+	if v := os.Getenv("NP_MAIL_HOSTNAME"); v != "" {
 		c.Mail.Hostname = v
 	}
-	if v := os.Getenv("HP_WEBMAIL_HOSTNAME"); v != "" {
+	if v := os.Getenv("NP_WEBMAIL_HOSTNAME"); v != "" {
 		c.Webmail.Hostname = v
 	}
-	if v := os.Getenv("HP_WEBMAIL_PHP_VERSION"); v != "" {
+	if v := os.Getenv("NP_WEBMAIL_PHP_VERSION"); v != "" {
 		c.Webmail.PHPVersion = v
 	}
-	if v := os.Getenv("HP_MARKETPLACE_CATALOG"); v != "" {
+	if v := os.Getenv("NP_MARKETPLACE_CATALOG"); v != "" {
 		c.Marketplace.Catalog = v
 	}
-	if v := os.Getenv("HP_MARKETPLACE_KEYS"); v != "" {
+	if v := os.Getenv("NP_MARKETPLACE_KEYS"); v != "" {
 		c.Marketplace.Keys = c.Marketplace.Keys[:0]
 		for _, p := range strings.Split(v, ",") {
 			if p = strings.TrimSpace(p); p != "" {
@@ -449,7 +526,22 @@ func (c *Config) applyEnv() {
 			}
 		}
 	}
-	if v := os.Getenv("HP_PANEL_IP_ALLOWLIST"); v != "" {
+	if v := os.Getenv("NP_UPDATE_CHANNEL"); v != "" {
+		c.Update.Channel = v
+	}
+	if v := os.Getenv("NP_UPDATE_BASE_URL"); v != "" {
+		c.Update.BaseURL = v
+	}
+	// Deliberately the same variable np-installer and install.sh already pin:
+	// the update path checks the identical SHA256SUMS chain, so a second name
+	// for the same anchor would only invite the two drifting apart.
+	if v := os.Getenv("NP_RELEASE_PUBKEY"); v != "" {
+		c.Update.PubKey = v
+	}
+	if v := os.Getenv("NP_UPDATE_AUTO_CHECK"); v != "" {
+		c.Update.AutoCheck = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("NP_PANEL_IP_ALLOWLIST"); v != "" {
 		parts := strings.Split(v, ",")
 		c.Security.PanelIPAllowlist = c.Security.PanelIPAllowlist[:0]
 		for _, p := range parts {
@@ -458,62 +550,79 @@ func (c *Config) applyEnv() {
 			}
 		}
 	}
-	if v := os.Getenv("HP_WEBAUTHN_RP_ID"); v != "" {
+	if v := os.Getenv("NP_WEBAUTHN_RP_ID"); v != "" {
 		c.Security.WebAuthn.RPID = v
 	}
-	if v := os.Getenv("HP_WEBAUTHN_RP_NAME"); v != "" {
+	if v := os.Getenv("NP_WEBAUTHN_RP_NAME"); v != "" {
 		c.Security.WebAuthn.RPName = v
 	}
-	if v := os.Getenv("HP_WEBAUTHN_ORIGIN"); v != "" {
+	if v := os.Getenv("NP_WEBAUTHN_ORIGIN"); v != "" {
 		c.Security.WebAuthn.Origin = v
 	}
-	if v := os.Getenv("HP_FIREWALL_WINDOW_SEC"); v != "" {
+	if v := os.Getenv("NP_FIREWALL_WINDOW_SEC"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Security.FirewallWindowSec = n
 		}
 	}
-	if v := os.Getenv("HP_SECURITY_GEODB_URL"); v != "" {
+	if v := os.Getenv("NP_SECURITY_GEODB_URL"); v != "" {
 		c.Security.GeoDBURLv4 = v
 	}
-	if v := os.Getenv("HP_SECURITY_GEODB_URL6"); v != "" {
+	if v := os.Getenv("NP_SECURITY_GEODB_URL6"); v != "" {
 		c.Security.GeoDBURLv6 = v
 	}
-	if v := os.Getenv("HP_DATABASE_ADMINER_URL"); v != "" {
+	if v := os.Getenv("NP_DATABASE_ADMINER_URL"); v != "" {
 		c.Database.AdminerURL = v
 	}
-	if v := os.Getenv("HP_REDIS_ADDR"); v != "" {
+	if v := os.Getenv("NP_REDIS_ADDR"); v != "" {
 		c.Redis.Addr = v
 	}
-	if v := os.Getenv("HP_REDIS_PASSWORD"); v != "" {
+	if v := os.Getenv("NP_REDIS_PASSWORD"); v != "" {
 		c.Redis.Password = v
 	}
-	if v := os.Getenv("HP_BROKER_SOCKET"); v != "" {
+	if v := os.Getenv("NP_BROKER_SOCKET"); v != "" {
 		c.Broker.Socket = v
 	}
-	if v := os.Getenv("HP_BROKER_TOKEN"); v != "" {
+	if v := os.Getenv("NP_BROKER_TOKEN"); v != "" {
 		c.Broker.Token = v
 	}
-	if v := os.Getenv("HP_SECRET_KEY"); v != "" {
+	// Remote broker (docs/27). Only paths and an address here — the client's
+	// private key stays a file on disk, never an environment variable.
+	if v := os.Getenv("NP_BROKER_REMOTE_ADDR"); v != "" {
+		c.Broker.Remote.Addr = v
+	}
+	if v := os.Getenv("NP_BROKER_REMOTE_SERVER_NAME"); v != "" {
+		c.Broker.Remote.ServerName = v
+	}
+	if v := os.Getenv("NP_BROKER_REMOTE_CA_FILE"); v != "" {
+		c.Broker.Remote.CAFile = v
+	}
+	if v := os.Getenv("NP_BROKER_REMOTE_CERT_FILE"); v != "" {
+		c.Broker.Remote.CertFile = v
+	}
+	if v := os.Getenv("NP_BROKER_REMOTE_KEY_FILE"); v != "" {
+		c.Broker.Remote.KeyFile = v
+	}
+	if v := os.Getenv("NP_SECRET_KEY"); v != "" {
 		c.Security.SecretKey = v
 	}
 	// ACME (Let's Encrypt) account email and directory URL. Email enables
 	// issuance; Directory points at a staging or test CA (e.g. Pebble) instead of
 	// production — invaluable for testing against a real ACME server without
 	// hitting Let's Encrypt's rate limits.
-	if v := os.Getenv("HP_SSL_EMAIL"); v != "" {
+	if v := os.Getenv("NP_SSL_EMAIL"); v != "" {
 		c.SSL.Email = v
 	}
-	if v := os.Getenv("HP_SSL_DIRECTORY"); v != "" {
+	if v := os.Getenv("NP_SSL_DIRECTORY"); v != "" {
 		c.SSL.Directory = v
 	}
-	if v := os.Getenv("HP_SSL_ZEROSSL_DIRECTORY"); v != "" {
+	if v := os.Getenv("NP_SSL_ZEROSSL_DIRECTORY"); v != "" {
 		c.SSL.ZeroSSLDirectory = v
 	}
-	if v := os.Getenv("HP_SSL_ZEROSSL_EAB_KID"); v != "" {
+	if v := os.Getenv("NP_SSL_ZEROSSL_EAB_KID"); v != "" {
 		c.SSL.ZeroSSLEABKID = v
 	}
 	// The EAB HMAC is a credential: secret env only, never the yaml.
-	if v := os.Getenv("HP_SSL_ZEROSSL_EAB_HMAC"); v != "" {
+	if v := os.Getenv("NP_SSL_ZEROSSL_EAB_HMAC"); v != "" {
 		c.SSL.ZeroSSLEABHMAC = v
 	}
 
@@ -521,15 +630,15 @@ func (c *Config) applyEnv() {
 	// a config file. It protects a public panel from brute force; a browser
 	// suite driving one instance single-threaded is not that, and being
 	// throttled makes those runs flaky rather than safe.
-	if v := os.Getenv("HP_SECURITY_RATE_LIMIT_ENABLED"); v != "" {
+	if v := os.Getenv("NP_SECURITY_RATE_LIMIT_ENABLED"); v != "" {
 		c.Security.RateLimit.Enabled = !(v == "0" || strings.EqualFold(v, "false"))
 	}
 
 	// Terminal session recording. The directory is what switches it on.
-	if v := os.Getenv("HP_TERMINAL_RECORDING_DIR"); v != "" {
+	if v := os.Getenv("NP_TERMINAL_RECORDING_DIR"); v != "" {
 		c.Terminal.Recording.Dir = v
 	}
-	if v := os.Getenv("HP_TERMINAL_RECORDING_RETENTION_DAYS"); v != "" {
+	if v := os.Getenv("NP_TERMINAL_RECORDING_RETENTION_DAYS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Terminal.Recording.RetentionDays = n
 		}

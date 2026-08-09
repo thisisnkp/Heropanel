@@ -10,7 +10,7 @@ CREATE TABLE mail_domains (
     uid           TEXT NOT NULL UNIQUE,
     owner_id      INTEGER NOT NULL REFERENCES users(id),
     domain        TEXT NOT NULL UNIQUE,
-    dkim_selector TEXT NOT NULL DEFAULT 'hp1',
+    dkim_selector TEXT NOT NULL DEFAULT 'np1',
     dkim_private  TEXT NOT NULL DEFAULT '',
     dkim_public   TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL DEFAULT 'active',

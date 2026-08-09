@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Sign-on sessions for an external database client (Adminer, phpMyAdmin).
 //
-// The design decision worth stating plainly: HeroPanel does not keep database
+// The design decision worth stating plainly: NexPanel does not keep database
 // user passwords. It could — there is a perfectly good cipher in pkg/secrets and
 // most panels do exactly that — but then one panel compromise hands over every
 // customer's standing database credentials, and there is no way to tell after
@@ -36,7 +36,7 @@ const (
 
 	// ssoUserPrefix marks accounts this panel owns, so the sweeper can never
 	// mistake a real database user for one of its own.
-	ssoUserPrefix = "hpsso_"
+	ssoUserPrefix = "npsso_"
 )
 
 // sqlTime is the timestamp format both SQLite (TEXT) and MariaDB (DATETIME)

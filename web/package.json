@@ -1,5 +1,5 @@
 {
-  "name": "heropanel-web",
+  "name": "nexpanel-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "npm run build && go build -o ../bin/ ../cmd/hpd && playwright test"
+    "test:e2e": "npm run build && go build -o ../bin/ ../cmd/npd && playwright test"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

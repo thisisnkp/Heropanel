@@ -3,8 +3,8 @@ package site
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // CloneInput describes the copy to make of an existing site.

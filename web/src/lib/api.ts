@@ -1,4 +1,4 @@
-// Typed API client for the HeroPanel control-plane API.
+// Typed API client for the NexPanel control-plane API.
 //
 // All responses use the standard envelope: { data, meta } on success and
 // { error } on failure (see docs/04). Cookies carry the session, so every
@@ -28,7 +28,7 @@ type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 // Reads the double-submit CSRF token the server set as a readable cookie.
 function csrfToken(): string | undefined {
-  const m = document.cookie.match(/(?:^|;\s*)hp_csrf=([^;]+)/);
+  const m = document.cookie.match(/(?:^|;\s*)np_csrf=([^;]+)/);
   return m ? decodeURIComponent(m[1]) : undefined;
 }
 
@@ -89,8 +89,8 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
 function unreachableMessage(): string {
   const dev = location.port === "5173";
   return dev
-    ? "Could not reach the HeroPanel API. Start hpd (it listens on :8443 by default) — that is where the dev server proxies /api."
-    : "Could not reach the HeroPanel API. Check that hpd is running and reachable at this address.";
+    ? "Could not reach the NexPanel API. Start npd (it listens on :8443 by default) — that is where the dev server proxies /api."
+    : "Could not reach the NexPanel API. Check that npd is running and reachable at this address.";
 }
 
 export const api = {
@@ -234,7 +234,7 @@ export interface Principal {
 export interface AuthStatus {
   needs_bootstrap: boolean;
   authenticated: boolean;
-  /** False when hpd has no datastore configured, so no one can sign in. Older
+  /** False when npd has no datastore configured, so no one can sign in. Older
    *  servers omit it; treat undefined as "configured". */
   configured?: boolean;
   /** False on a fresh install until the first-run setup wizard is completed.

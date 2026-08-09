@@ -1,6 +1,6 @@
 package capabilities
 
-import "github.com/thisisnkp/heropanel/broker/capability"
+import "github.com/thisisnkp/nexpanel/broker/capability"
 
 // All returns every built-in capability. The broker registers these at startup.
 // New privileged operations are added here (and gated by policy).
@@ -9,6 +9,7 @@ func All() []capability.Capability {
 		ServiceRestart{},
 		ServiceStatus{},
 		SystemProvision{},
+		PanelUpdate{},
 		SystemUserCreate{},
 		SystemUserDelete{},
 		SiteCreateDirs{},

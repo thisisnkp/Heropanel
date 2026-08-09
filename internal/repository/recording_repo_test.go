@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
 )
 
 // seedSite inserts a minimal site row and returns its id, so a recording has a
@@ -38,7 +38,7 @@ func newRecording(siteID int64, actor string) *terminal.Recording {
 		SiteID:     siteID,
 		ActorEmail: actor,
 		ActorIP:    "10.0.0.1",
-		SystemUser: "hps1",
+		SystemUser: "nps1",
 		Path:       "2026-07-21/x.cast",
 		StartedAt:  terminal.FormatTime(now),
 		ExpiresAt:  terminal.FormatTime(now.Add(terminal.DefaultRetention)),
@@ -112,9 +112,9 @@ func TestRecordingSearchAcrossHistory(t *testing.T) {
 	siteB := seedSite(t, db, "site-b", "Bravo", "bravo.test")
 
 	rA := newRecording(siteA, "alice@example.test")
-	rA.SystemUser = "hps1"
+	rA.SystemUser = "nps1"
 	rB := newRecording(siteB, "bob@example.test")
-	rB.SystemUser = "hps2"
+	rB.SystemUser = "nps2"
 	rB.ActorIP = "203.0.113.9"
 	for _, r := range []*terminal.Recording{rA, rB} {
 		if err := store.Create(ctx, r); err != nil {

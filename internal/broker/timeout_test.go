@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	client "github.com/thisisnkp/heropanel/internal/broker"
+	client "github.com/thisisnkp/nexpanel/internal/broker"
 )
 
 // The client's timeout is only a backstop against a broker that never answers.

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The rest of the File Manager's operations: creating archives, repairing
@@ -58,7 +58,7 @@ func (FileCompress) Execute(c capability.Context, raw json.RawMessage) (capabili
 	}
 
 	// Every source is confined, then expressed *relative to its parent* so the
-	// archive contains "assets/logo.png", not "srv/heropanel/sites/1/assets/…".
+	// archive contains "assets/logo.png", not "srv/nexpanel/sites/1/assets/…".
 	// The tool is run with -C / a working directory, never given absolute paths.
 	workDir, err := confinedFilePath(in.Root, parentOf(in.Sources[0]), c.Policy)
 	if err != nil {

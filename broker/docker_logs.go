@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Live log streaming: `docker logs --follow` behind the same connection upgrade

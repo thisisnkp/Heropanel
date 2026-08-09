@@ -1,4 +1,4 @@
-// Package monitor is hpd's in-core metrics module: it samples the node (and, in
+// Package monitor is npd's in-core metrics module: it samples the node (and, in
 // later slices, sites, containers and services) and pushes the numbers to
 // subscribed browsers over the realtime hub.
 //
@@ -10,7 +10,7 @@
 // polled. An unattended panel costs nothing.
 //
 // Node metrics come straight from /proc and statfs, which are world-readable, so
-// hpd reads them itself without crossing the broker. Nothing here is privileged;
+// npd reads them itself without crossing the broker. Nothing here is privileged;
 // the broker is only involved for things that genuinely need root (a site's
 // cgroup accounting, a service's status), which are later slices.
 package monitor

@@ -8,7 +8,7 @@
 // or into a different column of the same row — fails to open rather than
 // silently decrypting into the wrong record's secret.
 //
-// The stored form is `hp1.<base64url(nonce||ciphertext||tag)>`. The version
+// The stored form is `np1.<base64url(nonce||ciphertext||tag)>`. The version
 // prefix is deliberate: it reserves room for the rotating data-key envelope from
 // docs/05 §6, which is not implemented yet (see the package's README note in
 // docs/11 §1). Today a single key is derived from the master key via HKDF, so
@@ -29,10 +29,10 @@ import (
 )
 
 // version is the stored-blob format tag.
-const version = "hp1"
+const version = "np1"
 
 // hkdfInfo separates this key from any other key derived from the same master.
-const hkdfInfo = "heropanel/secrets/v1"
+const hkdfInfo = "nexpanel/secrets/v1"
 
 // MasterKeyLen is the required master key length in bytes (AES-256).
 const MasterKeyLen = 32
@@ -47,12 +47,12 @@ var ErrNoCipher = errors.New("secrets: no master key configured")
 // from Seal/Open, so callers can wire an unconfigured panel without nil checks
 // at every use site.
 type Cipher struct {
-	aead cipher.AEAD // legacy hp1 column-sealing key (HKDF of the master)
+	aead cipher.AEAD // legacy np1 column-sealing key (HKDF of the master)
 	// wrap seals/unwraps data keys under the master (envelope, keyring.go). nil
 	// when the Cipher was built without a master.
 	wrap cipher.AEAD
 	// dataKeys holds unwrapped data keys by generation; active is the generation
-	// new values seal under (0 => legacy hp1). Empty until a keyring is loaded.
+	// new values seal under (0 => legacy np1). Empty until a keyring is loaded.
 	dataKeys map[int]dataKey
 	active   int
 }
@@ -83,7 +83,7 @@ func New(masterKey []byte) (*Cipher, error) {
 }
 
 // FromBase64 derives a Cipher from a base64-encoded (standard or raw, padded or
-// not) 32-byte master key — the form carried in secrets.env / HP_SECRET_KEY.
+// not) 32-byte master key — the form carried in secrets.env / NP_SECRET_KEY.
 // An empty string returns (nil, nil): secrets are simply not configured, which
 // is a supported state for a panel that stores none.
 func FromBase64(encoded string) (*Cipher, error) {
@@ -128,7 +128,7 @@ func DeriveKeyBase64(encoded, purpose string) ([]byte, error) {
 	if len(raw) != MasterKeyLen {
 		return nil, fmt.Errorf("secrets: master key must be %d bytes, got %d", MasterKeyLen, len(raw))
 	}
-	key, err := hkdf.Key(sha256.New, raw, nil, "heropanel/"+purpose, MasterKeyLen)
+	key, err := hkdf.Key(sha256.New, raw, nil, "nexpanel/"+purpose, MasterKeyLen)
 	if err != nil {
 		return nil, fmt.Errorf("secrets: derive key: %w", err)
 	}
@@ -144,8 +144,8 @@ func (c *Cipher) Seal(plaintext []byte, aad string) (string, error) {
 	if aad == "" {
 		return "", errors.New("secrets: aad is required")
 	}
-	// With a keyring loaded, seal under the active data key (hp2.<gen>.…);
-	// otherwise fall back to the legacy single-key hp1 format, unchanged.
+	// With a keyring loaded, seal under the active data key (np2.<gen>.…);
+	// otherwise fall back to the legacy single-key np1 format, unchanged.
 	aead := c.aead
 	prefix := version + "."
 	if c.active > 0 {
@@ -174,11 +174,11 @@ func (c *Cipher) Open(blob, aad string) ([]byte, error) {
 	if !ok {
 		return nil, errors.New("secrets: unrecognized ciphertext format")
 	}
-	// Pick the AEAD by format: hp1 => the legacy key; hp2.<gen> => that data key.
+	// Pick the AEAD by format: np1 => the legacy key; np2.<gen> => that data key.
 	aead := c.aead
 	switch tag {
-	case version: // hp1
-	case versionKeyed: // hp2.<gen>.<base64>
+	case version: // np1
+	case versionKeyed: // np2.<gen>.<base64>
 		genStr, rest, ok := strings.Cut(body, ".")
 		if !ok {
 			return nil, errors.New("secrets: unrecognized ciphertext format")

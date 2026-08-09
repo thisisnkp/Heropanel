@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Mail: Postfix + Dovecot driven by rendered flat maps, the webserver.apply
-// discipline — hpd renders text from validated rows, the broker writes only
+// discipline — npd renders text from validated rows, the broker writes only
 // pinned paths, runs fixed commands, and rolls back on failure. Neither MTA
 // reads the panel's database: a panel outage never stops mail flow.
 
@@ -25,28 +25,28 @@ const (
 	doveadmPath  = "/usr/bin/doveadm"
 
 	// mailMapDir holds the postfix hash-map sources (and their .db files).
-	mailMapDir = "/etc/postfix/heropanel"
+	mailMapDir = "/etc/postfix/nexpanel"
 	// dovecotMasterPath is the passwd-file of one-time SSO *master* users (see
 	// mail.sso.apply). Empty = no master users = webmail SSO off. Dovecot-owned
 	// 0600, like the mailbox users file.
-	dovecotMasterPath = "/etc/dovecot/heropanel-master"
+	dovecotMasterPath = "/etc/dovecot/nexpanel-master"
 	// dovecotUsersPath is the passwd-file Dovecot authenticates against. Its
 	// auth process runs as the dovecot user, so the file is dovecot-owned,
 	// mode 0600 — password hashes stay unreadable to everyone else.
-	dovecotUsersPath = "/etc/dovecot/heropanel-users"
+	dovecotUsersPath = "/etc/dovecot/nexpanel-users"
 	// dovecotUser is the unprivileged user dovecot's auth process runs as.
 	dovecotUser = "dovecot"
-	// dovecotDropin is HeroPanel's dovecot configuration. The 95- prefix makes
+	// dovecotDropin is NexPanel's dovecot configuration. The 95- prefix makes
 	// it sort after the distro defaults, and dovecot's last-wins semantics make
 	// it authoritative for the settings it names.
-	dovecotDropin = "/etc/dovecot/conf.d/95-heropanel.conf"
+	dovecotDropin = "/etc/dovecot/conf.d/95-nexpanel.conf"
 
-	// heropanelBase is the panel's shared /var/lib base; the Maildir root lives
+	// nexpanelBase is the panel's shared /var/lib base; the Maildir root lives
 	// beneath it and vmail must be able to traverse into it.
-	heropanelBase = "/var/lib/heropanel"
+	nexpanelBase = "/var/lib/nexpanel"
 	// vmailUser owns every virtual mailbox; vmailRoot is the Maildir tree.
 	vmailUser = "vmail"
-	vmailRoot = "/var/lib/heropanel/mail"
+	vmailRoot = "/var/lib/nexpanel/mail"
 )
 
 // mailMapMax bounds a rendered map. The maps are one short line per address;
@@ -57,11 +57,11 @@ const mailMapMax = 1 << 20
 // normalises). Dots/underscores/pluses/hyphens inside, alphanumeric first.
 var reMailLocalPart = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]{0,63}$`)
 
-// dovecotConf is the complete HeroPanel dovecot drop-in. Constant — nothing in
+// dovecotConf is the complete NexPanel dovecot drop-in. Constant — nothing in
 // it is user input. Virtual users authenticate against the rendered
 // passwd-file; delivery is LMTP over the postfix-private socket; quotas are
 // dovecot's maildir quota with a per-user override carried by the passwd-file.
-const dovecotConf = `# HeroPanel mail configuration (rendered; do not edit).
+const dovecotConf = `# NexPanel mail configuration (rendered; do not edit).
 mail_location = maildir:` + vmailRoot + `/%d/%n/Maildir
 first_valid_uid = 100
 auth_master_user_separator = *
@@ -146,7 +146,7 @@ func (MailProvision) Execute(c capability.Context, raw json.RawMessage) (capabil
 	// its own Maildir root beneath it. 0751 is the standard mode for a shared
 	// /var/lib base and exposes nothing (o+x without o+r).
 	for _, cmd := range []exec.Command{
-		{Path: installPath, Args: []string{"-d", "-m", "0751", heropanelBase}, Timeout: 20 * time.Second},
+		{Path: installPath, Args: []string{"-d", "-m", "0751", nexpanelBase}, Timeout: 20 * time.Second},
 		{Path: installPath, Args: []string{"-d", "-m", "0770", "-o", vmailUser, "-g", vmailUser, vmailRoot}, Timeout: 20 * time.Second},
 		{Path: installPath, Args: []string{"-d", "-m", "0755", mailMapDir}, Timeout: 20 * time.Second},
 	} {

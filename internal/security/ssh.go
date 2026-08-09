@@ -7,14 +7,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // SSH hardening: a rendered sshd drop-in the panel owns, applied through the
 // broker with an `sshd -t` config test and a reload (not a restart, so live
 // sessions survive) — the render-all/validate/apply discipline the firewall and
-// webserver use. hpd renders the complete drop-in from validated fields; the
+// webserver use. npd renders the complete drop-in from validated fields; the
 // broker writes the one pinned path, tests it, reloads, and rolls back on
 // failure. Nothing an attacker could smuggle in becomes a directive: the field
 // set is fixed and every value is validated before it is rendered.
@@ -22,7 +22,7 @@ import (
 // The sshd drop-in path the broker writes. Modern OpenSSH's sshd_config ends
 // with `Include /etc/ssh/sshd_config.d/*.conf`, so a 50- drop-in is authoritative
 // for the keys it sets.
-const sshDropinPath = "/etc/ssh/sshd_config.d/50-heropanel.conf"
+const sshDropinPath = "/etc/ssh/sshd_config.d/50-nexpanel.conf"
 
 var reSSHUser = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
@@ -142,12 +142,12 @@ func (s *SSH) Status(ctx context.Context) (map[string]string, error) {
 	return ParseSSHDEffective(raw), nil
 }
 
-// RenderSSHDConfig renders the complete HeroPanel sshd drop-in. Pure over
+// RenderSSHDConfig renders the complete NexPanel sshd drop-in. Pure over
 // validated options: fixed keys, validated values, plus a block of fixed
 // hardening that is never a knob (empty passwords off, challenge-response off).
 func RenderSSHDConfig(o SSHOptions) string {
 	var b strings.Builder
-	b.WriteString("# HeroPanel SSH hardening (rendered; do not edit).\n")
+	b.WriteString("# NexPanel SSH hardening (rendered; do not edit).\n")
 	fmt.Fprintf(&b, "Port %d\n", o.Port)
 	fmt.Fprintf(&b, "PermitRootLogin %s\n", o.PermitRootLogin)
 	fmt.Fprintf(&b, "PasswordAuthentication %s\n", yesno(o.PasswordAuthentication))

@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // DomainStore implements domain.Repo over the datastore.

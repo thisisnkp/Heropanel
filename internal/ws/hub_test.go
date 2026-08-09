@@ -15,8 +15,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/ws"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/ws"
 )
 
 func discard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

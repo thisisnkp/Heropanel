@@ -3,7 +3,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/audit"
 )
 
 // keyringStatusHandler reports the rotating data-key envelope's state. Gated by

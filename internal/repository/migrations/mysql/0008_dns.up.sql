@@ -1,4 +1,4 @@
--- HeroPanel authoritative DNS: zones and records (MariaDB).
+-- NexPanel authoritative DNS: zones and records (MariaDB).
 
 CREATE TABLE dns_zones (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -3,7 +3,7 @@ package policy_test
 import (
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/broker/policy"
 )
 
 func TestCapabilityEnabledDenyByDefault(t *testing.T) {
@@ -36,12 +36,12 @@ func TestServiceAllowed(t *testing.T) {
 }
 
 func TestPathAllowedConfinement(t *testing.T) {
-	p := policy.Policy{PathRoots: []string{"/srv/heropanel/sites"}}
+	p := policy.Policy{PathRoots: []string{"/srv/nexpanel/sites"}}
 
 	allowed := []string{
-		"/srv/heropanel/sites",
-		"/srv/heropanel/sites/1",
-		"/srv/heropanel/sites/1/public/index.php",
+		"/srv/nexpanel/sites",
+		"/srv/nexpanel/sites/1",
+		"/srv/nexpanel/sites/1/public/index.php",
 	}
 	for _, pth := range allowed {
 		if !p.PathAllowed(pth) {
@@ -51,10 +51,10 @@ func TestPathAllowedConfinement(t *testing.T) {
 
 	denied := []string{
 		"/etc/passwd",
-		"/srv/heropanel/sitesX",                 // prefix but not a path boundary
-		"/srv/heropanel/sites/../../etc/passwd", // traversal escaping the root
-		"srv/heropanel/sites/1",                 // not absolute
-		"/srv/heropanel/sites/1/../../../etc/shadow",
+		"/srv/nexpanel/sitesX",                 // prefix but not a path boundary
+		"/srv/nexpanel/sites/../../etc/passwd", // traversal escaping the root
+		"srv/nexpanel/sites/1",                 // not absolute
+		"/srv/nexpanel/sites/1/../../../etc/shadow",
 	}
 	for _, pth := range denied {
 		if p.PathAllowed(pth) {

@@ -1,4 +1,4 @@
--- HeroPanel managed databases: instances, users, grants (SQLite).
+-- NexPanel managed databases: instances, users, grants (SQLite).
 CREATE TABLE db_instances (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     uid        TEXT NOT NULL UNIQUE,

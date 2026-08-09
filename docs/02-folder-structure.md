@@ -7,7 +7,7 @@ Two layouts matter: the **repository** (how we develop) and the **runtime filesy
 A single Git monorepo. Go workspace (`go.work`) groups the core, broker, modules, and shared libs so they build together but ship as independent binaries.
 
 ```
-heropanel/
+nexpanel/
 ├── go.work                       # ties core + broker + modules + pkg together
 ├── Makefile / Taskfile.yml       # build, test, lint, cross-compile, package
 ├── README.md
@@ -17,12 +17,12 @@ heropanel/
 │   └── adr/                      # Architecture Decision Records
 │
 ├── cmd/                          # main() entrypoints → one binary each
-│   ├── hpd/                      # core control-plane daemon
-│   ├── hp-broker/                # privileged root helper
-│   ├── hpctl/                    # local admin CLI
-│   └── hp-installer/             # Go-based installer core (invoked by bootstrap .sh)
+│   ├── npd/                      # core control-plane daemon
+│   ├── np-broker/                # privileged root helper
+│   ├── npctl/                    # local admin CLI
+│   └── np-installer/             # Go-based installer core (invoked by bootstrap .sh)
 │
-├── internal/                     # core (hpd) private code — NOT importable externally
+├── internal/                     # core (npd) private code — NOT importable externally
 │   ├── bootstrap/                # composition root, DI wiring, lifecycle
 │   ├── config/                   # layered config loader
 │   ├── http/                     # Chi router, middleware, handlers, DTOs
@@ -30,7 +30,7 @@ heropanel/
 │   │   ├── handlers/             # one file per resource
 │   │   └── openapi/              # generated spec + docs UI
 │   ├── ws/                       # realtime hub, channels, auth
-│   ├── grpc/                     # gRPC servers hpd exposes (module callbacks)
+│   ├── grpc/                     # gRPC servers npd exposes (module callbacks)
 │   ├── domain/                   # entities, value objects, errors, INTERFACES
 │   │   ├── site/  domain models + SiteRepository, etc.
 │   │   ├── user/  auth/  dns/  ssl/  mail/  database/  docker/
@@ -38,26 +38,26 @@ heropanel/
 │   ├── service/                  # application/use-case layer (per context)
 │   ├── repository/               # MariaDB (sqlx) implementations of domain repos
 │   │   └── migrations/           # golang-migrate SQL files (NNNN_*.up/down.sql)
-│   ├── broker/                   # BrokerGateway client (hpd → hp-broker)
+│   ├── broker/                   # BrokerGateway client (npd → np-broker)
 │   ├── modclient/                # ModuleRegistry + per-module gRPC clients
 │   ├── job/                      # dispatcher, worker pool, handlers, retry
 │   ├── cache/                    # RedisCache(L2) adapter + Pub/Sub invalidation; composes pkg/cache
 │   ├── events/                   # domain events + audit emitter
 │   └── platform/                 # OS/arch/distro detection, path helpers
 │
-├── broker/                       # hp-broker private code
+├── broker/                       # np-broker private code
 │   ├── capabilities/             # one file per allowlisted privileged op
 │   ├── exec/                     # safe arg-array exec, no shell
 │   ├── audit/                    # broker-side audit chaining
 │   └── policy/                   # capability policy + validation
 │
 ├── modules/                      # each module = its own Go module + binary
-│   ├── docker/                   # hp-mod-docker
+│   ├── docker/                   # np-mod-docker
 │   │   ├── cmd/                  # main()
 │   │   ├── internal/            # module logic
 │   │   ├── module.yaml           # manifest (see doc 06)
 │   │   └── proto/                # module-specific gRPC (if any beyond core contract)
-│   ├── monitor/                  # hp-mod-monitor
+│   ├── monitor/                  # np-mod-monitor
 │   ├── mail/    dns/    backup/    security/    apps/  (one-click templates)
 │   └── _template/                # scaffold for new modules
 │
@@ -80,7 +80,7 @@ heropanel/
 │   │   └── styles/               # Tailwind config, tokens, themes
 │   ├── public/
 │   ├── index.html   vite.config.ts   tailwind.config.ts
-│   └── dist/                     # build output → embedded into hpd via embed.FS
+│   └── dist/                     # build output → embedded into npd via embed.FS
 │
 ├── deploy/
 │   ├── systemd/                  # unit templates (see doc 08)
@@ -105,58 +105,58 @@ heropanel/
 ## 2. Runtime Filesystem Layout (on a managed server, FHS-compliant)
 
 ```
-/opt/heropanel/                         # immutable install root (replaced on upgrade)
+/opt/nexpanel/                         # immutable install root (replaced on upgrade)
 ├── bin/
-│   ├── hpd            hp-broker         hpctl
+│   ├── npd            np-broker         npctl
 ├── modules/
-│   ├── docker/  {hp-mod-docker, module.yaml, assets/}
+│   ├── docker/  {np-mod-docker, module.yaml, assets/}
 │   ├── monitor/ mail/ dns/ backup/ …    # only present if installed
-├── web/                                 # built SPA (or embedded in hpd; served either way)
+├── web/                                 # built SPA (or embedded in npd; served either way)
 └── VERSION                              # channel + semver + signature
 
-/etc/heropanel/                          # configuration (survives upgrades)
-├── config.yaml                          # main config (0640 heropanel:heropanel)
-├── secrets.env                          # DB pw, keys, broker token (0600 heropanel)
+/etc/nexpanel/                          # configuration (survives upgrades)
+├── config.yaml                          # main config (0640 nexpanel:nexpanel)
+├── secrets.env                          # DB pw, keys, broker token (0600 nexpanel)
 ├── modules/<name>.yaml                  # per-module config
 ├── broker/policy.yaml                   # broker capability policy (0600 root)
 └── ssl/                                 # panel's own TLS cert/key
 
-/var/lib/heropanel/                      # mutable state
-├── heropanel.db                         # SQLite (only in SQLite-mode installs)
+/var/lib/nexpanel/                      # mutable state
+├── nexpanel.db                         # SQLite (only in SQLite-mode installs)
 ├── modules/<name>/                      # per-module persistent data
 ├── jobs/                                # job artifacts, temp build outputs
 ├── acme/                                # ACME account + issued cert store
 └── update/                              # staged delta updates, rollback snapshots
 
-/var/log/heropanel/
-├── hpd.log        broker-audit.log      access.log
+/var/log/nexpanel/
+├── npd.log        broker-audit.log      access.log
 ├── jobs/<job-id>.log                    # streamed job logs
 └── modules/<name>.log
 
-/run/heropanel/                          # runtime sockets & pids (tmpfs, 0770)
-├── hpd.sock                             # hpctl ↔ hpd
-├── broker.sock                          # hpd ↔ broker (0600 root:heropanel)
-└── modules/<name>.sock                  # hpd ↔ module
+/run/nexpanel/                          # runtime sockets & pids (tmpfs, 0770)
+├── npd.sock                             # npctl ↔ npd
+├── broker.sock                          # npd ↔ broker (0600 root:nexpanel)
+└── modules/<name>.sock                  # npd ↔ module
 
-/var/backups/heropanel/                  # local backup staging before remote push
+/var/backups/nexpanel/                  # local backup staging before remote push
 
 # ── Hosted sites (per-site isolation, see doc 05) ──────────────────────────
-/srv/heropanel/sites/<site-id>/          # or /home/<sysuser>/ depending on policy
+/srv/nexpanel/sites/<site-id>/          # or /home/<sysuser>/ depending on policy
 ├── public/            # document root (owned by the site's dedicated Linux user)
 ├── logs/              # per-site access/error logs
 ├── tmp/  sessions/    # per-site PHP tmp + session dirs (not shared!)
 ├── ssl/               # per-site cert/key symlinks
-└── .heropanel/        # metadata, deploy state (git sites), NOT web-served
+└── .nexpanel/        # metadata, deploy state (git sites), NOT web-served
 ```
 
 ### Ownership & permissions (summary — full model in [05](05-security-architecture.md))
 | Path | Owner | Mode | Notes |
 |------|-------|------|-------|
-| `/opt/heropanel/bin/hp-broker` | `root:root` | `0750` | setuid **not** used; started as root by systemd |
-| `/run/heropanel/broker.sock` | `root:heropanel` | `0660` | only `heropanel` group may talk to broker |
-| `/etc/heropanel/secrets.env` | `heropanel:heropanel` | `0600` | never world-readable |
-| `/etc/heropanel/broker/policy.yaml` | `root:root` | `0600` | broker reads its own policy |
-| `/srv/heropanel/sites/<id>/` | `<siteuser>:<sitegroup>` | `0750` | isolated per site; panel not in group |
+| `/opt/nexpanel/bin/np-broker` | `root:root` | `0750` | setuid **not** used; started as root by systemd |
+| `/run/nexpanel/broker.sock` | `root:nexpanel` | `0660` | only `nexpanel` group may talk to broker |
+| `/etc/nexpanel/secrets.env` | `nexpanel:nexpanel` | `0600` | never world-readable |
+| `/etc/nexpanel/broker/policy.yaml` | `root:root` | `0600` | broker reads its own policy |
+| `/srv/nexpanel/sites/<id>/` | `<siteuser>:<sitegroup>` | `0750` | isolated per site; panel not in group |
 
 ### Why this split
 - **`/opt` (code)** is atomically swappable on upgrade and can be verified against a signature; nothing user-critical lives there.

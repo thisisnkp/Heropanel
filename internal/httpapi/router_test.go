@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
 )
 
 func testRouter(t *testing.T, mutate func(*config.Config)) http.Handler {

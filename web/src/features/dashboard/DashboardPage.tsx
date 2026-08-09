@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -13,13 +14,15 @@ import {
   Mail,
   MemoryStick,
   Network,
+  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import { api, ApiRequestError, can, type SystemInfo } from "@/lib/api";
-import { Button, Card, SectionHeader, Skeleton, cn, microLabel, PageHeader } from "@/components/ui";
+import { Alert, Badge, Button, Card, SectionHeader, Skeleton, cn, microLabel, PageHeader } from "@/components/ui";
 import { toast } from "@/stores/toast";
 import { useMe } from "@/features/auth/auth";
 import { useNodeMetrics, type DiskUsage } from "@/features/monitor/monitor";
+import { useApplyUpdate, useCheckUpdate, useUpdateStatus } from "./update";
 
 // ── formatting ───────────────────────────────────────────────────────────────
 
@@ -332,8 +335,12 @@ export function DashboardPage() {
       <ResourceCounts />
 
       <div className="space-y-3">
-        <SectionHeader title="Panel integrity" description="The panel's own backups and the key that seals them." />
+        <SectionHeader
+          title="Panel integrity"
+          description="The panel looking after itself: its own updates, backups, and the key that seals them."
+        />
         <div className="grid gap-3 lg:grid-cols-2">
+          <UpdatesCard />
           <PanelBackupsCard />
           <KeyringCard />
         </div>
@@ -345,6 +352,116 @@ export function DashboardPage() {
         </p>
       )}
     </div>
+  );
+}
+
+// Self-update (docs/26). The button replaces the panel's own binaries — the
+// broker included — so it is deliberately two-step: nothing starts until the
+// operator confirms, because the panel will go away for a minute when it does.
+function UpdatesCard() {
+  const { data: me } = useMe();
+  const canRead = can(me, "system.read");
+  const canWrite = can(me, "system.write");
+  const { data, isLoading } = useUpdateStatus();
+  const check = useCheckUpdate();
+  const apply = useApplyUpdate();
+  const [confirming, setConfirming] = useState(false);
+  const [started, setStarted] = useState(false);
+
+  if (!canRead || (isLoading && !data)) return null;
+  if (!data) return null;
+
+  const rolledBack = data.last_state === "rolled_back";
+  const failed = data.last_state === "failed";
+
+  return (
+    <Card className="flex flex-col gap-3 p-4">
+      <div className="flex items-start gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted">
+          <RefreshCw className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-fg">
+            Panel updates
+            <Badge>{data.channel}</Badge>
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            Running <code className="font-mono text-fg">{data.current}</code>.{" "}
+            {!data.configured
+              ? data.reason
+              : data.up_to_date
+                ? data.reason || "This is the newest release on this channel."
+                : `Version ${data.available} is available.`}
+          </p>
+          {data.notes && !data.up_to_date && (
+            <p className="mt-1 text-xs leading-relaxed text-muted">{data.notes}</p>
+          )}
+        </div>
+      </div>
+
+      {/* A rolled-back update is the one thing nobody was watching when it
+          happened — the operator who pressed the button was disconnected by the
+          restart — so it stays on screen until it is superseded. */}
+      {(rolledBack || failed) && (
+        <Alert tone={rolledBack ? "warning" : "danger"}>
+          <span className="font-medium">
+            The last update to {data.last_target} {rolledBack ? "was rolled back" : "failed"}.
+          </span>{" "}
+          {data.last_error || (rolledBack ? "The previous version is running." : "")}
+        </Alert>
+      )}
+
+      {started && (
+        <Alert tone="info">
+          The panel is restarting to apply the update. This page will be unavailable for a minute; reload it after
+          that.
+        </Alert>
+      )}
+
+      {data.configured && canWrite && !started && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={check.isPending}
+            onClick={() => {
+              setConfirming(false);
+              check.mutate();
+            }}
+          >
+            Check now
+          </Button>
+          {!data.up_to_date &&
+            (confirming ? (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  loading={apply.isPending}
+                  onClick={() =>
+                    apply.mutate(data.available, {
+                      onSuccess: () => {
+                        setStarted(true);
+                        toast.info("Update started", "The panel is restarting.");
+                      },
+                      onError: (e) =>
+                        toast.error("Could not start the update", e instanceof ApiRequestError ? e.message : undefined),
+                    })
+                  }
+                >
+                  Yes, update and restart
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" onClick={() => setConfirming(true)}>
+                Update to {data.available}
+              </Button>
+            ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -385,7 +502,7 @@ function KeyringCard() {
             ? data.legacy_key_in_use
               ? "Sealed credentials use the master-derived key (generation 0). Rotate to a wrapped data key so future rotations re-wrap keys instead of re-encrypting every row."
               : `Active data-key generation ${data.active_generation} · ${data.key_count} key(s). New sealed values use it; older values still open under their own generation.`
-            : "Needs the broker's master key (HP_SECRET_KEY) and a datastore."}
+            : "Needs the broker's master key (NP_SECRET_KEY) and a datastore."}
           </p>
         </div>
       </div>
@@ -424,7 +541,7 @@ interface PanelBackupList {
 }
 
 // Panel self-backup: sealed snapshots of the panel's own database. Restore is
-// deliberately out-of-band (`hpd decrypt` + docs) — a panel that needs its
+// deliberately out-of-band (`npd decrypt` + docs) — a panel that needs its
 // database back cannot be trusted to serve that request.
 function PanelBackupsCard() {
   const { data: me } = useMe();
@@ -454,9 +571,9 @@ function PanelBackupsCard() {
           <p className="mt-1 text-xs leading-relaxed text-muted">
             {data.available
               ? latest
-                ? `Last sealed snapshot ${new Date(latest.created_at + "Z").toLocaleString()} · every ${data.policy.interval_hours}h, keeping ${data.policy.keep} · restore via hpd decrypt`
+                ? `Last sealed snapshot ${new Date(latest.created_at + "Z").toLocaleString()} · every ${data.policy.interval_hours}h, keeping ${data.policy.keep} · restore via npd decrypt`
                 : `No snapshot yet — the scheduler takes one every ${data.policy.interval_hours}h.`
-              : "Needs the broker and HP_SECRET_KEY — sealed-at-rest is not optional."}
+              : "Needs the broker and NP_SECRET_KEY — sealed-at-rest is not optional."}
           </p>
         </div>
       </div>

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The Docker capabilities.
@@ -17,7 +17,7 @@ import (
 // Docker is the sharpest privilege in the whole panel: anyone who can reach the
 // daemon socket can run `docker run -v /:/host --privileged` and own the
 // machine. That is *why* these are broker capabilities rather than a module in
-// the `docker` group — putting hpd, the network-facing process, in that group
+// the `docker` group — putting npd, the network-facing process, in that group
 // would make it root-equivalent and quietly retire the privilege separation the
 // rest of the panel is built on. Here the socket stays reachable only by the
 // broker, and every operation is named, validated, policy-gated and audited like
@@ -45,8 +45,8 @@ const dockerPath = "/usr/bin/docker"
 // Labels the panel stamps on everything it creates. `managed` is the ownership
 // boundary; `site` scopes a container to the site that owns it.
 const (
-	LabelManaged = "io.heropanel.managed"
-	LabelSite    = "io.heropanel.site"
+	LabelManaged = "io.nexpanel.managed"
+	LabelSite    = "io.nexpanel.site"
 )
 
 var (
@@ -105,7 +105,7 @@ func dockerFailed(res exec.Result, code, msg string) error {
 //
 // The check is a live inspect rather than a name convention, because a name is
 // something the caller supplies and a label is something the daemon reports. A
-// container called `hp-site1-web` that the panel never created would sail
+// container called `np-site1-web` that the panel never created would sail
 // through a prefix check; it cannot fake the label.
 func requireManaged(c capability.Context, ref string) error {
 	res, err := runDocker(c, 20*time.Second,
@@ -120,7 +120,7 @@ func requireManaged(c capability.Context, ref string) error {
 		// Said plainly: an operator who meant to stop their own container should
 		// learn they named someone else's, not that "something went wrong".
 		return errx.New(errx.KindForbidden, "container_not_managed",
-			"That container was not created by HeroPanel, so the panel will not modify it.")
+			"That container was not created by NexPanel, so the panel will not modify it.")
 	}
 	return nil
 }
@@ -355,7 +355,7 @@ func (ContainerStart) Execute(c capability.Context, raw json.RawMessage) (capabi
 
 // stopGrace is how long a container gets between SIGTERM and SIGKILL.
 //
-// It is docker's own default, and it is deliberately well under hpd's 30s HTTP
+// It is docker's own default, and it is deliberately well under npd's 30s HTTP
 // write timeout. A longer grace looks harmless and is not: a container that
 // ignores SIGTERM — `sleep`, and plenty of real images — then consumes the
 // entire request budget, the connection is closed before the handler answers,

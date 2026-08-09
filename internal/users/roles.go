@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Role and permission catalog management. System roles (admin/reseller/…) are

@@ -5,11 +5,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/pty"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/pty"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // A shell *inside* a container.
@@ -120,7 +120,7 @@ func (b *Broker) containerIsManaged(ctx context.Context, ref string) error {
 	}
 	if strings.TrimSpace(string(out)) != "1" {
 		return errx.New(errx.KindForbidden, "container_not_managed",
-			"That container was not created by HeroPanel, so the panel will not open a shell in it.")
+			"That container was not created by NexPanel, so the panel will not open a shell in it.")
 	}
 	return nil
 }

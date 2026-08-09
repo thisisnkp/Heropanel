@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Per-version OPcache tuning.
@@ -16,9 +16,9 @@ import (
 // PHP_INI_SYSTEM: the FPM master allocates that memory once, at startup, before
 // any pool exists. They cannot be set per site (a pool that tried would pass the
 // config test and change nothing). So the panel owns one version-wide ini
-// (99-heropanel-opcache.ini) and applies it with a **restart**, not a reload,
+// (99-nexpanel-opcache.ini) and applies it with a **restart**, not a reload,
 // for the same reason extensions need one: SIGUSR2 re-reads pool config but does
-// not re-allocate the shared segment. hpd renders the ini text and validates the
+// not re-allocate the shared segment. npd renders the ini text and validates the
 // numbers; the broker writes the pinned path, config-tests, and rolls back.
 
 // PHPWriteOpcache writes the version-wide OPcache ini and restarts FPM.

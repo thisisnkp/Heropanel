@@ -1,4 +1,4 @@
--- HeroPanel app runtimes: a supervised process + reverse-proxy target per site (SQLite).
+-- NexPanel app runtimes: a supervised process + reverse-proxy target per site (SQLite).
 
 CREATE TABLE app_runtimes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

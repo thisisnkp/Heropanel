@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/docker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/docker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Deployer is the slice of the Docker service the Apps module needs. It is an
@@ -104,7 +104,7 @@ func (s *Service) Upstream(ctx context.Context, project string) (string, bool) {
 }
 
 // bindHost is the loopback address every app publishes on and the panel proxies
-// to. Duplicated as a constant here rather than imported from the broker — hpd
+// to. Duplicated as a constant here rather than imported from the broker — npd
 // does not depend on the broker package — but it is the same 127.0.0.1.
 const bindHost = "127.0.0.1"
 
@@ -246,7 +246,7 @@ func (s *Service) Logs(ctx context.Context, project string, tail int) (*docker.L
 	return s.docker.ComposeLogs(ctx, project, tail)
 }
 
-// reProject mirrors the broker's compose project-name rule, so an app name hpd
+// reProject mirrors the broker's compose project-name rule, so an app name npd
 // accepts is one the broker will accept too. Duplicated deliberately: a name
 // rejected only at the broker would surface as an opaque failure rather than a
 // clear "that name is not allowed" here.
@@ -263,7 +263,7 @@ func generateSecret() (string, error) {
 }
 
 // availableMemoryMB reads MemAvailable from /proc/meminfo. It is world-readable,
-// so hpd reads it directly rather than crossing the broker for a number that is
+// so npd reads it directly rather than crossing the broker for a number that is
 // not privileged. Returns 0 when it cannot be read (e.g. not Linux), which the
 // feasibility check treats as "unknown, allow" rather than blocking every
 // deploy on a platform where the file is absent.

@@ -9,7 +9,7 @@ Three surfaces: **REST** (operator/UI/automation), **WebSocket** (realtime), and
 - **Consistent envelope**, consistent errors, consistent pagination.
 - **Idempotency** on unsafe creates via `Idempotency-Key` header.
 - **Async by default** for anything that touches the OS: return `202` + a Job; stream progress over WS.
-- **OpenAPI 3.1** is served at `/api/v1/openapi.json` (unauthenticated — a client needs it to learn how to authenticate). It is **not** a hand-maintained file: [`internal/httpapi/openapi.go`](../internal/httpapi/openapi.go) walks the *live* Chi routing tree, so every path and method in the document is one that is actually mounted, and enriches each operation from the metadata table in [`openapi_routes.go`](../internal/httpapi/openapi_routes.go) (summary, tags, the `requirePermission` scope as `x-required-permission`, request/response schemas). A route that is mounted but undocumented fails the drift test (`TestOpenAPINoUndocumentedRoutes`), which is what keeps the spec honest as the surface grows. The generated document is committed at [`docs/openapi.json`](openapi.json) and regenerated with `HP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden`.
+- **OpenAPI 3.1** is served at `/api/v1/openapi.json` (unauthenticated — a client needs it to learn how to authenticate). It is **not** a hand-maintained file: [`internal/httpapi/openapi.go`](../internal/httpapi/openapi.go) walks the *live* Chi routing tree, so every path and method in the document is one that is actually mounted, and enriches each operation from the metadata table in [`openapi_routes.go`](../internal/httpapi/openapi_routes.go) (summary, tags, the `requirePermission` scope as `x-required-permission`, request/response schemas). A route that is mounted but undocumented fails the drift test (`TestOpenAPINoUndocumentedRoutes`), which is what keeps the spec honest as the surface grows. The generated document is committed at [`docs/openapi.json`](openapi.json) and regenerated with `NP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden`.
   - A dependency-free viewer is served at `/api/docs` ([`docs_assets.go`](../internal/httpapi/docs_assets.go)): it fetches the spec client-side and renders a grouped, filterable, collapsible reference. It ships as same-origin CSS/JS (not inlined) so the strict `default-src 'self'` CSP needs no exception.
 
 ## 2. Response Envelope
@@ -67,7 +67,7 @@ Domain error → HTTP mapping happens **once**, centrally. Raw OS/stderr is neve
 ## 4. Auth
 - **Browser:** login → server-set `HttpOnly; Secure; SameSite=Strict` session cookie **+** short-lived access JWT for API/WS; refresh rotates. CSRF: double-submit token for cookie-auth mutations.
 - **MFA:** if enabled, login returns `401 mfa_required` + `mfa_token`; client posts TOTP/WebAuthn assertion to `/auth/mfa`.
-- **Programmatic:** `Authorization: Bearer hp_live_<key>`; API keys are scoped (see below) and rate-limited independently.
+- **Programmatic:** `Authorization: Bearer np_live_<key>`; API keys are scoped (see below) and rate-limited independently.
 - **Every mutation is authorized against RBAC scopes** and audited.
 
 ## 5. Rate Limiting
@@ -235,8 +235,8 @@ GET   /settings  PATCH /settings
 
 ## 10. Internal gRPC (not public)
 Two contracts (in `pkg/proto/`):
-- **Broker API** (`hpd` → `hp-broker`): typed privileged operations (see [05](05-security-architecture.md)). Bidi streaming for long ops (e.g. cert issuance) that emit progress.
-- **Module API** (`hpd` ↔ `hp-mod-*`): lifecycle (`Handshake`, `Health`, `Configure`, `Shutdown`) + a capability-specific service per module. Server-streaming for logs/stats. Defined in [06](06-plugin-architecture.md).
+- **Broker API** (`npd` → `np-broker`): typed privileged operations (see [05](05-security-architecture.md)). Bidi streaming for long ops (e.g. cert issuance) that emit progress.
+- **Module API** (`npd` ↔ `np-mod-*`): lifecycle (`Handshake`, `Health`, `Configure`, `Shutdown`) + a capability-specific service per module. Server-streaming for logs/stats. Defined in [06](06-plugin-architecture.md).
 
 ## 11. Versioning, Deprecation, Compatibility
 - Additive fields never break clients; removals/renames require a new major path.

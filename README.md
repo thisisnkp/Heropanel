@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⬢ HeroPanel
+# ⬢ NexPanel
 
 **The fastest modern self-hosted hosting control panel.**
 Go core · React UI · modular to the core · low-RAM · multi-arch.
@@ -10,7 +10,7 @@ Go core · React UI · modular to the core · low-RAM · multi-arch.
 ---
 
 > **Status: Phase 0 in progress — plan approved, foundations building.**
-> The architecture & design package is in [`docs/`](docs/README.md). Implemented so far (all tested): shared primitives, the privilege-broker security spine, the `hpd` core (Chi HTTP edge + graceful lifecycle), a two-tier cache (in-process L1 + Redis L2 with an invalidation bus), the data layer (sqlx + hand-rolled migrations, MariaDB/SQLite), **session-based auth + RBAC** (Argon2id, lockout, first-run bootstrap), and a **React + TypeScript + Vite + Tailwind UI** embedded into the single `hpd` binary. Build with `make dist`; run with `./bin/hpd`.
+> The architecture & design package is in [`docs/`](docs/README.md). Implemented so far (all tested): shared primitives, the privilege-broker security spine, the `npd` core (Chi HTTP edge + graceful lifecycle), a two-tier cache (in-process L1 + Redis L2 with an invalidation bus), the data layer (sqlx + hand-rolled migrations, MariaDB/SQLite), **session-based auth + RBAC** (Argon2id, lockout, first-run bootstrap), and a **React + TypeScript + Vite + Tailwind UI** embedded into the single `npd` binary. Build with `make dist`; run with `./bin/npd`.
 
 ## What this is
 A self-hosted control panel designed to compete with hPanel, CyberPanel, aaPanel, Plesk, cPanel, RunCloud, CloudPanel, Coolify, Railway, Vercel, and Dokploy — built primarily in **Go** for a fraction of the RAM of PHP-based panels, with an original, task-oriented React UI.
@@ -27,10 +27,10 @@ A self-hosted control panel designed to compete with hPanel, CyberPanel, aaPanel
 Browser / CLI / API
       │ HTTPS / WSS
       ▼
-   hpd  (control plane, non-root)  ── gRPC ──►  hp-broker (root, tiny, audited) ──► OS
+   npd  (control plane, non-root)  ── gRPC ──►  np-broker (root, tiny, audited) ──► OS
       │  Chi · services · repos · jobs · realtime · module registry
       ├── MariaDB (state)   Redis (cache/queue/pubsub)
-      └── gRPC ──►  hp-mod-* modules (docker, monitor, mail, dns, backup, …)
+      └── gRPC ──►  np-mod-* modules (docker, monitor, mail, dns, backup, …)
 ```
 
 ## Foundational decisions (locked)
@@ -62,7 +62,7 @@ Decision records: [docs/adr/](docs/adr/).
 
 ## Installation (planned)
 ```bash
-curl -fsSL https://get.heropanel.io/install.sh | bash
+curl -fsSL https://get.nexpanel.io/install.sh | bash
 ```
 Auto-detects CPU/arch/OS/RAM/virtualization/firewall/existing services, resolves conflicts, backs up existing configs, and rolls back automatically on failure. See [installer architecture](docs/07-installer-architecture.md).
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 type fakeSites struct{}

@@ -3,7 +3,7 @@ package site
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Log kinds a site keeps.
@@ -42,7 +42,7 @@ func validateLogKind(kind string) error {
 // Logs returns the tail of a site's access or error log.
 //
 // It goes through the broker because the logs belong to the site: the tree is
-// 0750 owned by the site's own Linux user, and hpd runs as the unprivileged
+// 0750 owned by the site's own Linux user, and npd runs as the unprivileged
 // panel user. Reading them directly would mean relaxing exactly the isolation
 // the per-site user exists to enforce.
 func (s *Service) Logs(ctx context.Context, uid, kind string, lines int) (*LogView, error) {

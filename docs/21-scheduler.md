@@ -69,7 +69,7 @@ carries the schedule, `Persistent=true` and its service binding; flag-shaped and
 shell-shaped inputs are refused before any systemctl runs; remove is idempotent;
 logs read the captured file and an unrun job reads as empty.
 
-hpd: `internal/cron` (validation mirroring the broker's, site resolution, and an
+npd: `internal/cron` (validation mirroring the broker's, site resolution, and an
 ownership check so one site's UID can never act on another site's job),
 `repository/cron_repo.go`, six routes under `/sites/{uid}/cron`, and a Cron tab
 on the site page.
@@ -77,7 +77,7 @@ on the site page.
 Live proof: **`deploy/docker/e2e/run-cron.sh`** (in CI). It schedules a job whose
 command is `id -un` — output that *is* the identity it ran as — and asserts the
 timer+service exist on disk with the site user and schedule, `cron.apply` lands
-on the broker's audit chain, run-now executes and **the log reads back `hps1`,
+on the broker's audit chain, run-now executes and **the log reads back `nps1`,
 not root**, a shell-shaped schedule is refused with 400, disable removes the
 timer while the definition survives, and delete removes everything. The one thing
 the harness cannot prove is the timer *firing on its own schedule* — that is

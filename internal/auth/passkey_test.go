@@ -11,9 +11,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/auth/webauthn"
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth/webauthn"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 const (
@@ -31,7 +31,7 @@ func TestPasskeyRegisterAndLogin(t *testing.T) {
 	db := newDB(t)
 	svc := newService(t, db, auth.DefaultConfig()).WithWebAuthn(
 		repository.NewWebAuthnRepository(db),
-		webauthn.New(webauthn.Config{RPID: pkRPID, RPName: "HeroPanel", Origin: pkOrigin}),
+		webauthn.New(webauthn.Config{RPID: pkRPID, RPName: "NexPanel", Origin: pkOrigin}),
 	)
 	seedUser(t, db, "op@example.com", "op", "supersecret1", "admin")
 	if !svc.PasskeysEnabled() {
@@ -84,7 +84,7 @@ func TestPasskeyLoginWithoutCredential(t *testing.T) {
 	db := newDB(t)
 	svc := newService(t, db, auth.DefaultConfig()).WithWebAuthn(
 		repository.NewWebAuthnRepository(db),
-		webauthn.New(webauthn.Config{RPID: pkRPID, RPName: "HeroPanel", Origin: pkOrigin}),
+		webauthn.New(webauthn.Config{RPID: pkRPID, RPName: "NexPanel", Origin: pkOrigin}),
 	)
 	seedUser(t, db, "op@example.com", "op", "supersecret1", "admin")
 	ctx := context.Background()

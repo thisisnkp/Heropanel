@@ -174,7 +174,7 @@ func TestChainResumesFromThePersistedHead(t *testing.T) {
 	repo := &fakeRepo{}
 	first := mustRecord(t, NewService(repo), "before restart")
 
-	// A fresh Service over the same table — as hpd would be after a restart.
+	// A fresh Service over the same table — as npd would be after a restart.
 	revived := NewService(repo)
 	second := mustRecord(t, revived, "after restart")
 
@@ -240,7 +240,7 @@ func TestRecordDefaultsAnonymousActorAndSuccess(t *testing.T) {
 	}
 }
 
-// A nil Service is what a datastore-less hpd holds. It must no-op, not panic.
+// A nil Service is what a datastore-less npd holds. It must no-op, not panic.
 func TestNilServiceRecordsNothingAndDoesNotPanic(t *testing.T) {
 	var s *Service
 	if _, err := s.Record(context.Background(), Record{Action: "a"}); err != nil {

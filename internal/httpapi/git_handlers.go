@@ -6,10 +6,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/job"
 )
 
 // deployPayload is the async job body for git.deploy.
@@ -172,7 +172,7 @@ func gitWebhookHandler(d Deps) http.HandlerFunc {
 		body, _ := io.ReadAll(r.Body)
 		secret := r.URL.Query().Get("secret")
 		if secret == "" {
-			secret = r.Header.Get("X-HeroPanel-Secret")
+			secret = r.Header.Get("X-NexPanel-Secret")
 		}
 		proof := git.WebhookProof{
 			Body:        body,

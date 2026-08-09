@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // PHPPoolStore implements php.PoolRepo over the datastore.

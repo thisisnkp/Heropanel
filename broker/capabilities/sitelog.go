@@ -5,15 +5,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Reading a site's web-server logs.
 //
 // This needs the broker at all because the logs are the site's own: the tree is
-// 0750 owned by the site's dedicated Linux user, and hpd runs unprivileged as
+// 0750 owned by the site's dedicated Linux user, and npd runs unprivileged as
 // the panel user, in none of those groups. It cannot read them, and the fix is
 // emphatically not to loosen the mode — the isolation those 0750s buy is the
 // whole point of a per-site user.

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Automatic security updates (Debian/Ubuntu). Write the panel's
@@ -17,7 +17,7 @@ import (
 
 const (
 	aptConfigPath    = "/usr/bin/apt-config"
-	unattendedDropin = "/etc/apt/apt.conf.d/52heropanel-unattended"
+	unattendedDropin = "/etc/apt/apt.conf.d/52nexpanel-unattended"
 	unattendedBin    = "/usr/bin/unattended-upgrade"
 	updatesMaxConfig = 16 << 10
 

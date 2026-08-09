@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/auth/webauthn"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/pwhash"
+	"github.com/thisisnkp/nexpanel/internal/auth/webauthn"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/pwhash"
 )
 
 // Config tunes auth behavior.
@@ -47,7 +47,7 @@ type Service struct {
 
 // NewService constructs the auth Service. cache may be nil.
 func NewService(users *repository.UserRepository, sessions *repository.SessionRepository, rbac *repository.RBACRepository, cache pcache.Cache, cfg Config) *Service {
-	dummy, _ := pwhash.Hash("heropanel-timing-decoy")
+	dummy, _ := pwhash.Hash("nexpanel-timing-decoy")
 	return &Service{
 		users:     users,
 		sessions:  sessions,

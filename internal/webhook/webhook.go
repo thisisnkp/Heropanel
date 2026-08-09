@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/tenancy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/tenancy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Service manages webhook subscriptions and turns audit entries into deliveries.

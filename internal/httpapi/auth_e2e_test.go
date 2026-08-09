@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 // testUserDir adapts the user repository to httpapi.UserDirectory for the test.
@@ -98,11 +98,11 @@ func getWith(t *testing.T, h http.Handler, path string, cookie *http.Cookie) *ht
 func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "hp_session" && c.Value != "" {
+		if c.Name == "np_session" && c.Value != "" {
 			return c
 		}
 	}
-	t.Fatal("no hp_session cookie set")
+	t.Fatal("no np_session cookie set")
 	return nil
 }
 

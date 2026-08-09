@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 // pgLast returns the last command and its stdin as a string.
@@ -53,7 +53,7 @@ func TestPGUserCreateUsesDOBlockAndEscapesPassword(t *testing.T) {
 		t.Fatalf("pg.user.create: %v", err)
 	}
 	_, stdin := pgLast(fr)
-	if !strings.Contains(stdin, "DO $hp$") || !strings.Contains(stdin, `CREATE ROLE "acme" LOGIN`) {
+	if !strings.Contains(stdin, "DO $np$") || !strings.Contains(stdin, `CREATE ROLE "acme" LOGIN`) {
 		t.Errorf("stdin = %q, want a create-or-update DO block", stdin)
 	}
 	// The single quotes in the password must be doubled, not left to break the literal.

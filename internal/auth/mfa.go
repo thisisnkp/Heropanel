@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/totp"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/totp"
 )
 
 // mfaChallengeTTL bounds how long a pending MFA login stays valid.
@@ -72,7 +72,7 @@ func (s *Service) SetupMFA(ctx context.Context, userID int64) (secret, uri strin
 	if err := s.users.SetTOTP(ctx, userID, secret, false); err != nil {
 		return "", "", err
 	}
-	return secret, totp.ProvisioningURI(secret, u.Email, "HeroPanel"), nil
+	return secret, totp.ProvisioningURI(secret, u.Email, "NexPanel"), nil
 }
 
 // EnableMFA turns on MFA after verifying a code against the pending secret.

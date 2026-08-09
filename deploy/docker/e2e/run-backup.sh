@@ -9,7 +9,7 @@
 # user. Then the three once-deferred legs, all live: the S3 target against a
 # REAL MinIO bucket (the signer is also unit-tested against a recomputing
 # fake), a database dump riding along and restored into a NEW database on a
-# real MariaDB, and the panel's self-backup opened offline with `hpd decrypt`.
+# real MariaDB, and the panel's self-backup opened offline with `npd decrypt`.
 set -u
 sec(){ echo; echo "======== $* ========"; }
 pass(){ echo "PASS: $*"; }
@@ -25,18 +25,18 @@ for i in $(seq 1 40); do mysqladmin ping >/dev/null 2>&1 && break; sleep 0.5; do
 echo "mariadb: $(mysqladmin ping 2>&1)"
 
 sec "start MinIO — a real, independent S3 implementation"
-MINIO_ROOT_USER=hpaccess MINIO_ROOT_PASSWORD=hpsecret12 \
+MINIO_ROOT_USER=npaccess MINIO_ROOT_PASSWORD=npsecret12 \
   minio server /tmp/minio-data --address 127.0.0.1:19000 >/tmp/minio.log 2>&1 &
 for i in $(seq 1 60); do curl -sf http://127.0.0.1:19000/minio/health/live >/dev/null 2>&1 && break; sleep 0.25; done
 curl -sf http://127.0.0.1:19000/minio/health/live >/dev/null && echo "minio: up" || echo "minio: DID NOT START"
 
-sec "start OpenLiteSpeed + hp-broker + hpd (sqlite, sealed backups, s3 configured)"
+sec "start OpenLiteSpeed + np-broker + npd (sqlite, sealed backups, s3 configured)"
 /usr/local/lsws/bin/lswsctrl start 2>&1
 sleep 1
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-export HP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0)
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+export NP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0)
 
 # A REAL SFTP server (openssh) for the SFTP backup target. A dedicated user with
 # key-only auth; the panel dials it with its private key and PINS the host key.
@@ -54,22 +54,22 @@ else
   echo 'Subsystem sftp internal-sftp' >> /etc/ssh/sshd_config
 fi
 mkdir -p /run/sshd && /usr/sbin/sshd 2>/tmp/sshd-bkp.log
-export HP_BACKUP_SFTP_HOST=127.0.0.1
-export HP_BACKUP_SFTP_PORT=22
-export HP_BACKUP_SFTP_USER=bkp
-export HP_BACKUP_SFTP_BASE_PATH=/home/bkp/backups
-export HP_BACKUP_SFTP_PRIVATE_KEY="$(cat /tmp/bkpkey)"
-export HP_BACKUP_SFTP_HOST_KEY="$(cat /etc/ssh/ssh_host_ed25519_key.pub)"
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker-backup.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18477 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp-backup.db \
-  HP_BACKUP_S3_ENDPOINT=http://127.0.0.1:19000 HP_BACKUP_S3_BUCKET=heropanel-e2e \
-  HP_BACKUP_S3_ACCESS_KEY=hpaccess HP_BACKUP_S3_SECRET_KEY=hpsecret12 \
-  HP_BACKUP_SWEEP_INTERVAL_SEC=2 \
-  HP_BACKUP_RCLONE_REMOTE=:local:/tmp/rclone-dest \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd-backup.log 2>&1 &
+export NP_BACKUP_SFTP_HOST=127.0.0.1
+export NP_BACKUP_SFTP_PORT=22
+export NP_BACKUP_SFTP_USER=bkp
+export NP_BACKUP_SFTP_BASE_PATH=/home/bkp/backups
+export NP_BACKUP_SFTP_PRIVATE_KEY="$(cat /tmp/bkpkey)"
+export NP_BACKUP_SFTP_HOST_KEY="$(cat /etc/ssh/ssh_host_ed25519_key.pub)"
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker-backup.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18477 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-backup.db \
+  NP_BACKUP_S3_ENDPOINT=http://127.0.0.1:19000 NP_BACKUP_S3_BUCKET=nexpanel-e2e \
+  NP_BACKUP_S3_ACCESS_KEY=npaccess NP_BACKUP_S3_SECRET_KEY=npsecret12 \
+  NP_BACKUP_SWEEP_INTERVAL_SEC=2 \
+  NP_BACKUP_RCLONE_REMOTE=:local:/tmp/rclone-dest \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd-backup.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -77,7 +77,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/cb.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/cb.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/cb.txt)
 api(){ curl -s -b /tmp/cb.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 code(){ curl -s -o /dev/null -w '%{http_code}' -b /tmp/cb.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 juid(){ python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["uid"])'; }
@@ -86,8 +86,8 @@ sec "create the ORIGINAL site with real content"
 uid=$(api -X POST $base/api/v1/sites -H 'Content-Type: application/json' \
   -d '{"name":"Original","primary_domain":"orig.test","type":"static"}' | juid)
 [ -n "$uid" ] && pass "site created ($uid)" || fail "site create failed"
-echo "v1 content" > /srv/heropanel/sites/1/public/hello.txt
-chown hps1:hps1 /srv/heropanel/sites/1/public/hello.txt
+echo "v1 content" > /srv/nexpanel/sites/1/public/hello.txt
+chown nps1:nps1 /srv/nexpanel/sites/1/public/hello.txt
 
 sec "*** FULL BACKUP: SEALED BEFORE IT TOUCHES STORAGE ***"
 full=$(api -X POST "$base/api/v1/sites/$uid/backups" -H 'Content-Type: application/json' -d '{}')
@@ -97,20 +97,20 @@ echo "$full" | grep -q '"level":"full"' && pass "the first backup is a full" || 
 fsize=$(echo "$full" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["size_bytes"])')
 [ "$fsize" -gt 0 ] && pass "the sealed archive has size ($fsize bytes)" || fail "zero-size backup"
 
-enc="/var/lib/heropanel/backups/$fuid.enc"
+enc="/var/lib/nexpanel/backups/$fuid.enc"
 [ -f "$enc" ] && pass "the sealed archive exists at rest" || fail "no sealed archive on disk"
-[ "$(head -c4 "$enc")" = "HPB1" ] && pass "what is at rest is blobcrypt ciphertext (HPB1 magic)" \
+[ "$(head -c4 "$enc")" = "NPB1" ] && pass "what is at rest is blobcrypt ciphertext (NPB1 magic)" \
   || fail "the at-rest file is not sealed: $(head -c8 "$enc" | xxd | head -1)"
 tar --zstd -tf "$enc" >/dev/null 2>&1 && fail "THE AT-REST ARCHIVE IS READABLE AS TAR — NOT ENCRYPTED" \
   || pass "the at-rest archive is unreadable as tar"
-ls /var/lib/heropanel/backups/*.tar.zst >/dev/null 2>&1 \
+ls /var/lib/nexpanel/backups/*.tar.zst >/dev/null 2>&1 \
   && fail "A PLAINTEXT STAGING ARCHIVE OUTLIVED THE CALL" \
   || pass "no plaintext staging archive remains"
 
 sec "*** INCREMENTAL: ONLY THE CHANGES ***"
-echo "v2 extra" > /srv/heropanel/sites/1/public/extra.txt
-echo "v1 content, edited" > /srv/heropanel/sites/1/public/hello.txt
-chown hps1:hps1 /srv/heropanel/sites/1/public/extra.txt /srv/heropanel/sites/1/public/hello.txt
+echo "v2 extra" > /srv/nexpanel/sites/1/public/extra.txt
+echo "v1 content, edited" > /srv/nexpanel/sites/1/public/hello.txt
+chown nps1:nps1 /srv/nexpanel/sites/1/public/extra.txt /srv/nexpanel/sites/1/public/hello.txt
 incr=$(api -X POST "$base/api/v1/sites/$uid/backups" -H 'Content-Type: application/json' -d '{}')
 echo "$incr"
 iuid=$(echo "$incr" | juid)
@@ -126,18 +126,18 @@ echo "$restored"
 ruid=$(echo "$restored" | juid)
 [ -n "$ruid" ] && pass "restore returned the new site ($ruid)" || fail "restore did not return a site"
 
-rhome=/srv/heropanel/sites/2
+rhome=/srv/nexpanel/sites/2
 grep -q 'v1 content, edited' "$rhome/public/hello.txt" 2>/dev/null \
   && pass "the edited file restored with its LATEST content (incremental applied)" \
   || fail "hello.txt wrong after restore: $(cat "$rhome/public/hello.txt" 2>&1)"
 grep -q 'v2 extra' "$rhome/public/extra.txt" 2>/dev/null \
   && pass "the file added after the full restored (chain replayed in order)" \
   || fail "extra.txt missing after restore"
-[ "$(stat -c %U "$rhome/public/hello.txt")" = "hps2" ] \
-  && pass "restored files belong to the NEW site's user (hps2)" \
-  || fail "restored files owned by $(stat -c %U "$rhome/public/hello.txt"), want hps2"
+[ "$(stat -c %U "$rhome/public/hello.txt")" = "nps2" ] \
+  && pass "restored files belong to the NEW site's user (nps2)" \
+  || fail "restored files owned by $(stat -c %U "$rhome/public/hello.txt"), want nps2"
 # The original is untouched.
-grep -q 'v1 content, edited' /srv/heropanel/sites/1/public/hello.txt \
+grep -q 'v1 content, edited' /srv/nexpanel/sites/1/public/hello.txt \
   && pass "the original site is untouched" || fail "the restore modified the original"
 
 grep -q '"capability":"backup.create","outcome":"success"' /tmp/broker-backup.log \
@@ -154,8 +154,8 @@ echo "$del" | grep -q "$iuid" \
 [ ! -f "$enc" ] && pass "the sealed archives are gone from disk" || fail "sealed archive survived deletion"
 
 sec "*** DATABASE RIDES ALONG: SEALED DUMP + RESTORE INTO A NEW DATABASE ***"
-# The bucket hpd was configured with must already exist (EnsureBucket at boot).
-[ -d /tmp/minio-data/heropanel-e2e ] && pass "hpd created the S3 bucket at boot (idempotent PUT)" \
+# The bucket npd was configured with must already exist (EnsureBucket at boot).
+[ -d /tmp/minio-data/nexpanel-e2e ] && pass "npd created the S3 bucket at boot (idempotent PUT)" \
   || fail "the bucket was not created: $(ls /tmp/minio-data 2>&1)"
 
 dbuid=$(api -X POST $base/api/v1/databases -H 'Content-Type: application/json' -d '{"name":"shopdb"}' | juid)
@@ -169,11 +169,11 @@ echo "$dbb"
 dbbuid=$(echo "$dbb" | juid)
 echo "$dbb" | grep -q '"db_name":"shopdb"' && pass "the backup reports the database it carries" \
   || fail "no db_name on the backup: $dbb"
-dbenc="/var/lib/heropanel/backups/$dbbuid.db.enc"
-[ -f "$dbenc" ] && [ "$(head -c4 "$dbenc")" = "HPB1" ] \
-  && pass "the dump at rest is a second sealed object (HPB1)" \
+dbenc="/var/lib/nexpanel/backups/$dbbuid.db.enc"
+[ -f "$dbenc" ] && [ "$(head -c4 "$dbenc")" = "NPB1" ] \
+  && pass "the dump at rest is a second sealed object (NPB1)" \
   || fail "no sealed dump object at $dbenc"
-ls /var/lib/heropanel/dumps/*.sql* >/dev/null 2>&1 \
+ls /var/lib/nexpanel/dumps/*.sql* >/dev/null 2>&1 \
   && fail "A PLAINTEXT DATABASE DUMP OUTLIVED THE CALL" \
   || pass "no plaintext dump remains"
 
@@ -193,15 +193,15 @@ VO=$(mysql --protocol=socket -N -B shopdb -e "SELECT v FROM t;" 2>&1)
   && pass "the original database is untouched" || fail "original database row = '$VO'"
 
 sec "*** LIVE S3: THE SEALED BACKUP LANDS IN A REAL BUCKET (MinIO) ***"
-grep -q 'backup s3 target configured' /tmp/hpd-backup.log \
-  && pass "hpd configured the s3 target" || fail "s3 target not configured in hpd"
-echo "went to s3" > /srv/heropanel/sites/1/public/s3file.txt
-chown hps1:hps1 /srv/heropanel/sites/1/public/s3file.txt
+grep -q 'backup s3 target configured' /tmp/npd-backup.log \
+  && pass "npd configured the s3 target" || fail "s3 target not configured in npd"
+echo "went to s3" > /srv/nexpanel/sites/1/public/s3file.txt
+chown nps1:nps1 /srv/nexpanel/sites/1/public/s3file.txt
 s3b=$(api -X POST "$base/api/v1/sites/$uid/backups" -H 'Content-Type: application/json' -d '{"target":"s3"}')
 echo "$s3b"
 s3uid=$(echo "$s3b" | juid)
 echo "$s3b" | grep -q '"target":"s3"' && pass "backup went to the s3 target" || fail "backup did not use s3"
-[ ! -f "/var/lib/heropanel/backups/$s3uid.enc" ] \
+[ ! -f "/var/lib/nexpanel/backups/$s3uid.enc" ] \
   && pass "the sealed archive is NOT on local disk" || fail "an s3 backup left a local copy"
 find /tmp/minio-data -name "*$s3uid.enc*" 2>/dev/null | grep -q "$s3uid.enc" \
   && pass "the sealed archive is IN the bucket" || fail "the archive never reached the bucket"
@@ -212,7 +212,7 @@ rs3=$(api -X POST "$base/api/v1/sites/$uid/backups/$s3uid/restore" -H 'Content-T
   -d '{"name":"S3 Restored","primary_domain":"rs3.test"}')
 rs3uid=$(echo "$rs3" | juid)
 [ -n "$rs3uid" ] && pass "restore from the bucket returned a site" || fail "s3 restore failed: $rs3"
-grep -q 'went to s3' /srv/heropanel/sites/4/public/s3file.txt 2>/dev/null \
+grep -q 'went to s3' /srv/nexpanel/sites/4/public/s3file.txt 2>/dev/null \
   && pass "RESTORED FROM THE BUCKET (cross-target chain: local full + s3 incremental)" \
   || fail "s3file.txt missing after s3 restore"
 
@@ -222,10 +222,10 @@ find /tmp/minio-data -name "*$s3uid*" 2>/dev/null | grep -q "$s3uid" \
   || pass "deleting the backup emptied its objects from the bucket"
 
 sec "*** SFTP TARGET: sealed backup lands on a REAL SFTP server, over hand-rolled SFTP ***"
-grep -q 'backup sftp target configured' /tmp/hpd-backup.log \
-  && pass "hpd configured the sftp target" || fail "sftp target not configured in hpd"
-echo "went over sftp" > /srv/heropanel/sites/1/public/sftpfile.txt
-chown hps1:hps1 /srv/heropanel/sites/1/public/sftpfile.txt
+grep -q 'backup sftp target configured' /tmp/npd-backup.log \
+  && pass "npd configured the sftp target" || fail "sftp target not configured in npd"
+echo "went over sftp" > /srv/nexpanel/sites/1/public/sftpfile.txt
+chown nps1:nps1 /srv/nexpanel/sites/1/public/sftpfile.txt
 sfb=$(api -X POST "$base/api/v1/sites/$uid/backups" -H 'Content-Type: application/json' -d '{"target":"sftp"}')
 echo "$sfb"
 sfuid=$(echo "$sfb" | juid)
@@ -233,16 +233,16 @@ echo "$sfb" | grep -q '"target":"sftp"' && pass "the backup used the sftp target
 # On the SFTP server's filesystem, and NOT on local disk (a real off-site copy).
 sfpath=$(find /home/bkp/backups -name "$sfuid.enc" 2>/dev/null | head -1)
 [ -n "$sfpath" ] && pass "the sealed archive landed on the SFTP server (via SFTP write)" || fail "the archive never reached the SFTP server"
-[ ! -f "/var/lib/heropanel/backups/$sfuid.enc" ] \
+[ ! -f "/var/lib/nexpanel/backups/$sfuid.enc" ] \
   && pass "the sealed archive is NOT on local disk (off-site)" || fail "an sftp backup left a local copy"
-head -c4 "$sfpath" 2>/dev/null | grep -q 'HPB1' \
+head -c4 "$sfpath" 2>/dev/null | grep -q 'NPB1' \
   && pass "the object on the SFTP server is blobcrypt ciphertext (unreadable as tar)" || fail "the sftp object is not sealed"
 
 rsf=$(api -X POST "$base/api/v1/sites/$uid/backups/$sfuid/restore" -H 'Content-Type: application/json' \
   -d '{"name":"SFTP Restored","primary_domain":"rsftp.test"}')
 rsfuid=$(echo "$rsf" | juid)
 [ -n "$rsfuid" ] && pass "restore pulled the archive back over SFTP" || fail "sftp restore failed: $rsf"
-grep -rq 'went over sftp' /srv/heropanel/sites/*/public/sftpfile.txt 2>/dev/null \
+grep -rq 'went over sftp' /srv/nexpanel/sites/*/public/sftpfile.txt 2>/dev/null \
   && pass "RESTORED FROM THE SFTP SERVER (sealed archive fetched over SFTP and replayed)" \
   || fail "sftpfile.txt missing after the sftp restore"
 
@@ -252,28 +252,28 @@ find /home/bkp/backups -name "$sfuid.enc" 2>/dev/null | grep -q "$sfuid" \
   || pass "deleting removed the object from the SFTP server (SFTP remove)"
 
 sec "*** RCLONE TARGET: sealed backup streamed to an rclone remote ***"
-grep -q 'backup rclone target configured' /tmp/hpd-backup.log \
-  && pass "hpd configured the rclone target" || fail "rclone target not configured in hpd"
-echo "went via rclone" > /srv/heropanel/sites/1/public/rclonefile.txt
-chown hps1:hps1 /srv/heropanel/sites/1/public/rclonefile.txt
+grep -q 'backup rclone target configured' /tmp/npd-backup.log \
+  && pass "npd configured the rclone target" || fail "rclone target not configured in npd"
+echo "went via rclone" > /srv/nexpanel/sites/1/public/rclonefile.txt
+chown nps1:nps1 /srv/nexpanel/sites/1/public/rclonefile.txt
 rcb=$(api -X POST "$base/api/v1/sites/$uid/backups" -H 'Content-Type: application/json' -d '{"target":"rclone"}')
 echo "$rcb"
 rcuid=$(echo "$rcb" | juid)
 echo "$rcb" | grep -q '"target":"rclone"' && pass "the backup used the rclone target" || fail "backup did not use rclone: $rcb"
 # It streamed to the rclone remote (a :local: backend at /tmp/rclone-dest) and
-# NOT to hpd's local backup dir.
+# NOT to npd's local backup dir.
 rcpath=$(find /tmp/rclone-dest -name "$rcuid.enc" 2>/dev/null | head -1)
 [ -n "$rcpath" ] && pass "the sealed archive landed on the rclone remote (via rclone rcat)" || fail "the archive never reached the rclone remote"
-[ ! -f "/var/lib/heropanel/backups/$rcuid.enc" ] \
-  && pass "the sealed archive is NOT on hpd's local disk (off-site via rclone)" || fail "an rclone backup left a local copy"
-head -c4 "$rcpath" 2>/dev/null | grep -q 'HPB1' \
+[ ! -f "/var/lib/nexpanel/backups/$rcuid.enc" ] \
+  && pass "the sealed archive is NOT on npd's local disk (off-site via rclone)" || fail "an rclone backup left a local copy"
+head -c4 "$rcpath" 2>/dev/null | grep -q 'NPB1' \
   && pass "the object on the rclone remote is blobcrypt ciphertext" || fail "the rclone object is not sealed"
 
 rrc=$(api -X POST "$base/api/v1/sites/$uid/backups/$rcuid/restore" -H 'Content-Type: application/json' \
   -d '{"name":"Rclone Restored","primary_domain":"rrc.test"}')
 rrcuid=$(echo "$rrc" | juid)
 [ -n "$rrcuid" ] && pass "restore pulled the archive back via rclone" || fail "rclone restore failed: $rrc"
-grep -rq 'went via rclone' /srv/heropanel/sites/*/public/rclonefile.txt 2>/dev/null \
+grep -rq 'went via rclone' /srv/nexpanel/sites/*/public/rclonefile.txt 2>/dev/null \
   && pass "RESTORED FROM THE RCLONE REMOTE (sealed archive fetched via rclone cat and replayed)" \
   || fail "rclonefile.txt missing after the rclone restore"
 
@@ -282,18 +282,18 @@ find /tmp/rclone-dest -name "$rcuid.enc" 2>/dev/null | grep -q "$rcuid" \
   && fail "deleting the backup left the object on the rclone remote" \
   || pass "deleting removed the object from the rclone remote (rclone deletefile)"
 
-sec "*** PANEL SELF-BACKUP: SEALED SNAPSHOT, OPENED OFFLINE WITH hpd decrypt ***"
+sec "*** PANEL SELF-BACKUP: SEALED SNAPSHOT, OPENED OFFLINE WITH npd decrypt ***"
 pb=$(api -X POST $base/api/v1/system/backups -H 'Content-Type: application/json' -d '{}')
 echo "$pb"
 puid=$(echo "$pb" | juid)
-penc="/var/lib/heropanel/backups/$puid.enc"
-[ -f "$penc" ] && [ "$(head -c4 "$penc")" = "HPB1" ] \
+penc="/var/lib/nexpanel/backups/$puid.enc"
+[ -f "$penc" ] && [ "$(head -c4 "$penc")" = "NPB1" ] \
   && pass "the panel snapshot at rest is ciphertext" || fail "no sealed panel snapshot at $penc"
 api $base/api/v1/system/backups | grep -q "$puid" && pass "the snapshot is listed" || fail "snapshot missing from list"
 
 # Recovery needs nothing but the binary and the master key — no config, no DB.
-hpd decrypt "$penc" /tmp/panel.tar.gz \
-  && pass "hpd decrypt opened the snapshot offline" || fail "hpd decrypt failed"
+npd decrypt "$penc" /tmp/panel.tar.gz \
+  && pass "npd decrypt opened the snapshot offline" || fail "npd decrypt failed"
 mkdir -p /tmp/panelx && tar -xzf /tmp/panel.tar.gz -C /tmp/panelx 2>/dev/null
 [ -f /tmp/panelx/panel.db ] && [ -f /tmp/panelx/manifest.json ] \
   && pass "the snapshot is a tarball with the panel DB + manifest" \
@@ -304,7 +304,7 @@ grep -qa 'orig.test' /tmp/panelx/panel.db \
   && pass "THE SNAPSHOT HOLDS THE PANEL'S OWN DATA (the site row is in it)" \
   || fail "the panel DB copy does not contain the site row"
 
-HP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0) hpd decrypt "$penc" /tmp/nope.bin 2>/dev/null \
+NP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0) npd decrypt "$penc" /tmp/nope.bin 2>/dev/null \
   && fail "A WRONG KEY DECRYPTED THE SNAPSHOT" \
   || pass "a wrong key is refused"
 [ ! -f /tmp/nope.bin ] && pass "nothing was written on the failed decrypt" || fail "a half-decrypt was left behind"
@@ -315,7 +315,7 @@ api -X DELETE "$base/api/v1/system/backups/$puid" >/dev/null
 sec "*** THE SCHEDULE ACTUALLY FIRES: A BACKUP APPEARS WITH NO API CALL ***"
 # A schedule that is stored but never runs is the worst kind of backup — one
 # you believe you have. Prove the timer fires: a fresh site with an enabled
-# policy and NO prior backup is due, and hpd's in-process sweeper (running on a
+# policy and NO prior backup is due, and npd's in-process sweeper (running on a
 # 2s tick here) must produce a backup without anyone POSTing to /backups.
 suid=$(api -X POST $base/api/v1/sites -H 'Content-Type: application/json' \
   -d '{"name":"Scheduled","primary_domain":"sched.test","type":"static"}' | juid)
@@ -331,11 +331,11 @@ for i in $(seq 1 30); do
 done
 [ -n "$fired" ] && pass "the SCHEDULER autonomously produced a backup (no API call made)" \
   || fail "the schedule never fired a backup"
-grep -q '"msg":"scheduled backup completed"' /tmp/hpd-backup.log 2>/dev/null \
-  || grep -q 'scheduled backup completed' /tmp/hpd-backup.log 2>/dev/null \
-  && pass "hpd logged the scheduled backup as completed" || fail "no scheduled-backup log line"
+grep -q '"msg":"scheduled backup completed"' /tmp/npd-backup.log 2>/dev/null \
+  || grep -q 'scheduled backup completed' /tmp/npd-backup.log 2>/dev/null \
+  && pass "npd logged the scheduled backup as completed" || fail "no scheduled-backup log line"
 
 sec "cleanup"
-pkill -f 'hpd' 2>/dev/null; pkill -f 'hp-broker' 2>/dev/null; pkill -f 'minio' 2>/dev/null; true
+pkill -f 'npd' 2>/dev/null; pkill -f 'np-broker' 2>/dev/null; pkill -f 'minio' 2>/dev/null; true
 
 if [ "$FAILED" = "0" ]; then echo "run-backup.sh : PASS"; else echo "run-backup.sh : FAIL"; fi

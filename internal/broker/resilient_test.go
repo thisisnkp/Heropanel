@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeGateway is a controllable Gateway for the resilience tests.

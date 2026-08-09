@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 // updates.configure writes the drop-in, validates it with `apt-config dump`, and
@@ -27,7 +27,7 @@ func TestUpdatesConfigureWritesAndEnables(t *testing.T) {
 	if res.Data["configured"] != true {
 		t.Error("configure did not report success")
 	}
-	if got, _ := fs.Written("/etc/apt/apt.conf.d/52heropanel-unattended"); !strings.Contains(got, "Unattended-Upgrade") {
+	if got, _ := fs.Written("/etc/apt/apt.conf.d/52nexpanel-unattended"); !strings.Contains(got, "Unattended-Upgrade") {
 		t.Errorf("drop-in not written: %q", got)
 	}
 	var validated bool
@@ -65,7 +65,7 @@ func TestUpdatesConfigureRollsBackOnBadConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("a config apt rejected reported success")
 	}
-	if _, ok := fs.Written("/etc/apt/apt.conf.d/52heropanel-unattended"); ok {
+	if _, ok := fs.Written("/etc/apt/apt.conf.d/52nexpanel-unattended"); ok {
 		t.Error("the rejected drop-in was left on disk")
 	}
 }
@@ -90,7 +90,7 @@ func TestUpdatesConfigureDNFAutomatic(t *testing.T) {
 	if got, _ := fs.Written("/etc/dnf/automatic.conf"); !strings.Contains(got, "apply_updates = yes") {
 		t.Errorf("dnf-automatic.conf not written: %q", got)
 	}
-	if _, ok := fs.Written("/etc/apt/apt.conf.d/52heropanel-unattended"); ok {
+	if _, ok := fs.Written("/etc/apt/apt.conf.d/52nexpanel-unattended"); ok {
 		t.Error("apt drop-in written on a RHEL host")
 	}
 	var enabledTimer bool

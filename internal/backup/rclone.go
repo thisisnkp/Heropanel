@@ -14,10 +14,10 @@ import (
 // OneDrive, Backblaze, …) without the panel implementing any of their APIs or
 // OAuth flows. The operator configures the remote once with `rclone config`;
 // the panel just streams its already-sealed blobs to it. rclone is a local CLI
-// hpd execs directly (like the local/S3/SFTP targets, no broker is involved —
+// npd execs directly (like the local/S3/SFTP targets, no broker is involved —
 // there is no privilege to cross, only the operator's own rclone config and the
 // network). This is the lean way to reach consumer drives: one external tool,
-// no OAuth code and no provider SDKs in hpd.
+// no OAuth code and no provider SDKs in npd.
 
 const (
 	rcloneSessionTO = 30 * time.Minute
@@ -28,7 +28,7 @@ type RcloneConfig struct {
 	Bin    string // rclone binary (default "rclone")
 	Config string // path to rclone.conf ("" = rclone's default)
 	// Remote is the operator's configured destination, base path included,
-	// e.g. "gdrive:heropanel-backups" or ":local:/srv/backups".
+	// e.g. "gdrive:nexpanel-backups" or ":local:/srv/backups".
 	Remote string
 }
 

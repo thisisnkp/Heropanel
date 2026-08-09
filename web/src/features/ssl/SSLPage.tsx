@@ -136,7 +136,7 @@ function IssueModal({ onClose }: { onClose: () => void }) {
             </Field>
             {method === "http" && (
               <Field label="Webroot" hint="the site's public directory">
-                <Input value={webroot} onChange={(e) => setWebroot(e.target.value)} placeholder="/srv/heropanel/sites/1/public" />
+                <Input value={webroot} onChange={(e) => setWebroot(e.target.value)} placeholder="/srv/nexpanel/sites/1/public" />
               </Field>
             )}
           </>

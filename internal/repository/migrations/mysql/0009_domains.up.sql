@@ -1,4 +1,4 @@
--- HeroPanel domain management: redirects + force-HTTPS semantics (MariaDB).
+-- NexPanel domain management: redirects + force-HTTPS semantics (MariaDB).
 
 ALTER TABLE domains ADD COLUMN redirect_to VARCHAR(512) NOT NULL DEFAULT '';
 ALTER TABLE domains ADD COLUMN redirect_code INT NOT NULL DEFAULT 301;

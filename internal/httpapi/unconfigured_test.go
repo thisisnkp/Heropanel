@@ -12,7 +12,7 @@ import (
 // group is unmounted. It must still answer the three routes the login screen
 // calls — otherwise the operator is told "the requested resource was not found"
 // when the real problem is that no database is configured. This regressed once
-// and is the first thing a fresh `hpd` run hits, so it is pinned here.
+// and is the first thing a fresh `npd` run hits, so it is pinned here.
 
 func newUnconfiguredRouter() http.Handler {
 	// Deps with no Auth (and no DB) is exactly what bootstrap builds when the
@@ -60,7 +60,7 @@ func TestUnconfiguredLoginExplainsTheRealProblem(t *testing.T) {
 			t.Errorf("%s body = %s, want the datastore_not_configured code", path, body)
 		}
 		// The message has to name the fix, not just the symptom.
-		if !strings.Contains(body, "HP_DATABASE_DSN") && !strings.Contains(body, "database.dsn") {
+		if !strings.Contains(body, "NP_DATABASE_DSN") && !strings.Contains(body, "database.dsn") {
 			t.Errorf("%s message should name the setting to change; got %s", path, body)
 		}
 	}

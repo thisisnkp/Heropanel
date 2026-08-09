@@ -1,4 +1,4 @@
--- HeroPanel PHP module: per-site PHP-FPM pools (MariaDB).
+-- NexPanel PHP module: per-site PHP-FPM pools (MariaDB).
 CREATE TABLE php_pools (
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     site_id         BIGINT UNSIGNED NOT NULL,

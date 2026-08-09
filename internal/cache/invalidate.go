@@ -8,11 +8,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 // invalidateChannel is the Redis Pub/Sub channel carrying L1 invalidations.
-const invalidateChannel = "hp:cache:invalidate"
+const invalidateChannel = "np:cache:invalidate"
 
 // invalMsg is published when keys are written or deleted, telling other
 // processes to drop those keys from their in-process L1.

@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/mail"
 )
 
 // The mail HTTP edge. Mail is its own resource (mail.read / mail.write): a

@@ -16,6 +16,10 @@ export type CatalogEntry = {
   verify_error?: string;
   installed: boolean;
   state?: string;
+  /** What this panel has, where `version` is what the catalog offers. */
+  installed_version?: string;
+  /** Only true when Update would actually succeed: verified, same publisher, strictly newer. */
+  update_available?: boolean;
 };
 
 export type Catalog = {
@@ -38,6 +42,14 @@ export function useInstallModule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) => api.post(`/marketplace/modules/${slug}/install`, {}),
+    onSuccess: () => invalidate(qc),
+  });
+}
+
+export function useUpdateModule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => api.post(`/marketplace/modules/${slug}/update`, {}),
     onSuccess: () => invalidate(qc),
   });
 }

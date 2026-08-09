@@ -1,7 +1,7 @@
 // Package terminal is the in-core web terminal: it gives an operator an
 // interactive shell on a site, running as that site's Linux user.
 //
-// hpd cannot start such a shell itself — it is unprivileged and cannot become
+// npd cannot start such a shell itself — it is unprivileged and cannot become
 // another user — so the session is opened by the root broker over an upgraded
 // (streaming) broker connection, and this package is the bridge between that
 // stream and the browser's WebSocket. It holds no privilege of its own; what it
@@ -12,8 +12,8 @@ package terminal
 import (
 	"context"
 
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Capability is the broker capability that opens an interactive session.

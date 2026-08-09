@@ -1,4 +1,4 @@
-// Frontend performance budget. The panel is embedded in hpd and served on first
+// Frontend performance budget. The panel is embedded in npd and served on first
 // paint, so the eager entry bundle — the JavaScript every visitor downloads
 // before anything renders — is the number that governs perceived load. Route
 // pages, the code editor, and the terminal are code-split and excluded; they

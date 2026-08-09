@@ -50,18 +50,18 @@ func Plan(p Profile, o Options) []Step {
 	}
 	add("deps.redis", "Install Redis", "pkg")
 
-	add("user", "Create the heropanel system user and group", "user")
+	add("user", "Create the nexpanel system user and group", "user")
 	add("dirs", "Create /opt, /etc, /var, /run directories with correct modes", "dir")
-	add("binaries", "Install hpd, hp-broker, and hpctl", "binaries")
+	add("binaries", "Install npd, np-broker, and npctl", "binaries")
 	add("secrets", "Generate secrets (DB password, JWT key, broker token, master key)", "config")
-	add("config", "Write /etc/heropanel/config.yaml", "config")
+	add("config", "Write /etc/nexpanel/config.yaml", "config")
 
 	if o.DB == "mariadb" {
 		add("db.provision", "Create the panel database and user", "db")
 	}
 	add("db.migrate", "Run database migrations", "db")
 
-	add("services", "Install and start hardened systemd units (broker, hpd)", "service")
+	add("services", "Install and start hardened systemd units (broker, npd)", "service")
 	if !o.NoWebServer {
 		add("webserver.panel", "Configure OpenLiteSpeed to serve the panel", "webserver")
 	}
@@ -71,7 +71,7 @@ func Plan(p Profile, o Options) []Step {
 		add("module."+m, "Install module "+m, "service")
 	}
 
-	add("verify", "Health-check hpd and the broker; confirm the panel is reachable", "verify")
+	add("verify", "Health-check npd and the broker; confirm the panel is reachable", "verify")
 	return steps
 }
 

@@ -5,7 +5,7 @@ needs day to day: **size**, **export**, **import**, and a one-click hand-off to
 Adminer/phpMyAdmin.
 
 State lives in the control-plane datastore; every statement runs as root through
-`hp-broker`, which authenticates to MariaDB over the local socket (`unix_socket`
+`np-broker`, which authenticates to MariaDB over the local socket (`unix_socket`
 auth), so no database password ever exists for the panel to store or leak.
 
 Implemented in [internal/database](../internal/database), with capabilities in
@@ -37,14 +37,14 @@ Implemented in [internal/database](../internal/database), with capabilities in
   against `allowedPrivileges`; string values (passwords) go through
   `escapeSQLString`.
 - **`REVOKE` is not `REVOKE IF EXISTS`.** That spelling is MySQL 8.0.16+ syntax
-  and MariaDB — the engine HeroPanel targets — rejects it outright. The plain
+  and MariaDB — the engine NexPanel targets — rejects it outright. The plain
   statement runs instead and MariaDB's `ER_NONEXISTING_GRANT` (1141) is forgiven:
   the caller asked for an end state that already holds, and failing there would
   break `revoke` in exactly the case where access is already gone.
 
 ## 3. Export and import
 
-Dumps live in `/var/lib/heropanel/dumps` (`DumpDir`), owned by the **panel user**
+Dumps live in `/var/lib/nexpanel/dumps` (`DumpDir`), owned by the **panel user**
 and `0700`.
 
 Neither direction passes through the broker. The broker's transport is
@@ -53,32 +53,32 @@ be buffered whole and base64'd across it. Instead:
 
 - **Export** — `mysqldump --result-file=<path>` writes straight to a file, `gzip`
   compresses it as a separate step (no shell, no pipe), and the result is chmod
-  `0600` + chown'd to the panel user. hpd then streams the file and deletes it,
+  `0600` + chown'd to the panel user. npd then streams the file and deletes it,
   however the request ends. The `0600` is the point, not a detail: `mysqldump`
   creates its output under root's umask (`0644`), which would leave one customer's
   entire database readable by every other site user on the box.
   `--single-transaction` keeps the dump from locking a live site out.
-- **Import** — hpd streams the upload to a staging file (never buffering it), then
+- **Import** — npd streams the upload to a staging file (never buffering it), then
   the broker decompresses if needed and feeds it to the client with
   `SOURCE <path>`. The path is derived from a validated bare filename
   (`reDumpFile`: no slashes, no `..`), so nothing a caller sends can point `SOURCE`
   outside `DumpDir`. The staged file is removed either way — a customer's data
   must not be left lying around.
 
-The dump directory belongs to the panel user rather than root because **hpd has
+The dump directory belongs to the panel user rather than root because **npd has
 to traverse it** to stream an export back out; a `0700` root directory would lock
 the panel out of its own export.
 
-The panel user's name is broker **policy** (`PanelUser`, default `heropanel`),
+The panel user's name is broker **policy** (`PanelUser`, default `nexpanel`),
 not a constant: the account name is a deployment fact — a packager may install
-under a different name, and a test harness runs hpd as root.
+under a different name, and a test harness runs npd as root.
 
 **Export requires `database.write`**, not `database.read`: it takes a full copy of
 the data off the server.
 
 ## 4. Adminer / phpMyAdmin hand-off
 
-**HeroPanel does not store database user passwords.**
+**NexPanel does not store database user passwords.**
 
 It could. There is a perfectly good cipher in [pkg/secrets](../pkg/secrets), and
 most panels do exactly this. But then one panel compromise hands over every
@@ -87,7 +87,7 @@ which ones were used.
 
 So a hand-off **mints a throwaway account** instead:
 
-1. `POST /databases/{uid}/adminer-sso` creates `hpsso_<random>` with a random
+1. `POST /databases/{uid}/adminer-sso` creates `npsso_<random>` with a random
    password, granted on **exactly one** database.
 2. The credentials are returned once, for the browser to POST at Adminer's login
    form (`auth[driver|server|username|password|db]`). They are never persisted.
@@ -98,7 +98,7 @@ The cost is a little machinery; the benefit is that a session's blast radius is
 one database for fifteen minutes, and it is revocable and auditable.
 
 Two guards worth naming:
-- The sweeper **only ever drops accounts prefixed `hpsso_`**, even if a row names
+- The sweeper **only ever drops accounts prefixed `npsso_`**, even if a row names
   something else. It deletes MariaDB users; it must never become a weapon.
 - A drop that fails **leaves the row behind** so the next sweep retries. Deleting
   the row would strand a live account with nothing tracking it.

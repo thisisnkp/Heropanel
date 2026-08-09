@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Job is the API view of a scheduled job.

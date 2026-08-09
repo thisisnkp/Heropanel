@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeBroker records every Invoke and replies from a per-capability queue of
@@ -50,7 +50,7 @@ func (s fakeSites) Resolve(_ context.Context, _ string) (*SiteRef, error) {
 }
 
 func baremetalRef() *SiteRef {
-	return &SiteRef{ID: 1, UID: "site1", LinuxUser: "hps1", HomeDir: "/srv/heropanel/sites/1", DeployMode: "baremetal"}
+	return &SiteRef{ID: 1, UID: "site1", LinuxUser: "nps1", HomeDir: "/srv/nexpanel/sites/1", DeployMode: "baremetal"}
 }
 
 func b64(s string) any { return base64.StdEncoding.EncodeToString([]byte(s)) }
@@ -112,7 +112,7 @@ func TestUploadAndExtractStagesExtractsThenRemoves(t *testing.T) {
 		t.Fatalf("call sequence = %v, want mkdir → write → extract → remove", seq)
 	}
 	// The staged archive is under an unpredictable temp name in the destination.
-	if !strings.HasPrefix(stagedArchive, "dest/.hp-upload-") || !strings.HasSuffix(stagedArchive, ".tar.gz") {
+	if !strings.HasPrefix(stagedArchive, "dest/.np-upload-") || !strings.HasSuffix(stagedArchive, ".tar.gz") {
 		t.Errorf("staged archive = %q, want a temp name in dest", stagedArchive)
 	}
 }
@@ -143,7 +143,7 @@ func contains(ss []string, want string) bool {
 func TestListSendsRootPathUsername(t *testing.T) {
 	br := &fakeBroker{replies: map[string][]map[string]any{
 		"file.list": {{
-			"path": "/srv/heropanel/sites/1/pub",
+			"path": "/srv/nexpanel/sites/1/pub",
 			"entries": []any{
 				map[string]any{"name": "index.php", "kind": "file", "size": float64(42), "mode": "644", "mtime": float64(1700000000)},
 				map[string]any{"name": "css", "kind": "dir", "size": float64(0), "mode": "755", "mtime": float64(1700000001)},
@@ -159,10 +159,10 @@ func TestListSendsRootPathUsername(t *testing.T) {
 		t.Fatalf("calls = %v", br.calls)
 	}
 	in := br.calls[0].input
-	if in["root"] != "/srv/heropanel/sites/1" || in["path"] != "pub" || in["username"] != "hps1" {
+	if in["root"] != "/srv/nexpanel/sites/1" || in["path"] != "pub" || in["username"] != "nps1" {
 		t.Errorf("payload = %v, want root/path/username of the resolved site", in)
 	}
-	if out.Path != "/srv/heropanel/sites/1/pub" || len(out.Entries) != 2 {
+	if out.Path != "/srv/nexpanel/sites/1/pub" || len(out.Entries) != 2 {
 		t.Fatalf("listing = %+v", out)
 	}
 	// float64 (JSON) sizes/mtimes are converted to int64.
@@ -181,7 +181,7 @@ func TestRenamePayload(t *testing.T) {
 		t.Fatalf("rename: %v", err)
 	}
 	in := br.calls[0].input
-	if br.calls[0].capability != "file.rename" || in["from"] != "a.txt" || in["to"] != "b.txt" || in["username"] != "hps1" {
+	if br.calls[0].capability != "file.rename" || in["from"] != "a.txt" || in["to"] != "b.txt" || in["username"] != "nps1" {
 		t.Errorf("rename payload = %v", in)
 	}
 }
@@ -235,7 +235,7 @@ func TestFixOwnershipSendsOnlyTheSiteUser(t *testing.T) {
 		t.Fatalf("chown: %v", err)
 	}
 	in := br.calls[0].input
-	if br.calls[0].capability != "file.chown" || in["username"] != "hps1" || in["path"] != "public" {
+	if br.calls[0].capability != "file.chown" || in["username"] != "nps1" || in["path"] != "public" {
 		t.Errorf("chown payload = %v", in)
 	}
 	if _, hasOwner := in["owner"]; hasOwner {
@@ -246,7 +246,7 @@ func TestFixOwnershipSendsOnlyTheSiteUser(t *testing.T) {
 func TestSearchParsesResults(t *testing.T) {
 	br := &fakeBroker{replies: map[string][]map[string]any{
 		"file.search": {{
-			"path":      "/srv/heropanel/sites/1",
+			"path":      "/srv/nexpanel/sites/1",
 			"truncated": true,
 			"entries": []any{
 				map[string]any{"name": "config.php", "path": "app/config.php", "kind": "file", "size": float64(120)},
@@ -416,7 +416,7 @@ func listingReply(names ...string) map[string]any {
 	for _, n := range names {
 		entries = append(entries, map[string]any{"name": n, "kind": "file"})
 	}
-	return map[string]any{"path": "/srv/heropanel/sites/1", "entries": entries}
+	return map[string]any{"path": "/srv/nexpanel/sites/1", "entries": entries}
 }
 
 func TestCopySendsConfinedPayloadWhenDestinationIsFree(t *testing.T) {
@@ -439,7 +439,7 @@ func TestCopySendsConfinedPayloadWhenDestinationIsFree(t *testing.T) {
 	if last.input["from"] != "public/logo.png" || last.input["to"] != "backup/logo.png" {
 		t.Errorf("payload = %v, want the requested from/to", last.input)
 	}
-	if last.input["username"] != "hps1" || last.input["root"] != "/srv/heropanel/sites/1" {
+	if last.input["username"] != "nps1" || last.input["root"] != "/srv/nexpanel/sites/1" {
 		t.Errorf("payload must carry the site's user and root; got %v", last.input)
 	}
 }

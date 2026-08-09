@@ -4,19 +4,19 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // WAF: write the pinned ModSecurity rules file the OpenLiteSpeed vhosts
-// reference when a site's web application firewall is on. hpd renders the
+// reference when a site's web application firewall is on. npd renders the
 // content (base config + the OWASP CRS includes + SecRuleEngine On); the broker
 // writes only the one pinned path. The WAF module and the CRS rule files
 // themselves are installed on the host out of band (package/installer) — this
 // capability composes them into the file the vhost loads.
 
 const (
-	wafDir       = "/etc/heropanel/waf"
+	wafDir       = "/etc/nexpanel/waf"
 	wafMainConf  = wafDir + "/main.conf"
 	wafMaxConfig = 64 << 10
 )

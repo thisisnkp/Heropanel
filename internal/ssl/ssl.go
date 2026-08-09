@@ -1,5 +1,5 @@
 // Package ssl issues and installs TLS certificates for hosted sites:
-// self-signed (immediate), custom upload, and Let's Encrypt via ACME. hpd
+// self-signed (immediate), custom upload, and Let's Encrypt via ACME. npd
 // obtains the material; the broker writes it to disk and (for ACME HTTP-01) the
 // challenge to the site webroot. See docs/03 §6.
 package ssl
@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Providers.
@@ -89,7 +89,7 @@ type ACMEDNS interface {
 		setTXT func(fqdn, value string) error, deleteTXT func(fqdn string) error) (certPEM, keyPEM string, notAfter time.Time, err error)
 }
 
-// DNSProvider publishes ACME DNS-01 challenge records into a zone HeroPanel is
+// DNSProvider publishes ACME DNS-01 challenge records into a zone NexPanel is
 // authoritative for. Implemented by an adapter over internal/dns.
 type DNSProvider interface {
 	SetTXT(ctx context.Context, fqdn, value string) error
@@ -217,7 +217,7 @@ func providerName(provider string) string {
 }
 
 // IssueDNS obtains a Let's Encrypt certificate via ACME DNS-01, publishing the
-// challenge into a zone HeroPanel is authoritative for. This is the path for
+// challenge into a zone NexPanel is authoritative for. This is the path for
 // **wildcard** certificates ("*.example.com"), which HTTP-01 cannot issue.
 func (s *Service) IssueDNS(ctx context.Context, ownerID int64, domain, provider string) (*Cert, error) {
 	domain = normalizeDomain(domain)
@@ -232,7 +232,7 @@ func (s *Service) IssueDNS(ctx context.Context, ownerID int64, domain, provider 
 	}
 	if s.dns == nil {
 		return nil, errx.New(errx.KindUnavailable, "dns_unavailable",
-			"DNS-01 needs a zone HeroPanel is authoritative for; the DNS module is not configured.")
+			"DNS-01 needs a zone NexPanel is authoritative for; the DNS module is not configured.")
 	}
 	if err := s.requireBroker(); err != nil {
 		return nil, err

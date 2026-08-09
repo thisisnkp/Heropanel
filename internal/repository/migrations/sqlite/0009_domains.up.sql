@@ -1,4 +1,4 @@
--- HeroPanel domain management: redirects + force-HTTPS semantics (SQLite).
+-- NexPanel domain management: redirects + force-HTTPS semantics (SQLite).
 
 ALTER TABLE domains ADD COLUMN redirect_to TEXT NOT NULL DEFAULT '';
 ALTER TABLE domains ADD COLUMN redirect_code INTEGER NOT NULL DEFAULT 301;

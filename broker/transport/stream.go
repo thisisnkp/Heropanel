@@ -8,10 +8,10 @@ import (
 	"net"
 	"sync"
 
-	"github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/pty"
-	"github.com/thisisnkp/heropanel/pkg/brokerwire"
+	"github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/pty"
+	"github.com/thisisnkp/nexpanel/pkg/brokerwire"
 )
 
 // Streaming (interactive terminal) support.

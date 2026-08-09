@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/site"
 )
 
 // getSiteLimitsHandler returns a site's resource limits. Gated by "site.read".

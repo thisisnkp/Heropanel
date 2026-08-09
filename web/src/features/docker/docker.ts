@@ -25,7 +25,7 @@ export interface DockerContainer {
   ports: string;
   created: string;
   labels: Record<string, string>;
-  /** Whether HeroPanel created it — and therefore whether it can be modified. */
+  /** Whether NexPanel created it — and therefore whether it can be modified. */
   managed: boolean;
   site_uid?: string;
 }

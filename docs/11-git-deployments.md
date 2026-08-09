@@ -61,12 +61,12 @@ refused, and the token is sealed at rest.
   OAuth flow to obtain one).
 - Repo cache / incremental fetch, submodules, LFS, monorepo path filters.
 - Rotating **data keys** for the sealed credential (docs/05 §6). Today one key is
-  derived from the master key, so rotating means re-encrypting rows; the `hp1.`
+  derived from the master key, so rotating means re-encrypting rows; the `np1.`
   version prefix reserves room to change that.
 
 ## 2. Release layout
 
-Everything lives **inside the existing site home** (`/srv/heropanel/sites/<id>`),
+Everything lives **inside the existing site home** (`/srv/nexpanel/sites/<id>`),
 so the broker's `PathRoots` confinement already covers it — no new allowed root.
 
 ```
@@ -99,7 +99,7 @@ All steps run as the site user via `runuser -u <user> --`, every path
 (`HOME=<home>`, a fixed `PATH`, `GIT_TERMINAL_PROMPT=0`, `GIT_SSH_COMMAND` off).
 
 0. **Stage the credential** (private repos only, §5.1) under
-   `/run/heropanel/gitauth/<random>/`.
+   `/run/nexpanel/gitauth/<random>/`.
 1. `install -d -m0750 -o user -g user <home>/releases <home>/shared` (idempotent).
 2. `git [-c credential.helper=…] clone --depth 1 --single-branch --branch <branch> <repo_url> <release>`.
 3. `git -C <release> rev-parse HEAD` → record the commit SHA.
@@ -168,7 +168,7 @@ append-only history that drives the UI timeline and rollback.
   existing unprivileged uid via `runuser`. The broker (root) only *drops* to that
   uid; it never runs git or the build as root.
 - **Path confinement.** Every filesystem argument is `ValidatePath`-checked
-  against `PathRoots` (`/srv/heropanel/sites`) after `path.Clean`, so `..`
+  against `PathRoots` (`/srv/nexpanel/sites`) after `path.Clean`, so `..`
   traversal and absolute escapes are rejected. Release dirs are ULIDs the broker
   generates — never caller-controlled strings.
 - **Input validation.** `repo_url` must be `https://` with a clean host/path (or
@@ -209,7 +209,7 @@ the clone.**
   goes into a 0600 file owned by the site user and git is pointed at the *path*:
   `credential.helper=store --file=…` for a token, `GIT_SSH_COMMAND -i …` for a key.
   Only paths and the (non-secret) basic-auth username ever reach a command line.
-- **Staged on tmpfs.** `/run/heropanel/gitauth/<random>/`, so the secret never
+- **Staged on tmpfs.** `/run/nexpanel/gitauth/<random>/`, so the secret never
   touches persistent disk or a backup, and is gone after a reboot even if a crash
   skips cleanup. The parent is `0711` root — traversable so git (running as the
   site user) can reach its own credential, but not listable, so one site cannot

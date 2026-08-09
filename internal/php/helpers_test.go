@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // recordingGW captures the pool config the service asks the broker to write, so
@@ -85,8 +85,8 @@ func (f *fakePoolRepo) GetBySiteID(_ context.Context, _ int64) (*php.PoolRecord,
 
 func poolReq() php.PoolRequest {
 	return php.PoolRequest{
-		SiteID: 1, User: "hps1",
-		Home: "/srv/heropanel/sites/1", DocumentRoot: "/srv/heropanel/sites/1/public",
+		SiteID: 1, User: "nps1",
+		Home: "/srv/nexpanel/sites/1", DocumentRoot: "/srv/nexpanel/sites/1/public",
 	}
 }
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // MetricStore implements monitor.MetricRepo over the datastore.

@@ -1,4 +1,4 @@
-# HeroPanel — Architecture & Design Documentation
+# NexPanel — Architecture & Design Documentation
 
 > The fastest modern self-hosted hosting control panel. Go core, React UI, modular by design, low-RAM, multi-arch.
 
@@ -8,7 +8,7 @@ This directory contains the **complete architecture and planning package** produ
 
 | # | Decision | Choice | ADR |
 |---|----------|--------|-----|
-| 1 | Module isolation model | **Hybrid**: non-root core (`hpd`) + tiny root broker (`hp-broker`) + on-demand gRPC process modules (`hp-mod-*`) | [ADR-0002](adr/0002-module-isolation-hybrid.md) |
+| 1 | Module isolation model | **Hybrid**: non-root core (`npd`) + tiny root broker (`np-broker`) + on-demand gRPC process modules (`np-mod-*`) | [ADR-0002](adr/0002-module-isolation-hybrid.md) |
 | 2 | HTTP framework | **Chi + net/http** (stdlib-compatible) | [ADR-0001](adr/0001-http-framework.md) |
 | 3 | Deployment topology | **Single-node first, multi-node-ready** | [ADR-0003](adr/0003-single-node-first.md) |
 | 4 | Primary datastore | **MariaDB** (SQLite embedded fallback for minimal installs) | [ADR-0004](adr/0004-datastore.md) |
@@ -51,6 +51,9 @@ deferred list, and definition of done.
 | 22 | [Backups](22-backup.md) | Full + incremental (GNU tar snapshots), zstd, **always sealed** (chunked AES-256-GCM) before any target — local or S3 (hand-rolled SigV4) — scheduled, restored **into a new site** |
 | 23 | [Mail](23-mail.md) | Postfix + Dovecot via rendered flat maps (MTAs never read the panel), BLF-CRYPT mailboxes, **sealed DKIM** + SPF/DMARC auto-wired into DNS with a live check, quotas, queue view |
 | 24 | [Security](24-security.md) | nftables firewall with a **self-reverting apply**, ClamAV scan + **quarantine**, hand-rolled **WebAuthn passkeys**, panel IP-allowlist, Fail2Ban surfacing |
+| 26 | [Self-update](26-self-update.md) | Release channels, **signed** releases on the installer's own trust chain, atomic swap via a **transient systemd unit** (the only way to replace the broker), and a **health-gated auto-rollback** |
+| 27 | [Multi-node](27-multi-node.md) | The same broker framing over **mutual TLS** — a verified client certificate replaces `SO_PEERCRED`, which has no network equivalent — plus a node allowlist, attested identity in the audit chain, and the HA topology |
+| 28 | [Hardening](28-hardening.md) | The systemd audit: three shared confinement profiles, a **deny-list capability bound** on the root broker, the four directives deliberately left out and what each would break, and budgets that are now measured |
 
 ## Product Principles
 
@@ -66,17 +69,17 @@ deferred list, and definition of done.
 
 | Term | Meaning |
 |------|---------|
-| `hpd` | HeroPanel Daemon — the core control-plane process (API, orchestration, scheduler). Runs as unprivileged `heropanel` user. |
-| `hp-broker` | Privileged root helper ("system executor"). Tiny, audited, capability-scoped. The *only* component that runs as root. |
-| `hp-mod-<name>` | A module process (e.g. `hp-mod-docker`). Supervised by systemd, speaks gRPC to `hpd` over a Unix socket. |
-| `hpctl` | Local admin CLI (talks to `hpd` over its Unix socket; can bootstrap/repair). |
+| `npd` | NexPanel Daemon — the core control-plane process (API, orchestration, scheduler). Runs as unprivileged `nexpanel` user. |
+| `np-broker` | Privileged root helper ("system executor"). Tiny, audited, capability-scoped. The *only* component that runs as root. |
+| `np-mod-<name>` | A module process (e.g. `np-mod-docker`). Supervised by systemd, speaks gRPC to `npd` over a Unix socket. |
+| `npctl` | Local admin CLI (talks to `npd` over its Unix socket; can bootstrap/repair). |
 | `Site` | A hosted application/website with its own Linux user, directory, runtime, logs, SSL. |
 | `Module` | An independently installable capability unit (see [06](06-plugin-architecture.md)). |
 | `Broker capability` | A single named, allowlisted privileged operation the broker will perform (see [05](05-security-architecture.md)). |
 
 ---
 _Status: **Phases 0–3 — backends done, closing out.** Foundations (`pkg/*`
-primitives, the `hp-broker` security spine, the `hpd` core, two-tier cache, data
+primitives, the `np-broker` security spine, the `npd` core, two-tier cache, data
 layer, session auth + RBAC, hash-chained audit, async jobs + WebSocket, embedded
 React/Vite/Tailwind UI); Sites + PHP; Domains, SSL (HTTP-01, DNS-01/wildcard,
 renewal) and DNS; Databases, Git deployments, and App runtimes. Each module's
@@ -88,7 +91,7 @@ are now **closed**: the **frontend** covers every Phase 1–3 area — a 7-tab s
 workspace (Overview, Domains, PHP, Runtime, Git, Logs, Advanced) plus Databases,
 DNS, SSL, Audit, and Modules screens, over the shell's command palette, toasts,
 and global job drawer (`run-ui.sh` proves the built SPA is embedded and served
-and that every page has a live endpoint). **`hp-installer` now performs a real
+and that every page has a live endpoint). **`np-installer` now performs a real
 install** — execute + journal + resume + rollback, verified on fresh Ubuntu (apt)
 and Rocky (dnf) images (`run-installer.sh`), closing Phase 0's `curl | bash`
 exit criterion (bar the public bootstrap host + artifact signing). **OpenAPI 3.1**
@@ -164,7 +167,7 @@ fixed, and a new **permission drift test** now drives the real router to prove
 that the permission each route is documented with is the permission it actually
 enforces — a mapping nothing had ever verified._
 
-_**Phase 5 — Docker & One-Click Apps — is complete.** The **Docker** module is reached through **broker capabilities** rather than by putting anything in the `docker` group — a deliberate departure from [06](06-plugin-architecture.md)'s own manifest example, which shows `groups: [docker]`: membership of that group is root by another name and would have made a compromise of the network-facing process a compromise of the host. Two boundaries carry it: an **ownership label** the broker verifies by live inspect before any mutation (without it a stop button is a remote off-switch for every container on the host), and an allowlist that makes a value docker would parse as a **flag** — a container named `--privileged` — unrepresentable, which an argv array alone does not. Unmanaged containers are listed read-only, because hiding them would make the panel lie about the machine it administers. **Creating** a container is where the hardening lives: the caller sends typed fields and the broker builds the argv, so host bind mounts are unrepresentable (named volumes only), ports publish to `127.0.0.1` alone (docker's firewall rules run ahead of the host's), `no-new-privileges` is added, and environment travels by stdin env-file, never argv. A **shell** inside a container reuses the web terminal's PTY and stream upgrade outright, bounded by which container rather than which user. **Compose stacks** are framed honestly as an escape hatch — arbitrary YAML the broker labels and scopes but does not pretend to harden. On top sits the **Apps** catalog: one-click templates deployed as labelled compose stacks, with secrets **generated** (never defaulted, shown once, kept out of the audit log) and a **memory-feasibility** check that refuses a deploy the host cannot run before the OOM killer would. Proven against a **real dockerd** (`run-docker.sh`, 63 assertions in CI): lifecycle verbs refused on a foreign container that is still running afterwards; a created container with no host mounts, loopback-only; host-path volumes refused with nothing created; an env secret never reaching the broker log; a shell in a foreign container refused; and the full app pipeline deployed, loopback-published, and torn down clean. Two bugs no unit test could catch surfaced there — a 30s stop grace against hpd's 30s HTTP write timeout that returned failure for a succeeded action, and a `compose ps` row dropped because a `Publishers` array was modelled as a string. See [19 — Docker](19-docker.md)._
+_**Phase 5 — Docker & One-Click Apps — is complete.** The **Docker** module is reached through **broker capabilities** rather than by putting anything in the `docker` group — a deliberate departure from [06](06-plugin-architecture.md)'s own manifest example, which shows `groups: [docker]`: membership of that group is root by another name and would have made a compromise of the network-facing process a compromise of the host. Two boundaries carry it: an **ownership label** the broker verifies by live inspect before any mutation (without it a stop button is a remote off-switch for every container on the host), and an allowlist that makes a value docker would parse as a **flag** — a container named `--privileged` — unrepresentable, which an argv array alone does not. Unmanaged containers are listed read-only, because hiding them would make the panel lie about the machine it administers. **Creating** a container is where the hardening lives: the caller sends typed fields and the broker builds the argv, so host bind mounts are unrepresentable (named volumes only), ports publish to `127.0.0.1` alone (docker's firewall rules run ahead of the host's), `no-new-privileges` is added, and environment travels by stdin env-file, never argv. A **shell** inside a container reuses the web terminal's PTY and stream upgrade outright, bounded by which container rather than which user. **Compose stacks** are framed honestly as an escape hatch — arbitrary YAML the broker labels and scopes but does not pretend to harden. On top sits the **Apps** catalog: one-click templates deployed as labelled compose stacks, with secrets **generated** (never defaulted, shown once, kept out of the audit log) and a **memory-feasibility** check that refuses a deploy the host cannot run before the OOM killer would. Proven against a **real dockerd** (`run-docker.sh`, 63 assertions in CI): lifecycle verbs refused on a foreign container that is still running afterwards; a created container with no host mounts, loopback-only; host-path volumes refused with nothing created; an env secret never reaching the broker log; a shell in a foreign container refused; and the full app pipeline deployed, loopback-published, and torn down clean. Two bugs no unit test could catch surfaced there — a 30s stop grace against npd's 30s HTTP write timeout that returned failure for a succeeded action, and a `compose ps` row dropped because a `Publishers` array was modelled as a string. See [19 — Docker](19-docker.md)._
 
 _Still **not** signed off: the genuinely later-phase items each phase lists below
 (e.g. DNS as a true satellite module, cgroup kernel-enforcement of `site_limits`,

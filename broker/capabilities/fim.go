@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // File-integrity monitoring via AIDE. A baseline database of hashes+metadata is
@@ -17,11 +17,11 @@ import (
 // this shells out to a real tool (fixed argv, no shell) and parses its output —
 // no bespoke integrity engine. The config is a broker constant (the watched
 // paths are policy, not input) and the database lives root-only under
-// /var/lib/heropanel/fim.
+// /var/lib/nexpanel/fim.
 
 const (
 	aidePath     = "/usr/bin/aide"
-	fimDir       = "/var/lib/heropanel/fim"
+	fimDir       = "/var/lib/nexpanel/fim"
 	fimConfPath  = fimDir + "/aide.conf"
 	fimDBPath    = fimDir + "/aide.db"
 	fimDBNew     = fimDir + "/aide.db.new"
@@ -31,27 +31,27 @@ const (
 // aideHeader configures the database locations and the reusable rule. The rule
 // tracks permissions, ownership, size, mtime and strong hashes — enough to catch
 // a tampered binary or an edited config.
-const aideHeader = `# HeroPanel FIM (rendered; do not edit).
+const aideHeader = `# NexPanel FIM (rendered; do not edit).
 database_in=file:` + fimDBPath + `
 database_out=file:` + fimDBNew + `
 database_new=file:` + fimDBNew + `
 gzip_dbout=no
 report_url=stdout
 
-HP = p+i+n+u+g+s+b+m+c+sha256
+NP = p+i+n+u+g+s+b+m+c+sha256
 `
 
 // aidePanelRules watch the panel's own security-critical configuration and
 // binaries. A missing path is only a warning, so the same config works on any
 // host. This is the default ("panel") scope.
-const aidePanelRules = `/etc/heropanel HP
-/etc/ssh HP
-/etc/postfix HP
-/etc/dovecot HP
-/etc/opendkim.conf HP
-/usr/local/bin/hpd HP
-/usr/local/bin/hp-broker HP
-/usr/sbin/sshd HP
+const aidePanelRules = `/etc/nexpanel NP
+/etc/ssh NP
+/etc/postfix NP
+/etc/dovecot NP
+/etc/opendkim.conf NP
+/usr/local/bin/npd NP
+/usr/local/bin/np-broker NP
+/usr/sbin/sshd NP
 `
 
 // aideHostRules extend the watch to the wider host: all of /etc plus the system
@@ -59,21 +59,21 @@ const aidePanelRules = `/etc/heropanel HP
 // make tampering stand out. The `!` lines exclude paths that legitimately churn
 // (mounts, clock skew, machine/dbus identity, the panel's own DB and temp
 // files) so the check stays signal, not noise. This is the "host" scope.
-const aideHostRules = `/etc HP
-/bin HP
-/sbin HP
-/usr/bin HP
-/usr/sbin HP
-/lib HP
-/lib64 HP
-/boot HP
+const aideHostRules = `/etc NP
+/bin NP
+/sbin NP
+/usr/bin NP
+/usr/sbin NP
+/lib NP
+/lib64 NP
+/boot NP
 !/etc/mtab$
 !/etc/adjtime$
 !/etc/resolv.conf$
 !/etc/machine-id$
 !/etc/hostname$
 !/etc/ld.so.cache$
-!/var/lib/heropanel
+!/var/lib/nexpanel
 `
 
 // fimScopes is the set of accepted scopes.

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/audit"
 )
 
 const maxAuditPageSize = 200

@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth"
 )
 
 const (
-	sessionCookieName = "hp_session"
-	csrfCookieName    = "hp_csrf"
+	sessionCookieName = "np_session"
+	csrfCookieName    = "np_csrf"
 )
 
 // sessionToken extracts the session token from the session cookie or, failing
@@ -101,7 +101,7 @@ func csrf(enabled bool) mw {
 // authenticate attaches a principal to the request context when a valid session
 // or API key is presented. It never rejects: anonymous requests proceed (and are
 // stopped later by requireAuth/requirePermission where required). A Bearer token
-// beginning with "hp_" is treated as an API key; otherwise as a session token.
+// beginning with "np_" is treated as an API key; otherwise as a session token.
 func authenticate(svc *auth.Service) mw {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +110,7 @@ func authenticate(svc *auth.Service) mw {
 					p   *auth.Principal
 					err error
 				)
-				if strings.HasPrefix(tok, "hp_") {
+				if strings.HasPrefix(tok, "np_") {
 					p, err = svc.AuthenticateAPIKey(r.Context(), tok)
 				} else {
 					p, err = svc.Authenticate(r.Context(), tok)

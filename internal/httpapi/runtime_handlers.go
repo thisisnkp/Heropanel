@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
 )
 
 // getSiteRuntimeHandler returns a site's app runtime. Gated by "site.read".

@@ -1,4 +1,4 @@
--- HeroPanel SSL: certificates and ACME accounts (MariaDB).
+-- NexPanel SSL: certificates and ACME accounts (MariaDB).
 CREATE TABLE ssl_certificates (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     uid         CHAR(26) NOT NULL,

@@ -1,9 +1,9 @@
-// Package broker is the privilege boundary of HeroPanel. It is the small,
+// Package broker is the privilege boundary of NexPanel. It is the small,
 // audited component that performs privileged operations on behalf of the
-// unprivileged core (hpd). Invoke authorizes a request against policy, records
+// unprivileged core (npd). Invoke authorizes a request against policy, records
 // an audit intent, executes the capability, then records the outcome.
 //
-// SECURITY INVARIANT: a compromise of hpd (the large, network-facing process)
+// SECURITY INVARIANT: a compromise of npd (the large, network-facing process)
 // cannot yield arbitrary root — it can only request the fixed set of validated
 // capabilities registered here. See docs/05-security-architecture.md.
 package broker
@@ -12,13 +12,13 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Version is the broker binary version (overridable at build time via ldflags).
@@ -119,11 +119,27 @@ func (b *Broker) record(outcome audit.Outcome, req Request, detail string) {
 		return
 	}
 	if _, err := b.audit.Append(audit.Record{
-		Actor:      req.Actor.CorrelationID,
+		Actor:      auditActor(req.Actor),
 		Capability: req.Capability,
 		Outcome:    outcome,
 		Detail:     detail,
 	}); err != nil {
 		b.log.Error("audit append failed", "err", err, "capability", req.Capability, "outcome", outcome)
 	}
+}
+
+// auditActor renders the actor for the audit chain.
+//
+// The correlation ID is what npd said about the request; the node is what the
+// transport proved about the caller. When a call crosses hosts the proven half
+// leads, so reading the chain later answers "which machine drove root here?"
+// without having to trust the same request's own claims about itself.
+func auditActor(a capability.Actor) string {
+	if a.Node == "" {
+		return a.CorrelationID
+	}
+	if a.CorrelationID == "" {
+		return "node:" + a.Node
+	}
+	return "node:" + a.Node + " " + a.CorrelationID
 }

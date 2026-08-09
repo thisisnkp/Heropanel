@@ -1,23 +1,23 @@
 #!/bin/sh
-# HeroPanel bootstrap installer.
+# NexPanel bootstrap installer.
 #
-#   curl -fsSL https://get.heropanel.io/install.sh | sh
+#   curl -fsSL https://get.nexpanel.io/install.sh | sh
 #
 # This thin, auditable bootstrap (POSIX sh) detects arch/OS just enough to fetch
-# the correct, signature-verified `hp-installer` binary, then hands off to it.
-# All intelligent, stateful, rollback-capable logic lives in hp-installer
+# the correct, signature-verified `np-installer` binary, then hands off to it.
+# All intelligent, stateful, rollback-capable logic lives in np-installer
 # (docs/07). Kept deliberately small so it is easy to read before piping to sh.
 set -eu
 
-CHANNEL="${HP_CHANNEL:-stable}"
-BASE_URL="${HP_BASE_URL:-https://get.heropanel.io}"
+CHANNEL="${NP_CHANNEL:-stable}"
+BASE_URL="${NP_BASE_URL:-https://get.nexpanel.io}"
 
 # The ed25519 release public key, pinned into this script at release time. It is
-# forwarded to hp-installer, which refuses to install an hpd/hp-broker whose
+# forwarded to np-installer, which refuses to install an npd/np-broker whose
 # SHA256SUMS manifest is not signed by the matching private key (held offline).
 # Empty in-tree; the release pipeline substitutes the real key. An operator can
-# also override it via HP_RELEASE_PUBKEY.
-PINNED_PUBKEY="${HP_RELEASE_PUBKEY:-}"
+# also override it via NP_RELEASE_PUBKEY.
+PINNED_PUBKEY="${NP_RELEASE_PUBKEY:-}"
 
 log()  { printf '\033[0;36m==>\033[0m %s\n' "$1"; }
 err()  { printf '\033[0;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
@@ -29,7 +29,7 @@ err()  { printf '\033[0;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
 [ -d /run/systemd/system ] || err "systemd is required but was not detected."
 
 # 3. Detect OS + architecture.
-[ "$(uname -s)" = "Linux" ] || err "HeroPanel supports Linux only."
+[ "$(uname -s)" = "Linux" ] || err "NexPanel supports Linux only."
 
 case "$(uname -m)" in
   x86_64|amd64)        ARCH="amd64" ;;
@@ -50,38 +50,38 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-BIN_URL="${BASE_URL}/${CHANNEL}/hp-installer-linux-${ARCH}"
+BIN_URL="${BASE_URL}/${CHANNEL}/np-installer-linux-${ARCH}"
 SIG_URL="${BIN_URL}.sig"
 SHA_URL="${BIN_URL}.sha256"
 
-log "Fetching hp-installer (${CHANNEL}, linux/${ARCH})…"
-$DL "$BIN_URL"  > "$TMP/hp-installer"    || err "Failed to download hp-installer."
-$DL "$SHA_URL"  > "$TMP/hp-installer.sha256" 2>/dev/null || true
+log "Fetching np-installer (${CHANNEL}, linux/${ARCH})…"
+$DL "$BIN_URL"  > "$TMP/np-installer"    || err "Failed to download np-installer."
+$DL "$SHA_URL"  > "$TMP/np-installer.sha256" 2>/dev/null || true
 
 # 5. Verify checksum (and signature, when available) before executing.
-if [ -s "$TMP/hp-installer.sha256" ] && command -v sha256sum >/dev/null 2>&1; then
-  EXPECT="$(cut -d' ' -f1 "$TMP/hp-installer.sha256")"
-  ACTUAL="$(sha256sum "$TMP/hp-installer" | cut -d' ' -f1)"
+if [ -s "$TMP/np-installer.sha256" ] && command -v sha256sum >/dev/null 2>&1; then
+  EXPECT="$(cut -d' ' -f1 "$TMP/np-installer.sha256")"
+  ACTUAL="$(sha256sum "$TMP/np-installer" | cut -d' ' -f1)"
   [ "$EXPECT" = "$ACTUAL" ] || err "Checksum mismatch — refusing to run."
   log "Checksum verified."
 fi
 
 if command -v cosign >/dev/null 2>&1; then
-  $DL "$SIG_URL" > "$TMP/hp-installer.sig" 2>/dev/null || true
-  if [ -s "$TMP/hp-installer.sig" ]; then
-    cosign verify-blob --key "${BASE_URL}/heropanel.pub" \
-      --signature "$TMP/hp-installer.sig" "$TMP/hp-installer" \
+  $DL "$SIG_URL" > "$TMP/np-installer.sig" 2>/dev/null || true
+  if [ -s "$TMP/np-installer.sig" ]; then
+    cosign verify-blob --key "${BASE_URL}/nexpanel.pub" \
+      --signature "$TMP/np-installer.sig" "$TMP/np-installer" \
       || err "Signature verification failed — refusing to run."
     log "Signature verified."
   fi
 fi
 
-chmod +x "$TMP/hp-installer"
+chmod +x "$TMP/np-installer"
 
-# 6. Hand off. Extra args to install.sh are forwarded to hp-installer. The
+# 6. Hand off. Extra args to install.sh are forwarded to np-installer. The
 # pinned release key travels with it so the daemon binaries are signature-checked.
 log "Starting installer…"
 if [ -n "$PINNED_PUBKEY" ]; then
-  exec "$TMP/hp-installer" --channel "$CHANNEL" --pubkey "$PINNED_PUBKEY" "$@"
+  exec "$TMP/np-installer" --channel "$CHANNEL" --pubkey "$PINNED_PUBKEY" "$@"
 fi
-exec "$TMP/hp-installer" --channel "$CHANNEL" "$@"
+exec "$TMP/np-installer" --channel "$CHANNEL" "$@"

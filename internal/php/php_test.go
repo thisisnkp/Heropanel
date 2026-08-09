@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 type recordingGateway struct{ calls []map[string]any }
@@ -41,12 +41,12 @@ func TestEnsurePoolWritesAndPersists(t *testing.T) {
 	ctx := context.Background()
 
 	rec, err := svc.EnsurePool(ctx, php.PoolRequest{
-		SiteID: 1, User: "hps1", Home: "/srv/heropanel/sites/1", DocumentRoot: "/srv/heropanel/sites/1/public",
+		SiteID: 1, User: "nps1", Home: "/srv/nexpanel/sites/1", DocumentRoot: "/srv/nexpanel/sites/1/public",
 	})
 	if err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
-	if rec.PHPVersion != php.DefaultVersion || rec.SocketPath != "/run/heropanel/fpm/hps1.sock" {
+	if rec.PHPVersion != php.DefaultVersion || rec.SocketPath != "/run/nexpanel/fpm/nps1.sock" {
 		t.Fatalf("unexpected pool: %+v", rec)
 	}
 	// Broker received a rendered pool config with confinement.
@@ -54,13 +54,13 @@ func TestEnsurePoolWritesAndPersists(t *testing.T) {
 		t.Fatalf("expected 1 broker call, got %d", len(gw.calls))
 	}
 	cfg, _ := gw.calls[0]["config"].(string)
-	if !strings.Contains(cfg, "open_basedir") || !strings.Contains(cfg, "listen = /run/heropanel/fpm/hps1.sock") {
+	if !strings.Contains(cfg, "open_basedir") || !strings.Contains(cfg, "listen = /run/nexpanel/fpm/nps1.sock") {
 		t.Fatalf("pool config missing confinement/socket:\n%s", cfg)
 	}
 	// Per-site isolation: the pool is confined to its own tree with NO shared /tmp
 	// (that would leak temp files across sites), all temp paths redirected in-site,
 	// and only real PHP executable.
-	home := "/srv/heropanel/sites/1"
+	home := "/srv/nexpanel/sites/1"
 	for _, must := range []string{
 		"open_basedir] = " + home + "/\n",
 		"sys_temp_dir] = " + home + "/tmp",
@@ -91,7 +91,7 @@ func TestEnsurePoolWritesAndPersists(t *testing.T) {
 func TestFuncPolicyRendersAndPersists(t *testing.T) {
 	svc, gw := newPHP(t)
 	ctx := context.Background()
-	req := php.PoolRequest{SiteID: 1, User: "hps1", Home: "/srv/heropanel/sites/1", DocumentRoot: "/srv/heropanel/sites/1/public"}
+	req := php.PoolRequest{SiteID: 1, User: "nps1", Home: "/srv/nexpanel/sites/1", DocumentRoot: "/srv/nexpanel/sites/1/public"}
 
 	// Default (strict): disable_functions present as admin value with exec family.
 	if _, err := svc.EnsurePool(ctx, req); err != nil {
@@ -125,7 +125,7 @@ func TestFuncPolicyRendersAndPersists(t *testing.T) {
 func TestEnsurePoolRejectsUnsupportedVersion(t *testing.T) {
 	svc, _ := newPHP(t)
 	_, err := svc.EnsurePool(context.Background(), php.PoolRequest{
-		SiteID: 1, User: "hps1", Home: "/h", DocumentRoot: "/h/public", Version: "5.6",
+		SiteID: 1, User: "nps1", Home: "/h", DocumentRoot: "/h/public", Version: "5.6",
 	})
 	if !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation error, got %v", err)
@@ -135,10 +135,10 @@ func TestEnsurePoolRejectsUnsupportedVersion(t *testing.T) {
 func TestEnsurePoolUpsertUpdates(t *testing.T) {
 	svc, _ := newPHP(t)
 	ctx := context.Background()
-	if _, err := svc.EnsurePool(ctx, php.PoolRequest{SiteID: 1, User: "hps1", Home: "/h", DocumentRoot: "/h/public", Version: "8.1"}); err != nil {
+	if _, err := svc.EnsurePool(ctx, php.PoolRequest{SiteID: 1, User: "nps1", Home: "/h", DocumentRoot: "/h/public", Version: "8.1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.EnsurePool(ctx, php.PoolRequest{SiteID: 1, User: "hps1", Home: "/h", DocumentRoot: "/h/public", Version: "8.3"}); err != nil {
+	if _, err := svc.EnsurePool(ctx, php.PoolRequest{SiteID: 1, User: "nps1", Home: "/h", DocumentRoot: "/h/public", Version: "8.3"}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := svc.GetBySiteID(ctx, 1)

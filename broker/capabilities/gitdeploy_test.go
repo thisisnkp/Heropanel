@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func gitCtx(r exec.Runner) capability.Context {
@@ -56,8 +56,8 @@ func findCall(calls []exec.Command, tokens ...string) (exec.Command, bool) {
 
 func validDeployInput() map[string]any {
 	return map[string]any{
-		"username":      "hps1",
-		"home":          "/srv/heropanel/sites/1",
+		"username":      "nps1",
+		"home":          "/srv/nexpanel/sites/1",
 		"repo_url":      "https://github.com/acme/app.git",
 		"branch":        "main",
 		"build_command": "npm ci && npm run build",
@@ -93,11 +93,11 @@ func TestGitDeployHappyPathArgv(t *testing.T) {
 	// The clone is a single shell-free argv: branch, repo, and release dir are all
 	// distinct tokens, and it runs through runuser + /usr/bin/env.
 	clone, ok := findCall(fr.Calls, "clone", "--single-branch", "main",
-		"https://github.com/acme/app.git", "/srv/heropanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE")
+		"https://github.com/acme/app.git", "/srv/nexpanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE")
 	if !ok {
 		t.Fatalf("clone call not found; calls=%+v", fr.Calls)
 	}
-	if len(clone.Args) < 4 || clone.Args[0] != "-u" || clone.Args[1] != "hps1" ||
+	if len(clone.Args) < 4 || clone.Args[0] != "-u" || clone.Args[1] != "nps1" ||
 		clone.Args[2] != "--" || clone.Args[3] != "/usr/bin/env" {
 		t.Fatalf("clone not run as user via env: %+v", clone.Args)
 	}
@@ -108,12 +108,12 @@ func TestGitDeployHappyPathArgv(t *testing.T) {
 	}
 
 	// The activation is the atomic swap: a temp symlink renamed over `current`.
-	if _, ok := findCall(fr.Calls, "-sfn", "/srv/heropanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE",
-		"/srv/heropanel/sites/1/.current.tmp"); !ok {
+	if _, ok := findCall(fr.Calls, "-sfn", "/srv/nexpanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE",
+		"/srv/nexpanel/sites/1/.current.tmp"); !ok {
 		t.Fatalf("current.tmp symlink not created; calls=%+v", fr.Calls)
 	}
 	last := fr.Calls[len(fr.Calls)-1]
-	if !hasToken(last, "-Tf") || !hasToken(last, "/srv/heropanel/sites/1/current") {
+	if !hasToken(last, "-Tf") || !hasToken(last, "/srv/nexpanel/sites/1/current") {
 		t.Fatalf("final call is not the atomic rename over current: %+v", last.Args)
 	}
 }
@@ -160,11 +160,11 @@ func TestGitDeployBuildFailureCleansUp(t *testing.T) {
 		t.Fatalf("build failure should be an upstream error, got %v", err)
 	}
 	// The broken release is cleaned up; the live site is never touched.
-	if _, ok := findCall(fr.Calls, "-rf", "/srv/heropanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE"); !ok {
+	if _, ok := findCall(fr.Calls, "-rf", "/srv/nexpanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE"); !ok {
 		t.Fatalf("broken release was not cleaned up; calls=%+v", fr.Calls)
 	}
 	// No activation happened.
-	if _, ok := findCall(fr.Calls, "-Tf", "/srv/heropanel/sites/1/current"); ok {
+	if _, ok := findCall(fr.Calls, "-Tf", "/srv/nexpanel/sites/1/current"); ok {
 		t.Fatal("a failed build must not activate a release")
 	}
 }
@@ -174,9 +174,9 @@ func TestGitRollbackActivatesExistingRelease(t *testing.T) {
 		return exec.Result{}, nil // test -d returns 0 (release exists)
 	}}
 	res, err := (capabilities.GitRollback{}).Execute(gitCtx(fr), raw(t, map[string]any{
-		"username":    "hps1",
-		"home":        "/srv/heropanel/sites/1",
-		"release_dir": "/srv/heropanel/sites/1/releases/01OLD",
+		"username":    "nps1",
+		"home":        "/srv/nexpanel/sites/1",
+		"release_dir": "/srv/nexpanel/sites/1/releases/01OLD",
 	}))
 	if err != nil {
 		t.Fatalf("rollback: %v", err)
@@ -184,11 +184,11 @@ func TestGitRollbackActivatesExistingRelease(t *testing.T) {
 	if res.Data["activated"] != true {
 		t.Fatalf("result = %+v", res.Data)
 	}
-	if _, ok := findCall(fr.Calls, "-sfn", "/srv/heropanel/sites/1/releases/01OLD", "/srv/heropanel/sites/1/.current.tmp"); !ok {
+	if _, ok := findCall(fr.Calls, "-sfn", "/srv/nexpanel/sites/1/releases/01OLD", "/srv/nexpanel/sites/1/.current.tmp"); !ok {
 		t.Fatalf("rollback did not point current at the target release; calls=%+v", fr.Calls)
 	}
 	last := fr.Calls[len(fr.Calls)-1]
-	if !hasToken(last, "-Tf") || !hasToken(last, "/srv/heropanel/sites/1/current") {
+	if !hasToken(last, "-Tf") || !hasToken(last, "/srv/nexpanel/sites/1/current") {
 		t.Fatalf("rollback final call is not the atomic swap: %+v", last.Args)
 	}
 }
@@ -198,9 +198,9 @@ func TestGitRollbackRejectsForeignRelease(t *testing.T) {
 	// A release dir that is not under this site's releases/ must be refused even
 	// though it is inside the allowed root.
 	if _, err := (capabilities.GitRollback{}).Execute(gitCtx(fr), raw(t, map[string]any{
-		"username":    "hps1",
-		"home":        "/srv/heropanel/sites/1",
-		"release_dir": "/srv/heropanel/sites/1/public",
+		"username":    "nps1",
+		"home":        "/srv/nexpanel/sites/1",
+		"release_dir": "/srv/nexpanel/sites/1/public",
 	})); !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation for foreign release, got %v", err)
 	}
@@ -213,7 +213,7 @@ func composerFake(hasComposerJSON bool) *exec.FakeRunner {
 		if hasToken(cmd, "rev-parse") {
 			return exec.Result{Stdout: []byte("abcdef0\n")}, nil
 		}
-		if hasToken(cmd, "-f") && hasToken(cmd, "/srv/heropanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE/composer.json") {
+		if hasToken(cmd, "-f") && hasToken(cmd, "/srv/nexpanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE/composer.json") {
 			if hasComposerJSON {
 				return exec.Result{}, nil
 			}
@@ -255,10 +255,10 @@ func TestComposerRunsWhenTheReleaseHasAComposerJSON(t *testing.T) {
 		}
 	}
 	// It runs in the release directory, as the site user.
-	if install.Args[0] != "-u" || install.Args[1] != "hps1" {
+	if install.Args[0] != "-u" || install.Args[1] != "nps1" {
 		t.Fatalf("composer did not run as the site user: %+v", install.Args)
 	}
-	if !hasToken(install, "/srv/heropanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE") {
+	if !hasToken(install, "/srv/nexpanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE") {
 		t.Fatalf("composer did not run in the release dir: %+v", install.Args)
 	}
 	if log, _ := res.Data["log"].(string); !strings.Contains(log, "Generating optimized autoload files") {
@@ -342,10 +342,10 @@ func TestComposerFailureCleansUpAndDoesNotActivate(t *testing.T) {
 	if !strings.Contains(err.Error(), "could not be resolved") {
 		t.Fatalf("composer's own error should reach the operator: %v", err)
 	}
-	if _, ok := findCall(fr.Calls, "-rf", "/srv/heropanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE"); !ok {
+	if _, ok := findCall(fr.Calls, "-rf", "/srv/nexpanel/sites/1/releases/01HZZZAAAABBBBCCCCDDDDEEEE"); !ok {
 		t.Fatal("a failed composer install left the broken release behind")
 	}
-	if _, ok := findCall(fr.Calls, "-Tf", "/srv/heropanel/sites/1/current"); ok {
+	if _, ok := findCall(fr.Calls, "-Tf", "/srv/nexpanel/sites/1/current"); ok {
 		t.Fatal("a failed composer install must not activate the release")
 	}
 }
@@ -353,7 +353,7 @@ func TestComposerFailureCleansUpAndDoesNotActivate(t *testing.T) {
 // Without pruning every deploy leaks a full checkout and the disk fills up
 // silently — the classic way a deploy pipeline takes a server down months later.
 func TestGitDeployPrunesOldReleasesButNeverTheLiveOne(t *testing.T) {
-	const releases = "/srv/heropanel/sites/1/releases"
+	const releases = "/srv/nexpanel/sites/1/releases"
 	const newID = "01HZZZAAAABBBBCCCCDDDDEEEE"
 	// Six on disk (including the one being deployed). ULIDs sort lexically in
 	// creation order, which is exactly what the pruner relies on.
@@ -427,7 +427,7 @@ func TestGitDeployPruneIgnoresForeignEntriesAndKeepZero(t *testing.T) {
 		t.Fatalf("deploy: %v", err)
 	}
 	for _, foreign := range []string{"..", "some.backup"} {
-		if _, ok := findCall(fr2.Calls, "-rf", "/srv/heropanel/sites/1/releases/"+foreign); ok {
+		if _, ok := findCall(fr2.Calls, "-rf", "/srv/nexpanel/sites/1/releases/"+foreign); ok {
 			t.Fatalf("pruning touched a non-release entry: %s", foreign)
 		}
 	}

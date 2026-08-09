@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Full inbound SPF + DMARC verification with rejection, on top of the daemon-free
@@ -36,7 +36,7 @@ type AuthVerifyState struct {
 var validAuthVerifyModes = map[string]bool{"off": true, "monitor": true, "enforce": true}
 
 // SetAuthVerify applies the SPF/DMARC verification posture through the broker.
-// hpd renders both daemon configs (pure, over the mode and the mail hostname as
+// npd renders both daemon configs (pure, over the mode and the mail hostname as
 // the DMARC AuthservID); the broker wires them into postfix and (de)activates
 // OpenDMARC. off removes both from the path.
 func (s *Service) SetAuthVerify(ctx context.Context, mode string) (*AuthVerifyState, error) {
@@ -50,7 +50,7 @@ func (s *Service) SetAuthVerify(ctx context.Context, mode string) (*AuthVerifySt
 	reject := mode == "enforce"
 	authservID := s.hostname
 	if authservID == "" {
-		authservID = "HeroPanel"
+		authservID = "NexPanel"
 	}
 	if _, err := s.broker.Invoke(ctx, "mail.authverify", map[string]any{
 		"enabled":    mode != "off",
@@ -96,7 +96,7 @@ func (s *Service) AuthVerifyStatus(ctx context.Context) (*AuthVerifyState, error
 // skipped so authenticated clients are never SPF-checked against this host.
 func RenderPolicydSPFConf(reject bool) string {
 	var b strings.Builder
-	b.WriteString("# HeroPanel SPF policy (rendered; do not edit).\n")
+	b.WriteString("# NexPanel SPF policy (rendered; do not edit).\n")
 	b.WriteString("debugLevel = 1\n")
 	if reject {
 		b.WriteString("TestOnly = 0\n")
@@ -120,7 +120,7 @@ func RenderPolicydSPFConf(reject bool) string {
 // evaluate SPF itself when no upstream SPF result is present.
 func RenderOpenDMARCConf(authservID string, reject bool) string {
 	var b strings.Builder
-	b.WriteString("# HeroPanel DMARC configuration (rendered; do not edit).\n")
+	b.WriteString("# NexPanel DMARC configuration (rendered; do not edit).\n")
 	fmt.Fprintf(&b, "AuthservID %s\n", authservID)
 	fmt.Fprintf(&b, "TrustedAuthservIDs %s\n", authservID)
 	b.WriteString("Syslog true\n")

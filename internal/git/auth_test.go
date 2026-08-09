@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 func testCipher(t *testing.T) *secrets.Cipher {
@@ -359,8 +359,8 @@ func TestCredentialIsBoundToItsSite(t *testing.T) {
 	cipher := testCipher(t)
 	ctx := context.Background()
 
-	site1 := git.NewService(repo, fakeSites{ref: &git.SiteRef{ID: 1, LinuxUser: "hps1",
-		HomeDir: "/srv/heropanel/sites/1", DeployMode: "git"}}, &mockGW{}).WithSecrets(cipher)
+	site1 := git.NewService(repo, fakeSites{ref: &git.SiteRef{ID: 1, LinuxUser: "nps1",
+		HomeDir: "/srv/nexpanel/sites/1", DeployMode: "git"}}, &mockGW{}).WithSecrets(cipher)
 	if _, err := site1.SetSource(ctx, "site-1", git.SetSourceInput{
 		RepoURL: "https://github.com/acme/private.git", AuthKind: git.AuthToken, Token: "tok-1",
 	}); err != nil {
@@ -374,8 +374,8 @@ func TestCredentialIsBoundToItsSite(t *testing.T) {
 		AuthKind: git.AuthToken, AuthUsername: "x-access-token", CredentialEnc: stolen.CredentialEnc,
 	}
 	gw := &mockGW{deployResult: map[string]any{"commit": "abc"}}
-	site2 := git.NewService(repo, fakeSites{ref: &git.SiteRef{ID: 2, LinuxUser: "hps2",
-		HomeDir: "/srv/heropanel/sites/2", DeployMode: "git"}}, gw).WithSecrets(cipher)
+	site2 := git.NewService(repo, fakeSites{ref: &git.SiteRef{ID: 2, LinuxUser: "nps2",
+		HomeDir: "/srv/nexpanel/sites/2", DeployMode: "git"}}, gw).WithSecrets(cipher)
 
 	if _, err := site2.RunDeploy(ctx, "site-2", git.TriggerManual, job.Noop); err == nil {
 		t.Fatal("site 2 decrypted a credential sealed for site 1")

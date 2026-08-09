@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Creating containers, volumes and networks.
@@ -14,7 +14,7 @@ import (
 // every rule that matters — no host bind mounts, loopback-only ports, the
 // restart-policy allowlist, environment travelling by stdin rather than argv —
 // is enforced in the broker, where it cannot be skipped by a caller that
-// forgets. Duplicating those checks in hpd would create two definitions of the
+// forgets. Duplicating those checks in npd would create two definitions of the
 // same boundary, and the weaker one would eventually win.
 
 // PortMapping publishes a container port on the host. The bind address is not a

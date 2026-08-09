@@ -122,7 +122,7 @@
             "type": "boolean"
           },
           "configured": {
-            "description": "False when hpd has no datastore configured, so sign-in is impossible until one is set.",
+            "description": "False when npd has no datastore configured, so sign-in is impossible until one is set.",
             "type": "boolean"
           },
           "needs_bootstrap": {
@@ -634,7 +634,7 @@
       "KeyringStatus": {
         "properties": {
           "active_generation": {
-            "description": "0 =\u003e legacy single-key (hp1) mode.",
+            "description": "0 =\u003e legacy single-key (np1) mode.",
             "type": "integer"
           },
           "available": {
@@ -1065,6 +1065,82 @@
           }
         },
         "type": "object"
+      },
+      "UpdateAttempt": {
+        "properties": {
+          "Channel": {
+            "type": "string"
+          },
+          "Error": {
+            "type": "string"
+          },
+          "FinishedAt": {
+            "description": "Empty while the attempt is still in flight.",
+            "type": "string"
+          },
+          "FromVersion": {
+            "type": "string"
+          },
+          "StartedAt": {
+            "type": "string"
+          },
+          "State": {
+            "description": "staged | applying | succeeded | failed | rolled_back.",
+            "type": "string"
+          },
+          "ToVersion": {
+            "type": "string"
+          },
+          "UID": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateStatus": {
+        "properties": {
+          "available": {
+            "description": "A newer release on this channel, when there is one.",
+            "type": "string"
+          },
+          "channel": {
+            "description": "stable | beta | nightly.",
+            "type": "string"
+          },
+          "configured": {
+            "description": "Self-update needs both a release source and a pinned release key; with either missing this is false and `reason` says which.",
+            "type": "boolean"
+          },
+          "current": {
+            "description": "The version this process is running.",
+            "type": "string"
+          },
+          "last_error": {
+            "description": "Why the last attempt did not succeed.",
+            "type": "string"
+          },
+          "last_state": {
+            "description": "staged | applying | succeeded | failed | rolled_back.",
+            "type": "string"
+          },
+          "last_target": {
+            "description": "The version the last attempt aimed at.",
+            "type": "string"
+          },
+          "notes": {
+            "description": "Short release note from the signed manifest.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why no check could be made, when there is one.",
+            "type": "string"
+          },
+          "up_to_date": {
+            "description": "False only when a strictly newer release exists. Running ahead of a channel counts as up to date — a downgrade is never offered as an update.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1074,19 +1150,19 @@
         "type": "http"
       },
       "sessionCookie": {
-        "description": "Browser session established by POST /api/v1/auth/login. Mutations additionally require the double-submit CSRF token (cookie hp_csrf echoed in the X-CSRF-Token header) when CSRF is enabled.",
+        "description": "Browser session established by POST /api/v1/auth/login. Mutations additionally require the double-submit CSRF token (cookie np_csrf echoed in the X-CSRF-Token header) when CSRF is enabled.",
         "in": "cookie",
-        "name": "hp_session",
+        "name": "np_session",
         "type": "apiKey"
       }
     }
   },
   "info": {
-    "description": "Control-plane API for the HeroPanel hosting panel (hpd). All responses are wrapped in a `{data, meta}` envelope; errors in a `{error}` envelope. Authenticate with a session cookie (browser) or a bearer API key (programmatic).",
+    "description": "Control-plane API for the NexPanel hosting panel (npd). All responses are wrapped in a `{data, meta}` envelope; errors in a `{error}` envelope. Authenticate with a session cookie (browser) or a bearer API key (programmatic).",
     "license": {
       "name": "See repository"
     },
-    "title": "HeroPanel API",
+    "title": "NexPanel API",
     "version": "v1"
   },
   "openapi": "3.1.0",
@@ -5277,7 +5353,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Removes the stack's containers and networks but never its volumes. Refused with 403 for a stack HeroPanel did not create."
+            "description": "Removes the stack's containers and networks but never its volumes. Refused with 403 for a stack NexPanel did not create."
           },
           "400": {
             "content": {
@@ -5465,7 +5541,7 @@
         "operationId": "api_v1_docker_containers_list_containers",
         "responses": {
           "200": {
-            "description": "Every container on the host, running or stopped, each flagged `managed` — whether HeroPanel created it. Unmanaged containers are listed (an admin must be able to see what is consuming the host) but cannot be modified. Query: site."
+            "description": "Every container on the host, running or stopped, each flagged `managed` — whether NexPanel created it. Unmanaged containers are listed (an admin must be able to see what is consuming the host) but cannot be modified. Query: site."
           },
           "400": {
             "content": {
@@ -5575,7 +5651,7 @@
         },
         "responses": {
           "200": {
-            "description": "The container is created with HeroPanel's managed label and `no-new-privileges`. `--privileged`, `--cap-add`, `--device`, `--userns` and host namespaces have no corresponding field and cannot be produced."
+            "description": "The container is created with NexPanel's managed label and `no-new-privileges`. `--privileged`, `--cap-add`, `--device`, `--userns` and host namespaces have no corresponding field and cannot be produced."
           },
           "400": {
             "content": {
@@ -5774,7 +5850,7 @@
         ],
         "responses": {
           "200": {
-            "description": "WebSocket upgrade. Binary frames carry terminal bytes in both directions; JSON text frames carry resize/exit. `docker.write` rather than `docker.read`: a shell inside a container can stop the process, read its secrets and edit its data. Refused with 403 unless the container carries HeroPanel's managed label — a shell in someone else's container would bypass every other refusal in this module. Query: shell (/bin/sh, /bin/bash, /bin/ash), cols, rows."
+            "description": "WebSocket upgrade. Binary frames carry terminal bytes in both directions; JSON text frames carry resize/exit. `docker.write` rather than `docker.read`: a shell inside a container can stop the process, read its secrets and edit its data. Refused with 403 unless the container carries NexPanel's managed label — a shell in someone else's container would bypass every other refusal in this module. Query: shell (/bin/sh, /bin/bash, /bin/ash), cols, rows."
           },
           "400": {
             "content": {
@@ -6042,7 +6118,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Refused with 403 unless the container carries HeroPanel's managed label, enforced in the broker."
+            "description": "Refused with 403 unless the container carries NexPanel's managed label, enforced in the broker."
           },
           "400": {
             "content": {
@@ -6940,7 +7016,7 @@
         },
         "responses": {
           "200": {
-            "description": "Creates a named volume carrying HeroPanel's managed label."
+            "description": "Creates a named volume carrying NexPanel's managed label."
           },
           "400": {
             "content": {
@@ -7007,7 +7083,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Deletes the volume **and its contents**. Refused with 403 for volumes HeroPanel did not create — this is the one operation in the module that destroys data, and an unmanaged volume usually belongs to a database."
+            "description": "Deletes the volume **and its contents**. Refused with 403 for volumes NexPanel did not create — this is the one operation in the module that destroys data, and an unmanaged volume usually belongs to a database."
           },
           "400": {
             "content": {
@@ -10046,7 +10122,7 @@
         "operationId": "api_v1_mail_tls_mail_tls_status",
         "responses": {
           "200": {
-            "description": "The mail host FQDN and the submission/imaps/smtps ports it serves. ready=false means no hostname is configured (HP_MAIL_HOSTNAME); enabled=false means TLS has not been wired yet."
+            "description": "The mail host FQDN and the submission/imaps/smtps ports it serves. ready=false means no hostname is configured (NP_MAIL_HOSTNAME); enabled=false means TLS has not been wired yet."
           },
           "400": {
             "content": {
@@ -10524,6 +10600,73 @@
           }
         },
         "summary": "Install a module",
+        "tags": [
+          "Marketplace"
+        ],
+        "x-required-permission": "module.manage"
+      }
+    },
+    "/api/v1/marketplace/modules/{slug}/update": {
+      "post": {
+        "description": "Requires the `module.manage` permission.",
+        "operationId": "api_v1_marketplace_modules_slug_update_update_a_module",
+        "parameters": [
+          {
+            "description": "slug path parameter.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Moves an installed module to the version the catalog now offers. Re-verifies the manifest, and refuses (403) a version signed by a different publisher than the installed one, or (409) one that is not strictly newer. The module's enable state is preserved."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Update a module",
         "tags": [
           "Marketplace"
         ],
@@ -13581,7 +13724,7 @@
         },
         "responses": {
           "200": {
-            "description": "Archives the site (GNU tar --listed-incremental, zstd), seals it, and stores it on the target. Requires a data key (HP_SECRET_KEY) — encrypted-at-rest is not optional. 503 without one."
+            "description": "Archives the site (GNU tar --listed-incremental, zstd), seals it, and stores it on the target. Requires a data key (NP_SECRET_KEY) — encrypted-at-rest is not optional. 503 without one."
           },
           "400": {
             "content": {
@@ -18475,7 +18618,7 @@
         "operationId": "api_v1_system_backups_list_panel_self_backups",
         "responses": {
           "200": {
-            "description": "Sealed snapshots of the panel's own database (newest first) plus the active policy. Every snapshot is full and stands alone. Restore is deliberately out-of-band: `hpd decrypt` on the sealed object plus the documented manual steps — a panel that needs its database back cannot be trusted to serve that request."
+            "description": "Sealed snapshots of the panel's own database (newest first) plus the active policy. Every snapshot is full and stands alone. Restore is deliberately out-of-band: `npd decrypt` on the sealed object plus the documented manual steps — a panel that needs its database back cannot be trusted to serve that request."
           },
           "400": {
             "content": {
@@ -18529,7 +18672,7 @@
         "operationId": "api_v1_system_backups_snapshot_the_panel_now",
         "responses": {
           "200": {
-            "description": "Snapshots the panel's database (SQLite VACUUM INTO, or mysqldump via the broker), seals it, and stores it on the policy's target. Requires a data key (HP_SECRET_KEY)."
+            "description": "Snapshots the panel's database (SQLite VACUUM INTO, or mysqldump via the broker), seals it, and stores it on the policy's target. Requires a data key (NP_SECRET_KEY)."
           },
           "400": {
             "content": {
@@ -18848,6 +18991,343 @@
           "System"
         ],
         "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/update": {
+      "get": {
+        "description": "Requires the `system.read` permission.",
+        "operationId": "api_v1_system_update_get_self_update_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/UpdateStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The running version, the configured channel, and what that channel offers. An unreachable release server is reported in `reason`, not as an error — the panel is not broken because a release feed is down."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get self-update status",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.read"
+      }
+    },
+    "/api/v1/system/update/apply": {
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_update_apply_apply_an_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "version": {
+                    "description": "Release to install. Omit to take whatever the channel currently offers.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "note": {
+                          "type": "string"
+                        },
+                        "started": {
+                          "type": "boolean"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "uid": {
+                          "description": "The update attempt's id, for /system/updates.",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "202, not 200: the release is downloaded and verified, then handed to np-installer running as a detached systemd unit. This endpoint cannot report the result — the panel is restarted underneath it — so the outcome appears in /system/updates once the panel is back. If the new version does not answer, the previous binaries are restored automatically."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Apply an update",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/update/check": {
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_update_check_check_for_a_newer_release",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/UpdateStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Forces a signed manifest fetch rather than serving the last look."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Check for a newer release",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/updates": {
+      "get": {
+        "description": "Requires the `system.read` permission.",
+        "operationId": "api_v1_system_updates_list_update_attempts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/UpdateAttempt"
+                      },
+                      "type": "array"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Recent attempts, newest first. This is where a rolled-back update is visible after the fact: the operator who started it was disconnected by the restart."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "List update attempts",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.read"
       }
     },
     "/api/v1/terminal/recordings": {
@@ -19801,7 +20281,7 @@
         },
         "responses": {
           "201": {
-            "description": "Registers the subscription and returns the signing secret once. Deliveries are HMAC-signed: X-HeroPanel-Signature = \"sha256=\" + HMAC-SHA256(secret, timestamp + \".\" + body)."
+            "description": "Registers the subscription and returns the signing secret once. Deliveries are HMAC-signed: X-NexPanel-Signature = \"sha256=\" + HMAC-SHA256(secret, timestamp + \".\" + body)."
           },
           "400": {
             "content": {
@@ -20262,7 +20742,7 @@
   ],
   "servers": [
     {
-      "description": "This hpd instance",
+      "description": "This npd instance",
       "url": "/"
     }
   ],

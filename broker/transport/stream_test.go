@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/brokerwire"
+	"github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/brokerwire"
 )
 
 // The terminal upgrade is the one place where a *refused* request and a granted
@@ -65,8 +65,8 @@ func runTerminal(t *testing.T, s *Server, input any) brokerwire.Response {
 func TestTerminalRefusalIsAPlainResponseNotAStreamUpgrade(t *testing.T) {
 	cases := map[string]any{
 		// Each of these is refused by broker.OpenTerminal before a PTY exists.
-		"root user":        map[string]any{"username": "root", "root": "/srv/heropanel/sites/1"},
-		"invalid username": map[string]any{"username": "hps1; rm -rf /", "root": "/srv/heropanel/sites/1"},
+		"root user":        map[string]any{"username": "root", "root": "/srv/nexpanel/sites/1"},
+		"invalid username": map[string]any{"username": "nps1; rm -rf /", "root": "/srv/nexpanel/sites/1"},
 	}
 	s := testServer(t, policy.Default())
 	for name, in := range cases {
@@ -91,7 +91,7 @@ func TestTerminalRefusedWhenPolicyDisablesIt(t *testing.T) {
 	pol := policy.Default()
 	pol.Enabled["terminal.open"] = false
 	resp := runTerminal(t, testServer(t, pol), map[string]any{
-		"username": "hps1", "root": "/srv/heropanel/sites/1",
+		"username": "nps1", "root": "/srv/nexpanel/sites/1",
 	})
 	if resp.OK || resp.Stream {
 		t.Fatalf("a policy-disabled terminal must be refused without upgrading; got %+v", resp)

@@ -113,7 +113,7 @@ php-fpm does not merely warn about a bad pool — with `dynamic` and
 **refuses to start**. Because one master serves every site on a version, one
 site's bad numbers take down *all* of them. So there are two guards:
 
-- **hpd validates** the sizing and returns a field-level error naming the wrong
+- **npd validates** the sizing and returns a field-level error naming the wrong
   number, before the broker is even called.
 - **the broker config-tests** (`php-fpm -t`) before reloading, and rolls the
   pool file back if the test fails — the same reload-first discipline as

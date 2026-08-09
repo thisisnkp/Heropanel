@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/arch"
+	"github.com/thisisnkp/nexpanel/pkg/arch"
 )
 
 // healthHandler is a liveness probe: 200 while the process is up. It uses a
@@ -68,11 +68,11 @@ func readyHandler(d Deps) http.HandlerFunc {
 func systemInfoHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, map[string]any{
-			"product":        "HeroPanel",
+			"product":        "NexPanel",
 			"version":        d.Version,
 			"go":             runtime.Version(),
 			"os":             runtime.GOOS,
-			"arch":           string(arch.Current()), // normalized to HeroPanel's naming
+			"arch":           string(arch.Current()), // normalized to NexPanel's naming
 			"cpus":           runtime.NumCPU(),
 			"started_at":     d.StartedAt.UTC().Format(time.RFC3339),
 			"uptime_seconds": int(time.Since(d.StartedAt).Seconds()),
@@ -81,7 +81,7 @@ func systemInfoHandler(d Deps) http.HandlerFunc {
 }
 
 // placeholderHTML is served at "/" when no SPA build is embedded.
-const placeholderHTML = `<!doctype html><html><head><meta charset="utf-8"><title>HeroPanel</title></head><body style="font-family:system-ui;background:#0b0d10;color:#e6e6e6;display:grid;place-items:center;height:100vh;margin:0"><main style="text-align:center"><h1>HeroPanel</h1><p>Control plane is running. API at <code>/api/v1</code>.</p><p style="color:#888">Build the UI with <code>npm --prefix web run build</code>.</p></main></body></html>`
+const placeholderHTML = `<!doctype html><html><head><meta charset="utf-8"><title>NexPanel</title></head><body style="font-family:system-ui;background:#0b0d10;color:#e6e6e6;display:grid;place-items:center;height:100vh;margin:0"><main style="text-align:center"><h1>NexPanel</h1><p>Control plane is running. API at <code>/api/v1</code>.</p><p style="color:#888">Build the UI with <code>npm --prefix web run build</code>.</p></main></body></html>`
 
 func writePlaceholder(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

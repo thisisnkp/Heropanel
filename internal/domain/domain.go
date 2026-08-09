@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Kinds of domain attached to a site.

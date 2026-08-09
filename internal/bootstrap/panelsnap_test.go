@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 // The SQLite snapshotter produces a tar.gz holding a real VACUUM'd copy of the
@@ -46,7 +46,7 @@ func TestPanelSnapshotterSQLite(t *testing.T) {
 		t.Fatal("no manifest in the snapshot")
 	}
 	var m map[string]string
-	if err := json.Unmarshal(manifest, &m); err != nil || m["driver"] != "sqlite" || m["kind"] != "heropanel-panel-backup" {
+	if err := json.Unmarshal(manifest, &m); err != nil || m["driver"] != "sqlite" || m["kind"] != "nexpanel-panel-backup" {
 		t.Errorf("manifest = %s, %v", manifest, err)
 	}
 	dbBytes, ok := entries["panel.db"]
@@ -106,8 +106,8 @@ func untarGz(t *testing.T, path, _ string) map[string][]byte {
 // mysqlDBName pulls the schema name out of a go-sql-driver DSN.
 func TestMySQLDBName(t *testing.T) {
 	cases := map[string]string{
-		"hp:pw@tcp(127.0.0.1:3306)/heropanel?parseTime=true": "heropanel",
-		"hp:pw@unix(/run/mysqld.sock)/panel":                 "panel",
+		"np:pw@tcp(127.0.0.1:3306)/nexpanel?parseTime=true": "nexpanel",
+		"np:pw@unix(/run/mysqld.sock)/panel":                "panel",
 	}
 	for dsn, want := range cases {
 		got, err := mysqlDBName(dsn)
@@ -115,7 +115,7 @@ func TestMySQLDBName(t *testing.T) {
 			t.Errorf("mysqlDBName(%q) = %q, %v; want %q", dsn, got, err, want)
 		}
 	}
-	for _, dsn := range []string{"", "hp:pw@tcp(host)/", "no-slash"} {
+	for _, dsn := range []string{"", "np:pw@tcp(host)/", "no-slash"} {
 		if _, err := mysqlDBName(dsn); err == nil {
 			t.Errorf("mysqlDBName(%q) succeeded", dsn)
 		}

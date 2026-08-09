@@ -1,6 +1,6 @@
 // Package keyring exposes the rotating data-key envelope (pkg/secrets) as a
 // service: report the active generation and mint a new one. Master rotation
-// (re-wrapping under a new master) is an out-of-band `hpd` operation, not an API,
+// (re-wrapping under a new master) is an out-of-band `npd` operation, not an API,
 // because it requires a new master key the running panel must not choose for
 // itself.
 package keyring
@@ -8,8 +8,8 @@ package keyring
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // Store persists wrapped data keys (implemented by internal/repository).
@@ -66,7 +66,7 @@ func (s *Service) Status(ctx context.Context) (*Status, error) {
 func (s *Service) Rotate(ctx context.Context) (*Status, error) {
 	if !s.Available() {
 		return nil, errx.New(errx.KindUnavailable, "keyring_unavailable",
-			"Data-key rotation needs a master key (HP_SECRET_KEY) and a datastore.")
+			"Data-key rotation needs a master key (NP_SECRET_KEY) and a datastore.")
 	}
 	wk, err := s.cipher.Rotate()
 	if err != nil {

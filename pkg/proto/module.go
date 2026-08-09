@@ -1,5 +1,5 @@
 // Package proto defines the module contract — the manifest a satellite module
-// ships and the lifecycle types hpd exchanges with it — as plain Go types.
+// ships and the lifecycle types npd exchanges with it — as plain Go types.
 //
 // The name is `proto` because docs/06 describes this contract as gRPC, and one
 // day it will be: the satellite tier (Phase 9/10) transports these over gRPC on
@@ -19,15 +19,15 @@
 // of any transport detail.
 package proto
 
-// APIVersion is the module-contract version hpd speaks. A module declares the
-// version it was built against in its manifest; hpd refuses to enable one it is
+// APIVersion is the module-contract version npd speaks. A module declares the
+// version it was built against in its manifest; npd refuses to enable one it is
 // not compatible with (see Compatible), because a lifecycle mismatch is how a
 // module ends up half-wired — advertising capabilities it cannot actually serve.
-const APIVersion = "heropanel.io/v1"
+const APIVersion = "nexpanel.io/v1"
 
 // Manifest is a module's `module.yaml` (docs/06 §2): who it is, what it
 // provides, what it needs, and how it is verified. It is data, not behaviour —
-// hpd reads it to decide whether and how to run the module, before any code from
+// npd reads it to decide whether and how to run the module, before any code from
 // the module runs.
 type Manifest struct {
 	APIVersion string   `json:"apiVersion" yaml:"apiVersion"`
@@ -52,18 +52,18 @@ type Metadata struct {
 // Spec is how a module runs and what it is allowed to reach.
 type Spec struct {
 	// Binary is the module executable, resolved per-arch at install time via
-	// pkg/arch — the manifest names "hp-mod-docker", the installer fetches
-	// "hp-mod-docker-linux-arm64".
+	// pkg/arch — the manifest names "np-mod-docker", the installer fetches
+	// "np-mod-docker-linux-arm64".
 	Binary string `json:"binary" yaml:"binary"`
-	// Socket is where the module listens; hpd dials in (the module never dials
-	// out — docs/06 §3, the handshake direction that lets hpd stay in control).
+	// Socket is where the module listens; npd dials in (the module never dials
+	// out — docs/06 §3, the handshake direction that lets npd stay in control).
 	Socket string `json:"socket" yaml:"socket"`
 	RunAs  RunAs  `json:"runAs"  yaml:"runAs"`
 	// Capabilities are what the module provides. The registry advertises these
 	// once the module is enabled, and services gate features on them.
 	Capabilities []string `json:"capabilities" yaml:"capabilities"`
 	// RequiresBroker is the module's allowlist of privileged operations. A
-	// module cannot reach the broker directly; hpd mediates and refuses any
+	// module cannot reach the broker directly; npd mediates and refuses any
 	// broker call not named here. This is the security seam that keeps a
 	// compromised module from becoming root — it is bounded by what it declared.
 	RequiresBroker []string     `json:"requiresBroker" yaml:"requiresBroker"`
@@ -96,7 +96,7 @@ type Resources struct {
 	CPUQuota  string `json:"cpuQuota"  yaml:"cpuQuota"`
 }
 
-// Health is how hpd probes the module once it is running.
+// Health is how npd probes the module once it is running.
 type Health struct {
 	Endpoint    string `json:"endpoint"    yaml:"endpoint"`
 	IntervalSec int    `json:"intervalSec" yaml:"intervalSec"`

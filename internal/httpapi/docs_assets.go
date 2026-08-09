@@ -12,12 +12,12 @@ const docsHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HeroPanel API reference</title>
+<title>NexPanel API reference</title>
 <link rel="stylesheet" href="/api/docs.css">
 </head>
 <body>
 <header>
-  <h1>HeroPanel API</h1>
+  <h1>NexPanel API</h1>
   <input id="q" type="search" placeholder="Filter operations…" autocomplete="off" spellcheck="false">
 </header>
 <main id="app"><p class="muted">Loading the specification…</p></main>

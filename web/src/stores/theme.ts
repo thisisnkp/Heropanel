@@ -30,7 +30,7 @@ export const useTheme = create<ThemeState>()(
       },
     }),
     {
-      name: "hp-theme",
+      name: "np-theme",
       onRehydrateStorage: () => (state) => {
         apply(state?.theme ?? "dark");
       },
@@ -40,7 +40,7 @@ export const useTheme = create<ThemeState>()(
 
 // Ensure the initial paint matches the persisted theme.
 export function initTheme() {
-  const raw = localStorage.getItem("hp-theme");
+  const raw = localStorage.getItem("np-theme");
   let theme: Theme = "dark";
   if (raw) {
     try {

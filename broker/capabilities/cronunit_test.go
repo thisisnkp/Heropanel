@@ -4,18 +4,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 const cronUID = "01HXXXXXXXXXXXXXXXXXXXXXXX"
 
 func cronOK(extra map[string]any) map[string]any {
 	in := map[string]any{
-		"uid": cronUID, "vhost": "hps1", "username": "hps1",
-		"home": "/srv/heropanel/sites/1", "command": "php artisan schedule:run",
+		"uid": cronUID, "vhost": "nps1", "username": "nps1",
+		"home": "/srv/nexpanel/sites/1", "command": "php artisan schedule:run",
 		"schedule": "*-*-* 02:00:00",
 	}
 	for k, v := range extra {
@@ -33,27 +33,27 @@ func TestCronApplyWritesHardenedTimerAndService(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	svc, _ := fs.Written("/etc/systemd/system/heropanel-cron-" + cronUID + ".service")
+	svc, _ := fs.Written("/etc/systemd/system/nexpanel-cron-" + cronUID + ".service")
 	for _, want := range []string{
 		"Type=oneshot",
-		"User=hps1",
-		"WorkingDirectory=/srv/heropanel/sites/1",
-		"Slice=heropanel-site-hps1.slice",
+		"User=nps1",
+		"WorkingDirectory=/srv/nexpanel/sites/1",
+		"Slice=nexpanel-site-nps1.slice",
 		"NoNewPrivileges=true",
 		"ProtectSystem=strict",
-		"ReadWritePaths=/srv/heropanel/sites/1",
+		"ReadWritePaths=/srv/nexpanel/sites/1",
 	} {
 		if !strings.Contains(svc, want) {
 			t.Errorf("service unit missing %q:\n%s", want, svc)
 		}
 	}
 
-	timer, _ := fs.Written("/etc/systemd/system/heropanel-cron-" + cronUID + ".timer")
+	timer, _ := fs.Written("/etc/systemd/system/nexpanel-cron-" + cronUID + ".timer")
 	for _, want := range []string{
 		"OnCalendar=*-*-* 02:00:00",
 		// Persistent runs a job missed during downtime once — crond cannot.
 		"Persistent=true",
-		"Unit=heropanel-cron-" + cronUID + ".service",
+		"Unit=nexpanel-cron-" + cronUID + ".service",
 		"WantedBy=timers.target",
 	} {
 		if !strings.Contains(timer, want) {
@@ -63,8 +63,8 @@ func TestCronApplyWritesHardenedTimerAndService(t *testing.T) {
 
 	// The launcher carries the command and captures output to the site's log dir,
 	// so logs work without the journal.
-	launcher, _ := fs.Written("/srv/heropanel/sites/1/.hp-cron-" + cronUID)
-	if !strings.Contains(launcher, "exec php artisan schedule:run >> /srv/heropanel/sites/1/logs/cron-"+cronUID+".log 2>&1") {
+	launcher, _ := fs.Written("/srv/nexpanel/sites/1/.np-cron-" + cronUID)
+	if !strings.Contains(launcher, "exec php artisan schedule:run >> /srv/nexpanel/sites/1/logs/cron-"+cronUID+".log 2>&1") {
 		t.Errorf("launcher wrong:\n%s", launcher)
 	}
 
@@ -72,7 +72,7 @@ func TestCronApplyWritesHardenedTimerAndService(t *testing.T) {
 	if len(fr.Calls) != 2 {
 		t.Fatalf("made %d systemctl calls, want 2", len(fr.Calls))
 	}
-	if got := strings.Join(fr.Calls[1].Args, " "); got != "enable --now heropanel-cron-"+cronUID+".timer" {
+	if got := strings.Join(fr.Calls[1].Args, " "); got != "enable --now nexpanel-cron-"+cronUID+".timer" {
 		t.Errorf("second call = %q, want enable --now of the timer", got)
 	}
 }
@@ -107,7 +107,7 @@ func TestCronRunAndRemove(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	last, _ := fr.Last()
-	if got := strings.Join(last.Args, " "); got != "start heropanel-cron-"+cronUID+".service" {
+	if got := strings.Join(last.Args, " "); got != "start nexpanel-cron-"+cronUID+".service" {
 		t.Errorf("run = %q, want a start of the service", got)
 	}
 
@@ -136,9 +136,9 @@ func TestCronRunAndRemove(t *testing.T) {
 
 func TestCronLogsReadsTheCapturedFile(t *testing.T) {
 	fs := fsys.NewFake()
-	_ = fs.WriteFile("/srv/heropanel/sites/1/logs/cron-"+cronUID+".log", []byte("job output\n"), 0o644)
+	_ = fs.WriteFile("/srv/nexpanel/sites/1/logs/cron-"+cronUID+".log", []byte("job output\n"), 0o644)
 	res, err := (capabilities.CronLogs{}).Execute(appCtx(&exec.FakeRunner{}, fs),
-		raw(t, map[string]any{"uid": cronUID, "home": "/srv/heropanel/sites/1"}))
+		raw(t, map[string]any{"uid": cronUID, "home": "/srv/nexpanel/sites/1"}))
 	if err != nil {
 		t.Fatalf("logs: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestCronLogsReadsTheCapturedFile(t *testing.T) {
 
 	// Never run → empty log, not an error.
 	res2, err := (capabilities.CronLogs{}).Execute(appCtx(&exec.FakeRunner{}, fsys.NewFake()),
-		raw(t, map[string]any{"uid": cronUID, "home": "/srv/heropanel/sites/1"}))
+		raw(t, map[string]any{"uid": cronUID, "home": "/srv/nexpanel/sites/1"}))
 	if err != nil || res2.Data["log"] != "" {
 		t.Errorf("unrun job should read as empty, got %v err %v", res2.Data["log"], err)
 	}

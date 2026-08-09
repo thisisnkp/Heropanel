@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/docker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/docker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeBroker answers capability invocations from a table, and records what was
@@ -105,7 +105,7 @@ func TestDaemonPresenceIsCached(t *testing.T) {
 
 func TestListParsesDockerCLIRows(t *testing.T) {
 	rows := []any{
-		`{"ID":"abc123","Names":"/hp-site1-web","Image":"ghost:5","State":"running","Status":"Up 2 hours","Ports":"127.0.0.1:2368->2368/tcp","CreatedAt":"2026-07-20 10:00:00 +0000 UTC","Labels":"io.heropanel.managed=1,io.heropanel.site=site1"}`,
+		`{"ID":"abc123","Names":"/np-site1-web","Image":"ghost:5","State":"running","Status":"Up 2 hours","Ports":"127.0.0.1:2368->2368/tcp","CreatedAt":"2026-07-20 10:00:00 +0000 UTC","Labels":"io.nexpanel.managed=1,io.nexpanel.site=site1"}`,
 		`{"ID":"def456","Names":"postgres-prod","Image":"postgres:16","State":"running","Status":"Up 3 days","Labels":"com.example.team=data"}`,
 	}
 	svc := docker.New(available(map[string]map[string]any{
@@ -122,7 +122,7 @@ func TestListParsesDockerCLIRows(t *testing.T) {
 
 	// The panel's own container: named without the API's leading slash, and
 	// recognised as managed and attributed to its site.
-	if got[0].Name != "hp-site1-web" {
+	if got[0].Name != "np-site1-web" {
 		t.Errorf("name = %q, want the leading slash stripped", got[0].Name)
 	}
 	if !got[0].Managed || got[0].SiteUID != "site1" {
@@ -196,7 +196,7 @@ func TestImagesAreParsed(t *testing.T) {
 func TestStatsAreParsed(t *testing.T) {
 	svc := docker.New(available(map[string]map[string]any{
 		"docker.container.stats": {"stats": []any{
-			`{"ID":"abc","Name":"hp-site1-web","CPUPerc":"0.42%","MemUsage":"120MiB / 2GiB","MemPerc":"5.86%","NetIO":"1.2kB / 0B","BlockIO":"0B / 0B","PIDs":"7"}`,
+			`{"ID":"abc","Name":"np-site1-web","CPUPerc":"0.42%","MemUsage":"120MiB / 2GiB","MemPerc":"5.86%","NetIO":"1.2kB / 0B","BlockIO":"0B / 0B","PIDs":"7"}`,
 		}},
 	}))
 	got, err := svc.Stats(context.Background(), "")
@@ -213,7 +213,7 @@ func TestStatsAreParsed(t *testing.T) {
 func TestUnknownActionNeverReachesTheBroker(t *testing.T) {
 	b := available(nil)
 	svc := docker.New(b)
-	err := svc.Action(context.Background(), "destroy", "hp-site1-web", false)
+	err := svc.Action(context.Background(), "destroy", "np-site1-web", false)
 	if errx.KindOf(err) != errx.KindValidation {
 		t.Fatalf("kind = %v, want Validation", errx.KindOf(err))
 	}
@@ -233,7 +233,7 @@ func TestActionsMapToCapabilities(t *testing.T) {
 	} {
 		b := available(nil)
 		svc := docker.New(b)
-		if err := svc.Action(context.Background(), verb, "hp-site1-web", false); err != nil {
+		if err := svc.Action(context.Background(), verb, "np-site1-web", false); err != nil {
 			t.Fatalf("%s: %v", verb, err)
 		}
 		found := false
@@ -271,7 +271,7 @@ func TestInspectPassesDockersPayloadThrough(t *testing.T) {
 	svc := docker.New(available(map[string]map[string]any{
 		"docker.container.inspect": {"container": map[string]any{"Id": "abc", "State": map[string]any{"Running": true}}},
 	}))
-	raw, err := svc.Inspect(context.Background(), "hp-site1-web")
+	raw, err := svc.Inspect(context.Background(), "np-site1-web")
 	if err != nil {
 		t.Fatalf("inspect: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestClampTail(t *testing.T) {
 }
 
 func TestBrokerTransportErrorSurfacesAsUnavailable(t *testing.T) {
-	b := &fakeBroker{failWith: errors.New("dial unix /run/heropanel/broker.sock: connection refused")}
+	b := &fakeBroker{failWith: errors.New("dial unix /run/nexpanel/broker.sock: connection refused")}
 	svc := docker.New(b)
 	info := svc.Info(context.Background())
 	if info.Available {

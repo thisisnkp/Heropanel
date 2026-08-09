@@ -6,10 +6,10 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/auth/webauthn"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/auth/webauthn"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Passkeys (WebAuthn). Registration happens while signed in (like MFA setup);

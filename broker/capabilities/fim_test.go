@@ -35,16 +35,16 @@ func TestParseAIDESummaryClean(t *testing.T) {
 func TestRenderFIMConfScope(t *testing.T) {
 	panel := renderFIMConf("panel")
 	host := renderFIMConf("host")
-	if !strings.Contains(panel, "/etc/heropanel HP") {
+	if !strings.Contains(panel, "/etc/nexpanel NP") {
 		t.Fatal("panel scope missing the panel paths")
 	}
-	if strings.Contains(panel, "/usr/bin HP") {
+	if strings.Contains(panel, "/usr/bin NP") {
 		t.Fatal("panel scope should not watch the whole binary tree")
 	}
-	if !strings.Contains(host, "/etc HP") || !strings.Contains(host, "/usr/bin HP") {
+	if !strings.Contains(host, "/etc NP") || !strings.Contains(host, "/usr/bin NP") {
 		t.Fatal("host scope missing the wider host paths")
 	}
-	if !strings.Contains(host, "!/var/lib/heropanel") {
+	if !strings.Contains(host, "!/var/lib/nexpanel") {
 		t.Fatal("host scope should exclude the panel's own state dir")
 	}
 	// An unknown scope is treated as panel.

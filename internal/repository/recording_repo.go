@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/terminal"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // RecordingStore implements terminal.Recordings over the datastore. Only

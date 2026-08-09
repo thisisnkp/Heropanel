@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/marketplace"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // sha256Hex returns the lowercase hex SHA-256 of a file's contents.
@@ -35,7 +35,7 @@ func sampleManifest() proto.Manifest {
 		Kind:       "Module",
 		Metadata:   proto.Metadata{Slug: "backups-pro", Name: "Backups Pro", Version: "2.1.0", Category: "backup"},
 		Spec: proto.Spec{
-			Binary:       "hp-mod-backups-pro",
+			Binary:       "np-mod-backups-pro",
 			Capabilities: []string{"backup.offsite", "backup.encrypt"},
 			Arch:         []string{"amd64", "arm64"},
 			Signing:      proto.Signing{Checksum: "abc123"},
@@ -131,7 +131,7 @@ func TestVerifyManifestBadSignature(t *testing.T) {
 
 func TestVerifyArtifact(t *testing.T) {
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "hp-mod-backups-pro")
+	bin := filepath.Join(dir, "np-mod-backups-pro")
 	if err := os.WriteFile(bin, []byte("the binary bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}

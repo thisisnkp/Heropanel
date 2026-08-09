@@ -11,7 +11,7 @@
 // module author's code does not change, which is the entire point of pinning the
 // interface down first.
 //
-// The reverse channel (a module calling back into hpd for privileged actions,
+// The reverse channel (a module calling back into npd for privileged actions,
 // docs/06 §3) is the Core interface: the module receives one, and every
 // privileged thing it can do goes through it — never the DB or broker directly.
 package plugin
@@ -19,7 +19,7 @@ package plugin
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // Module is what a satellite module implements. It is small on purpose: the four
@@ -37,7 +37,7 @@ type Module interface {
 	Health(ctx context.Context) proto.HealthResponse
 
 	// Configure applies validated config, hot. The config has already been
-	// schema-checked by hpd.
+	// schema-checked by npd.
 	Configure(ctx context.Context, req proto.ConfigureRequest) proto.ConfigureResponse
 
 	// Invoke handles one capability call. The capability is one the module named
@@ -49,19 +49,19 @@ type Module interface {
 	Shutdown(ctx context.Context)
 }
 
-// Core is the reverse channel: what a module is allowed to ask of hpd. A module
+// Core is the reverse channel: what a module is allowed to ask of npd. A module
 // never touches the database, the broker, or the realtime hub directly — it
-// holds a Core and goes through it, and hpd enforces the module's declared
+// holds a Core and goes through it, and npd enforces the module's declared
 // allowlist on every call (docs/06 §3, §8). The interface is defined from the
-// module's side so a module can be tested against a fake Core with no hpd at all.
+// module's side so a module can be tested against a fake Core with no npd at all.
 type Core interface {
-	// RequestBroker asks hpd to run a privileged capability on the module's
-	// behalf. hpd checks it against the module's manifest RequiresBroker before
+	// RequestBroker asks npd to run a privileged capability on the module's
+	// behalf. npd checks it against the module's manifest RequiresBroker before
 	// forwarding to the broker; a call the module did not declare is refused.
 	RequestBroker(ctx context.Context, capability string, input []byte) ([]byte, error)
 
 	// Persist writes module-scoped state. The module cannot reach the database;
-	// hpd owns it and namespaces the write to the module.
+	// npd owns it and namespaces the write to the module.
 	Persist(ctx context.Context, key string, value []byte) error
 
 	// Emit publishes an event to the realtime hub / notifications.
@@ -72,5 +72,5 @@ type Core interface {
 // Populated by the module's main() from its manifest and process arguments.
 type Config struct {
 	Slug   string
-	Socket string // where the module listens; hpd dials in
+	Socket string // where the module listens; npd dials in
 }

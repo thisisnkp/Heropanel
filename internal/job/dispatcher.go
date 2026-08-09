@@ -9,12 +9,12 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 const (
-	defaultStream = "hp:jobs"
+	defaultStream = "np:jobs"
 	consumerGroup = "workers"
 )
 

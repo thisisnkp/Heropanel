@@ -6,7 +6,7 @@ import "context"
 //
 // Unlike node and site metrics, this is not a number in /proc — it is systemd's
 // view of a unit, which the panel reads through the broker's service.status
-// capability (the read twin of service.restart, sharing its allowlist). hpd never
+// capability (the read twin of service.restart, sharing its allowlist). npd never
 // execs systemctl itself; it asks. The result is a simple state string per
 // service, driving the dashboard's up/down tiles.
 

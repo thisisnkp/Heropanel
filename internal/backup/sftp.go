@@ -17,7 +17,7 @@ import (
 
 // A minimal, dependency-free SFTP-v3 client, just enough to be a backup target:
 // upload (create+write), download (open+read), and remove. It speaks the SFTP
-// subsystem over an SSH channel HeroPanel already has the transport for
+// subsystem over an SSH channel NexPanel already has the transport for
 // (x/crypto/ssh, the same library the git deploy keys use) — no third-party
 // SFTP dependency, the same lean-deps posture as the hand-rolled SigV4 signer
 // and WebAuthn verifier. Sealed blobs are opaque bytes to it; encryption stays
@@ -75,7 +75,7 @@ func NewSFTPTarget(cfg SFTPConfig) *sftpTarget {
 		cfg.Port = 22
 	}
 	if cfg.BasePath == "" {
-		cfg.BasePath = "heropanel-backups"
+		cfg.BasePath = "nexpanel-backups"
 	}
 	return &sftpTarget{cfg: cfg}
 }

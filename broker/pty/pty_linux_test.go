@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/pty"
+	"github.com/thisisnkp/nexpanel/broker/pty"
 )
 
 // The PTY layer is what turns "run a command" into "host a shell": a controlling
@@ -152,7 +152,7 @@ func TestWaitReturnsTheChildExitCode(t *testing.T) {
 // user's processes running. Close signals the whole process group, so a child
 // the shell backgrounded dies with it.
 func TestCloseKillsTheWholeProcessGroup(t *testing.T) {
-	marker := "hp-pty-test-" + strconv.Itoa(os.Getpid())
+	marker := "np-pty-test-" + strconv.Itoa(os.Getpid())
 	s, err := pty.Start(pty.Config{
 		// The shell backgrounds a long sleep and then waits, so at Close there is
 		// a live child that is *not* the process the broker started.

@@ -17,7 +17,7 @@ const WebTerminal = lazy(() =>
 // deliberate one — not a side effect of clicking through tabs.
 const MIN_FONT = 9;
 const MAX_FONT = 24;
-const FONT_KEY = "hp.terminal.fontSize";
+const FONT_KEY = "np.terminal.fontSize";
 
 export function TerminalTab({ uid, systemUser }: { uid: string; systemUser: string }) {
   const { data: me } = useMe();

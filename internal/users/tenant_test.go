@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/users"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/users"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // A reseller manages an isolated tenant: accounts they create are parented under

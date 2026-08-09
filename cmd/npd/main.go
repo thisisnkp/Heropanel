@@ -1,4 +1,4 @@
-// Command hpd is the HeroPanel core control-plane daemon: the unprivileged,
+// Command npd is the NexPanel core control-plane daemon: the unprivileged,
 // network-facing process that serves the API and (later) the SPA, orchestrates
 // work, and talks to the broker and modules. See docs/01 and docs/08.
 package main
@@ -11,19 +11,19 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/thisisnkp/heropanel/internal/bootstrap"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/logx"
+	"github.com/thisisnkp/nexpanel/internal/bootstrap"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/logx"
 )
 
 // version is overridable at build time via -ldflags "-X main.version=...".
 var version = "0.0.0-dev"
 
 func main() {
-	// `hpd decrypt <in> <out>` is the disaster-recovery path: it opens any
+	// `npd decrypt <in> <out>` is the disaster-recovery path: it opens any
 	// sealed backup object (site archive, database dump, panel snapshot) with
-	// the key derived from HP_SECRET_KEY. It is a subcommand, not a flag, so it
+	// the key derived from NP_SECRET_KEY. It is a subcommand, not a flag, so it
 	// works on a box where nothing else does — no config, no database, no
 	// broker; just the binary and the master key the operator kept safe.
 	if len(os.Args) > 1 && os.Args[1] == "decrypt" {
@@ -31,21 +31,21 @@ func main() {
 	}
 
 	var (
-		configPath  = flag.String("config", envOr("HP_CONFIG", "/etc/heropanel/config.yaml"), "path to config file")
+		configPath  = flag.String("config", envOr("NP_CONFIG", "/etc/nexpanel/config.yaml"), "path to config file")
 		showVersion = flag.Bool("version", false, "print version and exit")
 		migrate     = flag.Bool("migrate", false, "run datastore migrations and exit")
 	)
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("hpd", version)
+		fmt.Println("npd", version)
 		return
 	}
 
 	// The config file is optional: if it is absent we run on defaults + env,
 	// which keeps local/dev runs frictionless. But "absent" and "somewhere I am
 	// not looking" are the same thing from here, so the path we skipped is kept
-	// and reported below: a config file the operator wrote and hpd silently
+	// and reported below: a config file the operator wrote and npd silently
 	// ignored is indistinguishable from one that does not exist, and the symptom
 	// — a panel that says it has no datastore while a config file plainly sets
 	// one — sends you looking at the database instead of at the path.
@@ -59,7 +59,7 @@ func main() {
 
 	cfg, err := config.Load(path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "hpd: config error:", err)
+		fmt.Fprintln(os.Stderr, "npd: config error:", err)
 		os.Exit(1)
 	}
 
@@ -71,8 +71,8 @@ func main() {
 	if path != "" {
 		log.Info("config loaded", "path", path)
 	} else {
-		log.Info("no config file — running on defaults and HP_* environment variables",
-			"looked_for", skipped, "override_with", "-config <path> or HP_CONFIG")
+		log.Info("no config file — running on defaults and NP_* environment variables",
+			"looked_for", skipped, "override_with", "-config <path> or NP_CONFIG")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -84,7 +84,7 @@ func main() {
 	// upgrade. Running the full daemon migrates on boot anyway (bootstrap.New).
 	if *migrate {
 		if !repository.Configured(cfg.Database) {
-			fmt.Fprintln(os.Stderr, "hpd: --migrate requires a configured datastore")
+			fmt.Fprintln(os.Stderr, "npd: --migrate requires a configured datastore")
 			os.Exit(1)
 		}
 		db, err := repository.Open(cfg.Database)

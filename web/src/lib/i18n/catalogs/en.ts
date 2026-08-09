@@ -4,7 +4,7 @@ import type { Catalog } from "../core";
 // needed on first paint), and is the fallback every other language resolves
 // against. Keys are flat and dotted, grouped by surface.
 export const en: Catalog = {
-  "app.tagline": "HeroPanel — the fast, modern hosting control panel.",
+  "app.tagline": "NexPanel — the fast, modern hosting control panel.",
 
   "lang.label": "Language",
 
@@ -13,7 +13,7 @@ export const en: Catalog = {
   "auth.field.username": "Username",
 
   "auth.login.title": "Sign in",
-  "auth.login.subtitle": "Welcome back to HeroPanel",
+  "auth.login.subtitle": "Welcome back to NexPanel",
   "auth.login.submit": "Sign in",
   "auth.login.or": "or",
   "auth.login.passkey": "Sign in with a passkey",
@@ -21,7 +21,7 @@ export const en: Catalog = {
   "auth.login.failed": "Login failed.",
   "auth.login.passkeyFailed": "Passkey sign-in failed.",
 
-  "auth.bootstrap.title": "Welcome to HeroPanel",
+  "auth.bootstrap.title": "Welcome to NexPanel",
   "auth.bootstrap.subtitle": "Create the first administrator account",
   "auth.bootstrap.passwordHint": "At least 8 characters.",
   "auth.bootstrap.submit": "Create administrator",

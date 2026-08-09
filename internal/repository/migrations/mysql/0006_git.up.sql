@@ -1,4 +1,4 @@
--- HeroPanel Git deployments: one source per site + append-only deploy history (MariaDB).
+-- NexPanel Git deployments: one source per site + append-only deploy history (MariaDB).
 
 CREATE TABLE git_sources (
     id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

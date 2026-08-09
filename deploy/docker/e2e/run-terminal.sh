@@ -5,7 +5,7 @@
 # The invariant that matters: the PTY runs as the *site's* Linux account, not
 # root. Everything else (I/O round-trip, cwd, teardown, audit) is verified around
 # that. A real WebSocket client (termclient, built from the same coder/websocket
-# library hpd uses) drives it, because a terminal cannot be exercised with curl.
+# library npd uses) drives it, because a terminal cannot be exercised with curl.
 set -u
 sec(){ echo; echo "======== $* ========"; }
 pass(){ echo "PASS: $*"; }
@@ -14,18 +14,18 @@ FAILED=0
 base=http://127.0.0.1:18443
 hostport=127.0.0.1:18443
 
-sec "start hp-broker (root) + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-install -m0755 /hp/hp-termtest /usr/local/bin/ 2>/dev/null || true
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_TERMINAL_RECORDING_DIR=/var/lib/heropanel/recordings \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+sec "start np-broker (root) + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+install -m0755 /np/np-termtest /usr/local/bin/ 2>/dev/null || true
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_TERMINAL_RECORDING_DIR=/var/lib/nexpanel/recordings \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 echo "readyz: $(curl -s $base/readyz)"
 
@@ -34,8 +34,8 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
-SESSION=$(awk '/hp_session/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
+SESSION=$(awk '/np_session/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 echo -n "have a session cookie: "; [ -n "$SESSION" ] && echo OK || echo MISSING
 
@@ -49,7 +49,7 @@ echo "site uid=$uid  system_user=$SU"
 echo -n "the site's Linux user exists: "; id "$SU" >/dev/null 2>&1 && echo "OK ($SU)" || echo "MISSING"
 
 sec "*** OPEN A TERMINAL AND RUN COMMANDS OVER THE WEBSOCKET ***"
-hp-termtest -base "$hostport" -cookie "hp_session=$SESSION" -site "$uid" \
+np-termtest -base "$hostport" -cookie "np_session=$SESSION" -site "$uid" \
   -script 'id -un; pwd; echo MARKER_$((6*7)); exit
 ' > /tmp/term.out 2>&1
 cat /tmp/term.out
@@ -64,7 +64,7 @@ else
 fi
 
 sec "the session starts in the site home, and I/O round-trips"
-if grep -q "/srv/heropanel/sites/1" /tmp/term.out; then pass "pwd is the site home"; else fail "pwd was not the site home"; fi
+if grep -q "/srv/nexpanel/sites/1" /tmp/term.out; then pass "pwd is the site home"; else fail "pwd was not the site home"; fi
 if grep -q "MARKER_42" /tmp/term.out; then pass "the shell executed input and returned its output"; else fail "command output did not round-trip"; fi
 if grep -q "CONNECTED" /tmp/term.out; then pass "websocket upgrade accepted"; else fail "websocket did not connect"; fi
 if grep -q 'CONTROL {"type":"exit"' /tmp/term.out; then pass "clean exit control frame delivered"; else echo "note: session closed without an explicit exit frame"; fi
@@ -72,18 +72,18 @@ if grep -q 'CONTROL {"type":"exit"' /tmp/term.out; then pass "clean exit control
 sec ">>> A TRAVERSING START DIRECTORY IS CLAMPED, NEVER /etc <<<"
 # "../../../../etc" clamps to <site-root>/etc, which does not exist, so the
 # session falls back to the site home. Either way it must never be the real /etc.
-hp-termtest -base "$hostport" -cookie "hp_session=$SESSION" -site "$uid" -cwd '../../../../etc' \
+np-termtest -base "$hostport" -cookie "np_session=$SESSION" -site "$uid" -cwd '../../../../etc' \
   -script 'pwd; exit
 ' > /tmp/term-cwd.out 2>&1
 grep -aoE '/[a-z/0-9]+' /tmp/term-cwd.out | grep -E '^/(etc|srv)' | head -3
-if grep -q "/srv/heropanel/sites/1" /tmp/term-cwd.out && ! grep -qE '(^|[^a-z])/etc([^a-z]|$)' /tmp/term-cwd.out; then
+if grep -q "/srv/nexpanel/sites/1" /tmp/term-cwd.out && ! grep -qE '(^|[^a-z])/etc([^a-z]|$)' /tmp/term-cwd.out; then
   pass "the traversing cwd was clamped under the site root (landed in the site home)"
 else
   fail "the starting directory escaped the site root"
 fi
 
 sec ">>> UNAUTHENTICATED ACCESS IS REFUSED <<<"
-hp-termtest -base "$hostport" -site "$uid" -script 'id -un
+np-termtest -base "$hostport" -site "$uid" -script 'id -un
 ' > /tmp/term-anon.out 2>&1
 head -2 /tmp/term-anon.out
 if grep -q "DIAL_FAILED" /tmp/term-anon.out; then pass "no session cookie -> upgrade refused"; else fail "an unauthenticated client got a terminal"; fi
@@ -102,9 +102,9 @@ else
   fail "the terminal session was not audited"
 fi
 
-sec "hpd audit log — the HTTP side recorded the session too"
+sec "npd audit log — the HTTP side recorded the session too"
 api "$base/api/v1/audit?limit=50" > /tmp/audit.json
-if grep -q 'terminal' /tmp/audit.json; then pass "hpd audited the terminal request"; else echo "note: no terminal row in the hpd audit page"; fi
+if grep -q 'terminal' /tmp/audit.json; then pass "npd audited the terminal request"; else echo "note: no terminal row in the npd audit page"; fi
 
 sec "*** SESSION RECORDING: a typed PASSWORD must never reach the transcript ***"
 # `read -s` is a real password prompt: it turns terminal echo off, reads the
@@ -118,7 +118,7 @@ sec "*** SESSION RECORDING: a typed PASSWORD must never reach the transcript ***
 # in the recording's *output* — a leak the program itself caused, which no input
 # redaction can prevent, and which this test would wrongly blame on us.
 SECRET='hunter2SuperSecret'
-/hp/hp-termtest -base 127.0.0.1:18443 -cookie "$(awk '/hp_session/{print "hp_session="$7}' /tmp/c.txt)" \
+/np/np-termtest -base 127.0.0.1:18443 -cookie "$(awk '/np_session/{print "np_session="$7}' /tmp/c.txt)" \
   -site "$uid" -step 700ms -timeout 25s \
   -script "echo VISIBLE_MARKER
 read -s -p 'Password: ' PW
@@ -128,11 +128,11 @@ exit
 " > /tmp/rec-session.txt 2>&1
 echo "--- session ---"; tail -c 500 /tmp/rec-session.txt
 
-# Give hpd a moment to close the file and finish the row.
+# Give npd a moment to close the file and finish the row.
 sleep 1
 # Newest, not arbitrary: earlier sections in this script opened their own
 # sessions, and `head -1` was picking one of those instead of the password one.
-cast=$(ls -t $(find /var/lib/heropanel/recordings -name '*.cast') 2>/dev/null | head -1)
+cast=$(ls -t $(find /var/lib/nexpanel/recordings -name '*.cast') 2>/dev/null | head -1)
 echo "recording file: ${cast:-<none>}"
 if [ -n "$cast" ] && [ -s "$cast" ]; then
   pass "a recording was written for the session"

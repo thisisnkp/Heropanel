@@ -1,4 +1,4 @@
-// The pure core of HeroPanel's tiny in-house i18n. No React, no I/O — just the
+// The pure core of NexPanel's tiny in-house i18n. No React, no I/O — just the
 // two decisions that a lookup makes: choosing the right message for a key (with
 // a fallback chain and simple pluralization) and filling its placeholders. These
 // are where translation bugs actually live — a missing key that renders blank, a

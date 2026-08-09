@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 func TestMetricStoreRollupAndPrune(t *testing.T) {

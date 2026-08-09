@@ -28,7 +28,7 @@ import {
 //
 // The organising idea is the `managed` flag. The panel shows every container on
 // the host — an admin whose machine is out of memory needs to see the one eating
-// it, whoever started it — but only offers actions on the containers HeroPanel
+// it, whoever started it — but only offers actions on the containers NexPanel
 // created. The broker enforces that regardless; the UI matches it so the buttons
 // do not lie about what will happen.
 export function DockerPage() {
@@ -63,7 +63,7 @@ export function DockerPage() {
           title="Docker is not available on this host"
           hint={
             info.data?.reason ||
-            "No Docker daemon answered. Install Docker and restart HeroPanel, and this page will populate itself."
+            "No Docker daemon answered. Install Docker and restart NexPanel, and this page will populate itself."
           }
         />
       </div>
@@ -96,7 +96,7 @@ function Header({ version }: { version?: string }) {
     <div>
       <h1 className="text-2xl font-semibold text-fg">Docker</h1>
       <p className="text-sm text-muted">
-        Containers on this host{version ? ` · Engine ${version}` : ""}. HeroPanel acts only on containers it created;
+        Containers on this host{version ? ` · Engine ${version}` : ""}. NexPanel acts only on containers it created;
         everything else is shown read-only.
       </p>
     </div>
@@ -196,9 +196,9 @@ export function Containers({ canWrite, siteUID }: { canWrite: boolean; siteUID?:
                     !c.managed && (
                       <span
                         className="text-xs text-muted"
-                        title="HeroPanel did not create this container, so it will not start, stop or remove it"
+                        title="NexPanel did not create this container, so it will not start, stop or remove it"
                       >
-                        not managed by HeroPanel
+                        not managed by NexPanel
                       </span>
                     )
                   )}

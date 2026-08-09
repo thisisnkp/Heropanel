@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/cron"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/cron"
 )
 
 // The scheduler HTTP edge. Jobs are site-scoped, so they ride on the site

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Site backups: full and incremental archives via GNU tar.
@@ -17,7 +17,7 @@ import (
 // The privileged half of the backup pipeline is deliberately small: tar a site's
 // tree into a staging file (backup.create), and untar an archive into a site's
 // tree (backup.restore). Everything clever — encryption, remote upload, chain
-// bookkeeping, scheduling — happens in unprivileged hpd, which can be wrong
+// bookkeeping, scheduling — happens in unprivileged npd, which can be wrong
 // without being root. The broker only ever runs tar with arguments it built
 // itself from validated inputs.
 //
@@ -30,10 +30,10 @@ import (
 //
 // Compression is zstd via tar --zstd — the system binary, no Go dependency.
 
-// backupRoot is where staged archives live, owned by the panel user so hpd can
+// backupRoot is where staged archives live, owned by the panel user so npd can
 // encrypt/upload them and stage downloads for restore (mirrors dumpRoot). tar
 // and install paths are shared with the files/sitedirs capabilities.
-const backupRoot = "/var/lib/heropanel/backups"
+const backupRoot = "/var/lib/nexpanel/backups"
 
 // reBackupFile is a staged archive name: <ULID>.tar.zst — no directories, no
 // dots that climb, so a path built from it cannot leave backupRoot.
@@ -114,7 +114,7 @@ func (BackupCreate) Execute(c capability.Context, raw json.RawMessage) (capabili
 	}
 
 	// Hand the archive (and the snapshot, which the next incremental needs to
-	// survive hpd-side pruning) to the panel user, private.
+	// survive npd-side pruning) to the panel user, private.
 	for _, args := range [][]string{
 		{panelUser + ":" + panelUser, archive},
 	} {
@@ -138,7 +138,7 @@ func (BackupCreate) Execute(c capability.Context, raw json.RawMessage) (capabili
 
 // BackupRestore extracts one staged archive into a site's tree and re-owns the
 // result to the site's user. Restoring an incremental chain is this capability
-// called once per archive, oldest first — hpd sequences the chain, the broker
+// called once per archive, oldest first — npd sequences the chain, the broker
 // only ever performs one bounded step.
 type BackupRestore struct{}
 
@@ -193,7 +193,7 @@ func (BackupRestore) Execute(c capability.Context, raw json.RawMessage) (capabil
 
 // ── backup.prune ─────────────────────────────────────────────────────────────
 
-// BackupPrune deletes one staged archive. hpd owns retention policy; the broker
+// BackupPrune deletes one staged archive. npd owns retention policy; the broker
 // only ever deletes a validated filename inside backupRoot.
 type BackupPrune struct{}
 

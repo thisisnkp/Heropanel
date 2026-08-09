@@ -2,7 +2,7 @@
 # Phase 3 exit criteria, PHP half: a Laravel-shaped app deployed from Git with a
 # real database and real Composer dependencies.
 #
-# The repo carries a composer.json and a front controller in public/. HeroPanel
+# The repo carries a composer.json and a front controller in public/. NexPanel
 # clones it, runs `composer install` on its own (no build command is configured),
 # and OpenLiteSpeed serves the app through php-fpm. The page then talks to a
 # MariaDB database created through the panel, which is what actually proves
@@ -13,11 +13,11 @@
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
 sec "start MariaDB + OpenLiteSpeed"
 # php-fpm's per-site pool socket lives here; the pool cannot bind without it.
-mkdir -p /run/php /run/heropanel/fpm && chmod 755 /run/heropanel /run/heropanel/fpm
+mkdir -p /run/php /run/nexpanel/fpm && chmod 755 /run/nexpanel /run/nexpanel/fpm
 mkdir -p /run/mysqld && chown mysql:mysql /run/mysqld
 mysqld_safe --skip-grant-tables=0 >/tmp/mysqld.log 2>&1 &
 for i in $(seq 1 60); do mysqladmin ping >/dev/null 2>&1 && break; sleep 0.5; done
@@ -30,14 +30,14 @@ mkdir -p /srv/git /home/git/.ssh
 git init --bare -q /srv/git/app.git
 work=$(mktemp -d)
 git init -q "$work"
-git -C "$work" config user.email ci@heropanel.test
+git -C "$work" config user.email ci@nexpanel.test
 git -C "$work" config user.name CI
 
 # A real composer.json with a real dependency, so `composer install` has to
 # resolve and download something rather than no-op.
 cat > "$work/composer.json" <<'EOF'
 {
-  "name": "heropanel/e2e-app",
+  "name": "nexpanel/e2e-app",
   "require": { "vlucas/phpdotenv": "^5.6" },
   "config": { "vendor-dir": "vendor" }
 }
@@ -52,7 +52,7 @@ $dep = class_exists(\Dotenv\Dotenv::class) ? 'loaded' : 'MISSING';
 $pdo = new PDO('mysql:host=localhost;dbname=laravel_db;charset=utf8mb4', 'laravel_user', 'password123',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $row = $pdo->query('SELECT title FROM posts ORDER BY id LIMIT 1')->fetch();
-echo "<h1>Laravel-shaped app via HeroPanel</h1>";
+echo "<h1>Laravel-shaped app via NexPanel</h1>";
 echo "<p>composer dependency: {$dep}</p>";
 echo "<p>db row: {$row['title']}</p>";
 EOF
@@ -68,21 +68,21 @@ ssh-keygen -A >/dev/null 2>&1
 for i in $(seq 1 40); do (echo > /dev/tcp/127.0.0.1/22) >/dev/null 2>&1 && break; sleep 0.2; done
 echo "composer.json requires: $(grep -o 'vlucas/phpdotenv' "$work/composer.json")"
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-# In this harness hpd runs as root rather than the packaged `heropanel` account,
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+# In this harness npd runs as root rather than the packaged `nexpanel` account,
 # so tell the broker who to hand exported dumps to.
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 SECRET_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY="$SECRET_KEY" \
-  HP_DATABASE_ADMINER_URL=http://127.0.0.1/adminer.php \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY="$SECRET_KEY" \
+  NP_DATABASE_ADMINER_URL=http://127.0.0.1/adminer.php \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -90,7 +90,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "CREATE DATABASE + USER + GRANT (through the panel)"
@@ -139,7 +139,7 @@ chmod o+rwx $site/logs 2>/dev/null
 sleep 1
 # OLS runs as nobody and talks to the pool socket; the pool is owned by the site
 # user. Production uses per-vhost suEXEC instead of loosening the socket.
-chmod 0666 /run/heropanel/fpm/hps1.sock 2>/dev/null
+chmod 0666 /run/nexpanel/fpm/nps1.sock 2>/dev/null
 /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
 
 sec "*** CURL THE LARAVEL-SHAPED APP (composer autoload + MariaDB) ***"
@@ -155,7 +155,7 @@ echo -n "dump is gzip: "
 if gunzip -t /tmp/dump.sql.gz 2>/dev/null; then echo OK; else echo "FAIL:"; head -c 300 /tmp/dump.sql.gz; echo; fi
 echo -n "dump contains the row: "; gunzip -c /tmp/dump.sql.gz 2>/dev/null | grep -c 'hello from mariadb'
 echo -n "server-side dump cleaned up: "
-if [ -z "$(ls -A /var/lib/heropanel/dumps 2>/dev/null)" ]; then echo OK; else echo "FAIL:"; ls -la /var/lib/heropanel/dumps; fi
+if [ -z "$(ls -A /var/lib/nexpanel/dumps 2>/dev/null)" ]; then echo OK; else echo "FAIL:"; ls -la /var/lib/nexpanel/dumps; fi
 
 sec "DATABASE IMPORT (drop a row, restore it from the dump)"
 mysql laravel_db -e "DELETE FROM posts;"

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Storing, listing, serving and expiring recorded sessions.
@@ -165,7 +165,7 @@ func (s *RecordingStore) Begin(ctx context.Context, m SessionMeta) (*Session, er
 		return nil, err
 	}
 
-	// 0600: a recording is a transcript of privileged work. Nothing but hpd reads
+	// 0600: a recording is a transcript of privileged work. Nothing but npd reads
 	// it, and it reaches an operator only through an authorised HTTP request.
 	full, err := s.resolve(rec.Path)
 	if err != nil {

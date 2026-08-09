@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/exec"
 )
 
 func TestOSRunnerRejectsRelativePath(t *testing.T) {

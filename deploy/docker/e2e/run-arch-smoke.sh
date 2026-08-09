@@ -18,18 +18,18 @@ sec "target architecture"
 echo "uname -m: $(uname -m)"
 
 sec "the binaries execute and detect the arch"
-check "hp-installer runs"  "$(/hp/hp-installer --version 2>&1)" 'hp-installer'
-DET=$(/hp/hp-installer --detect 2>&1)
+check "np-installer runs"  "$(/np/np-installer --version 2>&1)" 'np-installer'
+DET=$(/np/np-installer --detect 2>&1)
 echo "$DET" | grep -iE 'OS/arch'
 check "arch detected as linux/*" "$DET" 'linux/'
 
 sec "the DB layer works on this arch (SQLite + every migration)"
-MIG=$(HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db /hp/hpd --migrate 2>&1)
+MIG=$(NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db /np/npd --migrate 2>&1)
 echo "$MIG" | tail -1
 check "migrations applied" "$MIG" '"msg":"migrations applied"'
 
 sec "the broker's offline self-check passes on this arch"
-SC=$(/hp/hp-broker --check 2>&1)
+SC=$(/np/np-broker --check 2>&1)
 echo "$SC" | tail -1
 check "broker self-check OK" "$SC" 'self-check OK'
 

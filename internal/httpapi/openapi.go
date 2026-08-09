@@ -1,6 +1,6 @@
 package httpapi
 
-// OpenAPI 3.1 description of hpd's HTTP surface.
+// OpenAPI 3.1 description of npd's HTTP surface.
 //
 // The spec is not hand-maintained as a separate file that drifts from the code.
 // Instead buildOpenAPI walks the *live* chi routing tree, so every path and
@@ -130,12 +130,12 @@ func buildOpenAPI(routes chi.Routes, version string) map[string]any {
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
-			"title":       "HeroPanel API",
+			"title":       "NexPanel API",
 			"version":     version,
-			"description": "Control-plane API for the HeroPanel hosting panel (hpd). All responses are wrapped in a `{data, meta}` envelope; errors in a `{error}` envelope. Authenticate with a session cookie (browser) or a bearer API key (programmatic).",
+			"description": "Control-plane API for the NexPanel hosting panel (npd). All responses are wrapped in a `{data, meta}` envelope; errors in a `{error}` envelope. Authenticate with a session cookie (browser) or a bearer API key (programmatic).",
 			"license":     map[string]any{"name": "See repository"},
 		},
-		"servers":  []any{map[string]any{"url": "/", "description": "This hpd instance"}},
+		"servers":  []any{map[string]any{"url": "/", "description": "This npd instance"}},
 		"tags":     openapiTags,
 		"security": []any{map[string]any{"sessionCookie": []any{}}, map[string]any{"apiKey": []any{}}},
 		"paths":    paths,

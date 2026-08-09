@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // keepReleases is how many past releases to retain per site (the live one is

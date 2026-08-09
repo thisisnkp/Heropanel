@@ -1,10 +1,10 @@
-// Package audit implements hpd's tamper-evident, hash-chained audit log: who
+// Package audit implements npd's tamper-evident, hash-chained audit log: who
 // did what, to which resource, from where, with what outcome, and when.
 //
 // It is the panel-side counterpart to the broker's in-process chain
 // (broker/audit): the broker records that a privileged capability ran, this
 // records the human or API key that asked for it. Both are needed — the broker
-// cannot see the session behind a request, and hpd cannot vouch for what
+// cannot see the session behind a request, and npd cannot vouch for what
 // happened after the socket.
 //
 // The chain follows docs/05-security-architecture.md §9:
@@ -44,7 +44,7 @@ const (
 	ActorUser      ActorKind = "user"      // a logged-in human
 	ActorAPIKey    ActorKind = "apikey"    // a programmatic key
 	ActorAnonymous ActorKind = "anonymous" // unauthenticated (a failed login, a webhook)
-	ActorSystem    ActorKind = "system"    // hpd itself (schedulers, sweepers)
+	ActorSystem    ActorKind = "system"    // npd itself (schedulers, sweepers)
 )
 
 // tsLayout is the canonical timestamp form. The hash covers the timestamp *as

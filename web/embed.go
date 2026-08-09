@@ -1,4 +1,4 @@
-// Package web embeds the built React SPA so hpd can serve the UI from a single
+// Package web embeds the built React SPA so npd can serve the UI from a single
 // binary (docs/08 §3). The real assets are produced by `npm run build` into
 // web/dist; a .gitkeep placeholder keeps the directory present so this embed
 // always compiles, even before a frontend build.

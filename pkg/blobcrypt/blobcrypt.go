@@ -14,7 +14,7 @@
 //
 // Format:
 //
-//	magic "HPB1" | nonce prefix (7 bytes) | chunks…
+//	magic "NPB1" | nonce prefix (7 bytes) | chunks…
 //	chunk: ciphertext length (uint32 BE) | GCM(nonce=prefix||counter||flag, plaintext)
 package blobcrypt
 
@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	magic = "HPB1"
+	magic = "NPB1"
 	// chunkSize bounds plaintext per chunk. 64 KiB keeps memory flat regardless
 	// of file size while amortising the 16-byte GCM tag to ~0.02 % overhead.
 	chunkSize   = 64 * 1024

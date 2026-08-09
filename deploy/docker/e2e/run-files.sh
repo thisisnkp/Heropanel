@@ -17,18 +17,18 @@ pass(){ echo "PASS: $*"; }
 fail(){ echo "FAIL: $*"; FAILED=1; }
 FAILED=0
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
-sec "start hp-broker (root) + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+sec "start np-broker (root) + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 echo "readyz: $(curl -s $base/readyz)"
 
@@ -37,7 +37,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "CREATE A BAREMETAL SITE (a real Linux user is created for it)"
@@ -109,7 +109,7 @@ api -X POST "$base/api/v1/sites/$uid/files/upload-archive?path=bundled&filename=
   --data-binary @/tmp/bundle.tar.gz -H 'Content-Encoding: identity'; echo
 if [ -f "$site/bundled/one.txt" ] && [ -f "$site/bundled/nested/two.txt" ]; then pass "archived upload extracted the whole tree in one request"; else fail "archived upload did not produce the files"; fi
 # The staged archive must not linger in the tree.
-if ls "$site/bundled/".hp-upload-* >/dev/null 2>&1; then fail "the staged upload archive was left behind"; else pass "staged archive auto-removed"; fi
+if ls "$site/bundled/".np-upload-* >/dev/null 2>&1; then fail "the staged upload archive was left behind"; else pass "staged archive auto-removed"; fi
 echo -n "uploaded file owner: "; stat -c '%U' "$site/bundled/one.txt"
 
 sec "RENAME"
@@ -139,7 +139,7 @@ echo -n "archive owner: "; stat -c '%U' "$site/assets/bundle.zip" 2>/dev/null
 names=$(unzip -Z1 "$site/assets/bundle.zip" 2>/dev/null)
 echo "-- archive entries --"; echo "$names"
 if echo "$names" | grep -qx 'a.txt' && echo "$names" | grep -qx 'sub/b.txt' && \
-   ! echo "$names" | grep -q 'srv/heropanel'; then
+   ! echo "$names" | grep -q 'srv/nexpanel'; then
   pass "archive holds relative paths, not the server's absolute tree"
 else
   fail "archive contents are wrong"
@@ -204,7 +204,7 @@ else
 fi
 
 sec "FOLDER DOWNLOAD (server builds the zip, streams it, and cleans up)"
-before_count=$(find "$site" -name '.hp-download-*' | wc -l)
+before_count=$(find "$site" -name '.np-download-*' | wc -l)
 api "$base/api/v1/sites/$uid/files/archive?path=assets" -o /tmp/folder.zip
 if [ -s /tmp/folder.zip ] && unzip -tq /tmp/folder.zip >/dev/null 2>&1; then
   pass "the folder downloaded as a valid zip ($(stat -c '%s' /tmp/folder.zip) bytes)"
@@ -218,7 +218,7 @@ else
   fail "the archive did not contain the expected entries"
 fi
 # The whole reason this endpoint exists: nothing is left behind in the tree.
-after_count=$(find "$site" -name '.hp-download-*' | wc -l)
+after_count=$(find "$site" -name '.np-download-*' | wc -l)
 echo "temp archives before=$before_count after=$after_count"
 if [ "$after_count" = "0" ]; then
   pass "no temporary archive was left in the site tree"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // seedSite provisions a site and returns its uid plus how many broker calls that
@@ -66,7 +66,7 @@ func TestSetLimitsAppliesToTheSliceAndPersists(t *testing.T) {
 		t.Fatalf("unexpected broker calls: %+v", calls)
 	}
 	in := calls[0].input
-	if in["vhost"] != "hps1" || in["cpu_quota_pct"] != 50 || in["pids_max"] != 100 {
+	if in["vhost"] != "nps1" || in["cpu_quota_pct"] != 50 || in["pids_max"] != 100 {
 		t.Fatalf("site.apply_slice input = %+v", in)
 	}
 

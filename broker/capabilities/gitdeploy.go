@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Absolute tool paths. Everything a deploy runs as the site user goes through
@@ -28,7 +28,7 @@ const (
 	rmPath      = "/bin/rm"
 	testPath    = "/usr/bin/test"
 	lsPath      = "/bin/ls"
-	// composerPath is where hp-installer places Composer. Pinned like every other
+	// composerPath is where np-installer places Composer. Pinned like every other
 	// tool here: the deploy must not pick up whatever `composer` happens to be
 	// first on a site user's PATH.
 	composerPath = "/usr/local/bin/composer"
@@ -432,7 +432,7 @@ func mustRunAsUser(c capability.Context, user string, env []string, timeout time
 var reSCPLike = regexp.MustCompile(`^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9.-]+:/?[A-Za-z0-9][A-Za-z0-9._/~-]{0,254}$`)
 
 // validateRepoURL mirrors the service check (defense in depth — the broker never
-// trusts hpd's validation): https:// for public and token clones, an SSH remote
+// trusts npd's validation): https:// for public and token clones, an SSH remote
 // only when a deploy key was supplied. Credentials embedded in the URL are
 // refused outright; they would end up in argv, which every user on the box can
 // read.

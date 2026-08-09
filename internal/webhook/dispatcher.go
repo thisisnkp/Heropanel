@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 // Delivery tuning. Attempts follow an exponential backoff, capped, so a briefly
@@ -26,10 +26,10 @@ const (
 
 	// Signature headers. The signed string is "<timestamp>.<body>", so a captured
 	// body cannot be replayed under a new timestamp without invalidating the HMAC.
-	headerEvent     = "X-HeroPanel-Event"
-	headerDelivery  = "X-HeroPanel-Delivery"
-	headerTimestamp = "X-HeroPanel-Timestamp"
-	headerSignature = "X-HeroPanel-Signature"
+	headerEvent     = "X-NexPanel-Event"
+	headerDelivery  = "X-NexPanel-Delivery"
+	headerTimestamp = "X-NexPanel-Timestamp"
+	headerSignature = "X-NexPanel-Signature"
 )
 
 // Dispatcher drains the delivery queue: it signs and POSTs due deliveries and
@@ -114,7 +114,7 @@ func (d *Dispatcher) post(ctx context.Context, j repository.WebhookDeliveryJob) 
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "HeroPanel-Webhook/1")
+	req.Header.Set("User-Agent", "NexPanel-Webhook/1")
 	req.Header.Set(headerEvent, j.Event)
 	req.Header.Set(headerDelivery, j.WebhookUID)
 	req.Header.Set(headerTimestamp, ts)

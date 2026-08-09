@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
-const siteRoot = "/srv/heropanel/sites/1"
+const siteRoot = "/srv/nexpanel/sites/1"
 
 // lastArg returns a command's final argument (the target path for most file ops).
 func lastArg(c exec.Command) string {
@@ -36,7 +36,7 @@ func assertRunAsUser(t *testing.T, c exec.Command, user string) {
 func TestFileWriteClampsTraversalAndRunsAsUser(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	in := map[string]any{
-		"root": siteRoot, "path": "../../etc/passwd", "username": "hps1",
+		"root": siteRoot, "path": "../../etc/passwd", "username": "nps1",
 		"content": []byte("pwned"),
 	}
 	if _, err := (capabilities.FileWrite{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
@@ -46,7 +46,7 @@ func TestFileWriteClampsTraversalAndRunsAsUser(t *testing.T) {
 		t.Fatalf("got %d calls, want 1", len(fr.Calls))
 	}
 	c := fr.Calls[0]
-	assertRunAsUser(t, c, "hps1")
+	assertRunAsUser(t, c, "nps1")
 	// The traversal is clamped *under* the site root, never /etc/passwd.
 	if got := lastArg(c); got != siteRoot+"/etc/passwd" {
 		t.Errorf("write target = %q, want it clamped under the site root", got)
@@ -67,7 +67,7 @@ func TestFileWriteClampsTraversalAndRunsAsUser(t *testing.T) {
 
 func TestFileWriteAppendFlag(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "path": "up.bin", "username": "hps1", "content": []byte("x"), "append": true}
+	in := map[string]any{"root": siteRoot, "path": "up.bin", "username": "nps1", "content": []byte("x"), "append": true}
 	if _, err := (capabilities.FileWrite{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -78,13 +78,13 @@ func TestFileWriteAppendFlag(t *testing.T) {
 
 func TestFileReadChunkAndEOF(t *testing.T) {
 	fr := &exec.FakeRunner{Result: exec.Result{Stdout: []byte("hello"), ExitCode: 0}}
-	in := map[string]any{"root": siteRoot, "path": "index.php", "username": "hps1", "offset": 10, "length": 100}
+	in := map[string]any{"root": siteRoot, "path": "index.php", "username": "nps1", "offset": 10, "length": 100}
 	res, err := (capabilities.FileRead{}).Execute(gitCtx(fr), raw(t, in))
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
 	c := fr.Calls[0]
-	assertRunAsUser(t, c, "hps1")
+	assertRunAsUser(t, c, "nps1")
 	if !hasToken(c, "/bin/dd") || !hasToken(c, "if="+siteRoot+"/index.php") ||
 		!hasToken(c, "skip=10") || !hasToken(c, "bs=100") || !hasToken(c, "iflag=skip_bytes,fullblock") {
 		t.Errorf("dd read args = %v", c.Args)
@@ -114,7 +114,7 @@ func TestFileExtractSelectsToolBySuffix(t *testing.T) {
 	}
 	for name, tool := range cases {
 		fr := &exec.FakeRunner{}
-		in := map[string]any{"root": siteRoot, "archive": name, "dest": "out", "username": "hps1"}
+		in := map[string]any{"root": siteRoot, "archive": name, "dest": "out", "username": "nps1"}
 		if _, err := (capabilities.FileExtract{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 			t.Fatalf("extract %s: %v", name, err)
 		}
@@ -126,7 +126,7 @@ func TestFileExtractSelectsToolBySuffix(t *testing.T) {
 	}
 	// An unknown/dangerous suffix is refused, not shelled out.
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "archive": "evil.sh", "dest": "out", "username": "hps1"}
+	in := map[string]any{"root": siteRoot, "archive": "evil.sh", "dest": "out", "username": "nps1"}
 	if _, err := (capabilities.FileExtract{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindValidation) {
 		t.Errorf("unsupported archive should be rejected, got %v", err)
 	}
@@ -134,11 +134,11 @@ func TestFileExtractSelectsToolBySuffix(t *testing.T) {
 
 func TestFileChmodValidatesMode(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	bad := map[string]any{"root": siteRoot, "path": "x", "username": "hps1", "mode": "999"}
+	bad := map[string]any{"root": siteRoot, "path": "x", "username": "nps1", "mode": "999"}
 	if _, err := (capabilities.FileChmod{}).Execute(gitCtx(fr), raw(t, bad)); !errx.IsKind(err, errx.KindValidation) {
 		t.Errorf("mode 999 should be rejected, got %v", err)
 	}
-	good := map[string]any{"root": siteRoot, "path": "x", "username": "hps1", "mode": "0644"}
+	good := map[string]any{"root": siteRoot, "path": "x", "username": "nps1", "mode": "0644"}
 	if _, err := (capabilities.FileChmod{}).Execute(gitCtx(fr), raw(t, good)); err != nil {
 		t.Fatalf("chmod 0644: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestFileChmodValidatesMode(t *testing.T) {
 func TestFileRemoveRefusesSiteRoot(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	// An empty path clamps to the site root itself, which must never be rm -rf'd.
-	in := map[string]any{"root": siteRoot, "path": "", "username": "hps1"}
+	in := map[string]any{"root": siteRoot, "path": "", "username": "nps1"}
 	if _, err := (capabilities.FileRemove{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindValidation) {
 		t.Errorf("removing the site root must be refused, got %v", err)
 	}
@@ -162,7 +162,7 @@ func TestFileRemoveRefusesSiteRoot(t *testing.T) {
 func TestFileOpRejectsRootOutsidePolicy(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	// A root that is not under an allowed policy root is forbidden outright.
-	in := map[string]any{"root": "/etc", "path": "passwd", "username": "hps1"}
+	in := map[string]any{"root": "/etc", "path": "passwd", "username": "nps1"}
 	if _, err := (capabilities.FileList{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindForbidden) {
 		t.Errorf("a root outside the policy roots must be forbidden, got %v", err)
 	}

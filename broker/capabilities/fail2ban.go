@@ -6,13 +6,13 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Fail2Ban, driven through its own client. The broker runs fail2ban-client and
-// returns raw output; hpd parses it (the schema lives where it can be tested
+// returns raw output; npd parses it (the schema lives where it can be tested
 // over fixtures). Bans and unbans take a validated jail name and a parsed IP,
 // so nothing user-derived reaches the process as anything but an argument.
 

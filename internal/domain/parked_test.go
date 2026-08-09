@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeParkedRepo is an in-memory domain.ParkedRepo, mirroring fakeRepo's style
@@ -140,10 +140,10 @@ func TestParkReturnsChallengeAndRejectsDuplicate(t *testing.T) {
 	if pd.Status != domain.ParkedUnverified {
 		t.Fatalf("status = %q, want unverified", pd.Status)
 	}
-	if !strings.HasPrefix(pd.ChallengeName, "_heropanel-challenge.") || !strings.Contains(pd.ChallengeName, "acme.test") {
+	if !strings.HasPrefix(pd.ChallengeName, "_nexpanel-challenge.") || !strings.Contains(pd.ChallengeName, "acme.test") {
 		t.Fatalf("challenge name = %q", pd.ChallengeName)
 	}
-	if !strings.HasPrefix(pd.ChallengeValue, "heropanel-verify=") {
+	if !strings.HasPrefix(pd.ChallengeValue, "nexpanel-verify=") {
 		t.Fatalf("challenge value = %q", pd.ChallengeValue)
 	}
 	if pd.Attached {

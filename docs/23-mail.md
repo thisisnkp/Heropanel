@@ -30,7 +30,7 @@ A mailbox's password is accepted, hashed to **`{BLF-CRYPT}`** (bcrypt —
 already in the tree via x/crypto, verified by libxcrypt on every current
 distro), stored, and never returned: write-only both directions. Delivery is
 Postfix → **Dovecot LMTP** over the postfix-private socket into a
-vmail-owned Maildir (`/var/lib/heropanel/mail/<domain>/<local>/Maildir`);
+vmail-owned Maildir (`/var/lib/nexpanel/mail/<domain>/<local>/Maildir`);
 quotas are Dovecot's maildir quota with the per-user override carried in the
 passwd-file, read back live through `doveadm quota`.
 
@@ -45,10 +45,10 @@ alias, an external one is a forwarder — same mechanism, one table.
 
 ## 3. DKIM, SPF, DMARC
 
-The DKIM pair is generated in hpd (stdlib RSA-2048, the interoperability
+The DKIM pair is generated in npd (stdlib RSA-2048, the interoperability
 baseline). The private key is **sealed with the panel data key before it
 touches the database** (AAD-bound to its domain row, write-only; no
-`HP_SECRET_KEY`, no DKIM) and unsealed only to hand OpenDKIM its key file
+`NP_SECRET_KEY`, no DKIM) and unsealed only to hand OpenDKIM its key file
 (0600, opendkim-owned) through the broker. The public half is a TXT value,
 shown freely.
 
@@ -61,12 +61,12 @@ same set is the copy-paste list.
 
 The DNS check (`GET /mail/domains/{uid}/dns`) resolves each record against
 **live DNS** — the panel's own zone data would only prove the panel agrees
-with itself. `mail.resolver` / `HP_MAIL_RESOLVER` pins the resolver for
+with itself. `mail.resolver` / `NP_MAIL_RESOLVER` pins the resolver for
 split-DNS setups (and lets e2e ask the local authoritative server).
 
 ## 4. Queue
 
-`postqueue -j` through a broker read verb, parsed in hpd where the schema is
+`postqueue -j` through a broker read verb, parsed in npd where the schema is
 unit-tested over fixtures; flush is `postqueue -f`; delete is `postsuper -d`
 per **explicit, validated ID** — there is deliberately no delete-ALL, because
 making the whole queue disappear must not be one compromised call away.
@@ -98,12 +98,12 @@ deleted by ID; every capability is on the broker's audit chain.
 ## Transport security (TLS)
 
 The mail host presents **one** certificate on every mail port — its own FQDN
-(`HP_MAIL_HOSTNAME`, e.g. `mail.example.com`), *not* a per-domain cert. A
+(`NP_MAIL_HOSTNAME`, e.g. `mail.example.com`), *not* a per-domain cert. A
 client connects to the mail host, not to each of the domains it carries, so
 one host certificate is the correct model (SNI per virtual domain is a
 deliberate non-goal).
 
-hpd delegates to the SSL module ([internal/ssl](../internal/ssl)) to make sure
+npd delegates to the SSL module ([internal/ssl](../internal/ssl)) to make sure
 that certificate is installed: a real Let's Encrypt cert when the operator has
 issued one for the host, otherwise a **self-signed fallback** so TLS works out
 of the box (the same posture as every panel-served site). The broker's
@@ -117,12 +117,12 @@ of the box (the same posture as every panel-served site). The broker's
   never make is being an open relay, so it is made unrepresentable rather than
   merely discouraged. Submission requires STARTTLS (`encrypt`); smtps is
   implicit TLS (`wrappermode`).
-- **Dovecot** — a `96-heropanel-ssl.conf` drop-in (`ssl = required`, the host
+- **Dovecot** — a `96-nexpanel-ssl.conf` drop-in (`ssl = required`, the host
   cert, TLS ≥ 1.2) plus the **postfix-private SASL socket** submission
   authenticates against. imaps/993 (and pop3s/995 where `dovecot-pop3d` is
   present) come up automatically once `ssl` is set.
 
-TLS is best-effort-wired when a domain is created (if `HP_MAIL_HOSTNAME` is
+TLS is best-effort-wired when a domain is created (if `NP_MAIL_HOSTNAME` is
 set) and re-appliable from the UI's Mail-TLS card or `POST /api/v1/mail/tls`.
 
 Live proof (`run-mail.sh`): `openssl s_client` completes **STARTTLS on 587**
@@ -138,14 +138,14 @@ Roundcube is served by the panel's **own** OpenLiteSpeed + PHP against the
 webmail talks to the MTAs over the loopback (TLS) rather than reaching out over
 a network. It is not a customer site: it renders as a *system vhost* into the
 one OLS config (`site.WithSystemVhosts`), on a configured hostname
-(`HP_WEBMAIL_HOSTNAME`, e.g. `webmail.example.com`), with a dedicated `webmail`
+(`NP_WEBMAIL_HOSTNAME`, e.g. `webmail.example.com`), with a dedicated `webmail`
 Linux user and FPM pool.
 
 One API call (`POST /api/v1/webmail/install`) lays the whole runtime down: the
 broker's **`webmail.install`** creates the user, the writable data tree
 (temp/logs and a **sqlite** metadata db — Roundcube self-initialises the schema
 on first connect), and the rendered `config.inc.php` pointing at
-`tls://127.0.0.1:143` (IMAP) and `tls://127.0.0.1:587` (submission); hpd then
+`tls://127.0.0.1:143` (IMAP) and `tls://127.0.0.1:587` (submission); npd then
 writes the FPM pool through the same **`php.write_pool`** every site pool uses
 and re-applies the web server so the vhost serves. **No mailbox password is
 ever handled** — Roundcube authenticates each user against Dovecot at login;

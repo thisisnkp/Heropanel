@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/pwhash"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/pwhash"
 )
 
 // cheap keeps Argon2id fast in tests.

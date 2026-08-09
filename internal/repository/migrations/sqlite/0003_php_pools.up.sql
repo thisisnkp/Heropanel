@@ -1,4 +1,4 @@
--- HeroPanel PHP module: per-site PHP-FPM pools (SQLite).
+-- NexPanel PHP module: per-site PHP-FPM pools (SQLite).
 CREATE TABLE php_pools (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     site_id         INTEGER NOT NULL UNIQUE REFERENCES sites(id) ON DELETE CASCADE,

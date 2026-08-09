@@ -173,7 +173,7 @@ function ToolsMenu({ uid }: { uid: string }) {
       {open && (
         <div
           role="menu"
-          className="hp-pop-in absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-panel py-1 shadow-lg"
+          className="np-pop-in absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-panel py-1 shadow-lg"
         >
           {items.map((it) => (
             <button
@@ -223,7 +223,7 @@ function AddWebsiteMenu({ onSelect }: { onSelect: (m: ActiveModal) => void }) {
     { label: "Custom PHP/Static Website", hint: "A plain site — files you manage yourself.", icon: FileCode, to: "/sites/new" },
     { label: "Deploy App", hint: "Node.js, Python, or PHP from GitHub.", icon: GitBranch, modal: "git-web" },
     { label: "Deploy Single Binary Proxy App", hint: "Go, C++, or Rust from GitHub.", icon: Binary, modal: "git-binary" },
-    { label: "Build App From Hero Web Builder", hint: "Visual page builder.", icon: LayoutTemplate },
+    { label: "Build App From Nex Web Builder", hint: "Visual page builder.", icon: LayoutTemplate },
     { label: "Create WordPress Website", hint: "One-click WordPress stack.", icon: Sparkles },
   ];
 
@@ -236,7 +236,7 @@ function AddWebsiteMenu({ onSelect }: { onSelect: (m: ActiveModal) => void }) {
       {open && (
         <div
           role="menu"
-          className="hp-pop-in absolute right-0 z-20 mt-1.5 w-[20rem] overflow-hidden rounded-xl border border-border bg-panel p-1 shadow-lg"
+          className="np-pop-in absolute right-0 z-20 mt-1.5 w-[20rem] overflow-hidden rounded-xl border border-border bg-panel p-1 shadow-lg"
         >
           {items.map((it) => {
             const Icon = it.icon;

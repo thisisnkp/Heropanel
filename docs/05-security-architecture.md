@@ -8,7 +8,7 @@ Security is the product's spine, not a feature. The design assumes the network-f
 |-----------|--------------------|-----------------|
 | Remote unauthenticated attacker | Reaches `:8443` | Authn, rate limiting, brute-force lockout, WAF |
 | Authenticated low-priv user (client/reseller) | Valid session | RBAC scoping, per-site isolation, quota enforcement |
-| Compromised `hpd` process (RCE in API) | Runs as `heropanel`, can talk to broker | **Privilege broker** allowlist — cannot get arbitrary root |
+| Compromised `npd` process (RCE in API) | Runs as `nexpanel`, can talk to broker | **Privilege broker** allowlist — cannot get arbitrary root |
 | Malicious hosted site (attacker owns a site) | Code exec as its Linux user | Per-site users, cgroups, mount/namespace isolation, no shared tmp |
 | Compromised module | Runs as its module user | Module least-privilege, still must go through broker for root ops |
 | Insider / stolen admin creds | Full admin | MFA, WebAuthn, audit log (hash-chained), session controls, impersonation logging |
@@ -16,34 +16,34 @@ Security is the product's spine, not a feature. The design assumes the network-f
 ## 2. Privilege Separation — the core invariant
 
 ```
- network ──► hpd (unpriv, heropanel) ──gRPC──► hp-broker (root) ──► OS
+ network ──► npd (unpriv, nexpanel) ──gRPC──► np-broker (root) ──► OS
                     │                              │
              largest attack surface        tiny, audited, allowlisted
              NEVER runs as root            ONLY component that is root
 ```
 
-### `hp-broker` design rules (non-negotiable)
-1. **Tiny surface.** No HTTP, no DB, no business logic. Only a gRPC server on `/run/heropanel/broker.sock` (mode `0660`, `root:heropanel`).
+### `np-broker` design rules (non-negotiable)
+1. **Tiny surface.** No HTTP, no DB, no business logic. Only a gRPC server on `/run/nexpanel/broker.sock` (mode `0660`, `root:nexpanel`).
 2. **Capability allowlist.** The broker exposes a *fixed enum* of operations. There is **no** "run arbitrary command" capability. Adding a capability is a code change + review, not config.
 3. **No shell, ever.** All execution uses `exec.Command(bin, args...)` with argument arrays — no `sh -c`, no string interpolation, no user input concatenated into a command line. Paths to binaries are absolute and pinned.
-4. **Strict input validation** per capability: usernames match `^[a-z][a-z0-9_-]{0,31}$`, domains validated as FQDNs, paths canonicalized and confined to allowlisted roots (reject `..`, symlinks escaping the site root, absolute paths outside `/srv/heropanel`).
-5. **Caller authentication.** The broker verifies the peer credentials of the Unix socket (`SO_PEERCRED`: uid/gid must be `heropanel`) **and** a rotating broker token from `secrets.env`. Double gate.
-6. **Per-call audit.** Every invocation is written to `broker-audit.log` *before* execution (intent) and after (outcome), hash-chained, with actor correlation passed from `hpd`.
+4. **Strict input validation** per capability: usernames match `^[a-z][a-z0-9_-]{0,31}$`, domains validated as FQDNs, paths canonicalized and confined to allowlisted roots (reject `..`, symlinks escaping the site root, absolute paths outside `/srv/nexpanel`).
+5. **Caller authentication.** The broker verifies the peer credentials of the Unix socket (`SO_PEERCRED`: uid/gid must be `nexpanel`) **and** a rotating broker token from `secrets.env`. Double gate.
+6. **Per-call audit.** Every invocation is written to `broker-audit.log` *before* execution (intent) and after (outcome), hash-chained, with actor correlation passed from `npd`.
 7. **Resource-bounded.** Broker runs under systemd hardening (see §8) with its own limits; a runaway capability can't exhaust the box.
 
 ### Representative broker capabilities (the *complete* set is enumerated in code)
 ```
 SystemUser.Create / Delete / SetQuota / Lock
 Service.Restart(name ∈ allowlist: openlitespeed, php-fpm@*, mariadb, postfix, dovecot, docker, nftables…)
-WebServer.WriteVhost(siteID, renderedConfig)  # config templated by hpd, validated by broker, tested before reload
+WebServer.WriteVhost(siteID, renderedConfig)  # config templated by npd, validated by broker, tested before reload
 PhpFpm.WritePool / Reload
-File.Op(scope=siteRoot, op∈{chown,chmod,mkdir,move,delete})   # confined to /srv/heropanel/sites/<id>
+File.Op(scope=siteRoot, op∈{chown,chmod,mkdir,move,delete})   # confined to /srv/nexpanel/sites/<id>
 Firewall.ApplyRuleset(renderedNftables)       # validated, atomic swap w/ rollback timer
 Cert.Issue / Install / Renew
 Cron.Install(user, entry)  # to that user's crontab, not root's
 Mail.ProvisionAccount / Dkim
 Docker.Compose(projectDir, action)            # only when docker module enabled
-Module.SystemctlStartStop(unit ∈ heropanel-mod@*)
+Module.SystemctlStartStop(unit ∈ nexpanel-mod@*)
 Backup.SnapshotPath(scope)                     # read-only tar of allowlisted roots
 ```
 Every capability: validates → (optionally) writes a rendered config → **tests config** (e.g. `litespeed -t`, `nft -c`) → applies → verifies → on failure, **auto-rolls back** and returns a typed error.
@@ -80,14 +80,14 @@ Each site is a security domain. On creation the broker provisions:
 - **Impersonation** (admin → user) requires a distinct permission, is time-boxed, banner-visible, and every action during impersonation is double-attributed in the audit log.
 
 ## 6. Secrets & Cryptography
-- **Envelope encryption:** a master key (from `/etc/heropanel/secrets.env` `0600`, or OS keyring / age file) wraps rotating **data keys**; `*_enc` columns use **AES-256-GCM** with per-record nonces and AAD binding (row id + column) to prevent swap attacks.
+- **Envelope encryption:** a master key (from `/etc/nexpanel/secrets.env` `0600`, or OS keyring / age file) wraps rotating **data keys**; `*_enc` columns use **AES-256-GCM** with per-record nonces and AAD binding (row id + column) to prevent swap attacks.
 - **Key rotation** re-wraps data keys without bulk re-encryption; rotation is audited.
 - **TLS:** panel serves only TLS 1.2+ (prefer 1.3), modern cipher suites, HSTS. Panel cert auto-provisioned (Let's Encrypt) or self-signed on first boot with a clear rotation path.
 - **Signing:** update artifacts and module packages are **cosign/minisign-signed**; the installer/updater verify signatures against a pinned public key before install (see [08](08-deployment-architecture.md)).
 - **Internal transport:** gRPC over Unix sockets (no network exposure); future multi-node agents use **mTLS** with a panel-managed CA.
 
 ## 7. Application Firewall & Intrusion Defense (Security module)
-- **Firewall abstraction** over nftables (primary) / ufw, CSF-compatible concepts; rules rendered by `hpd`, validated + applied atomically by the broker with a **rollback timer** (if the operator doesn't confirm connectivity, rules revert — prevents lock-out).
+- **Firewall abstraction** over nftables (primary) / ufw, CSF-compatible concepts; rules rendered by `npd`, validated + applied atomically by the broker with a **rollback timer** (if the operator doesn't confirm connectivity, rules revert — prevents lock-out).
 - **Fail2Ban** managed jails (SSH, panel auth, OLS, mail); **CrowdSec** optional bouncer.
 - **ModSecurity + OWASP CRS** in front of hosted sites (OLS/Nginx), per-site toggle + paranoia level.
 - **Malware/rootkit:** ClamAV + LMD (maldet), rkhunter, Lynis audits — scheduled + on-demand, results in `scan_runs`, hits go to **quarantine** (moved, permission-stripped, hash-recorded) not deleted.
@@ -97,7 +97,7 @@ Each site is a security domain. On creation the broker provisions:
 - **Geo/IP allow-block lists** enforced at firewall + app edge.
 
 ## 8. Process & Host Hardening (systemd)
-Every unit ships hardened. Example directives applied to `hpd`, modules (and a *stricter* subset to `hp-broker`, which needs some privileges but is otherwise locked down):
+Every unit ships hardened. Example directives applied to `npd`, modules (and a *stricter* subset to `np-broker`, which needs some privileges but is otherwise locked down):
 ```
 NoNewPrivileges=yes          ProtectSystem=strict         ProtectHome=yes
 PrivateTmp=yes               PrivateDevices=yes           ProtectKernelTunables=yes
@@ -107,7 +107,7 @@ MemoryDenyWriteExecute=yes   SystemCallArchitectures=native
 CapabilityBoundingSet=…      (broker: only the caps it truly needs, e.g. CAP_CHOWN, CAP_SETUID/SETGID, CAP_DAC_OVERRIDE — nothing more)
 ReadWritePaths=…             (each unit gets an explicit, minimal RW path list)
 ```
-Optional **AppArmor/SELinux** profiles per binary as a second layer. `hpd` gets `ProtectSystem=strict` with only `/var/lib/heropanel`, `/var/log/heropanel`, `/run/heropanel` writable.
+Optional **AppArmor/SELinux** profiles per binary as a second layer. `npd` gets `ProtectSystem=strict` with only `/var/lib/nexpanel`, `/var/log/nexpanel`, `/run/nexpanel` writable.
 
 ## 9. Audit Logging (tamper-evident)
 - Separate append-only `audit_log` (+ mirrored file) covering: auth events, every privileged/mutating API call, every broker capability invocation, impersonation, config changes, module lifecycle, security actions.

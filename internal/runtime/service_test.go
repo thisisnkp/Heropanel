@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/runtime"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 type gwCall struct {
@@ -71,7 +71,7 @@ func (r *fakeRepo) SetStatus(_ context.Context, _ int64, status string) error {
 }
 
 func siteRef() *runtime.SiteRef {
-	return &runtime.SiteRef{ID: 1, LinuxUser: "hps1", HomeDir: "/srv/heropanel/sites/1"}
+	return &runtime.SiteRef{ID: 1, LinuxUser: "nps1", HomeDir: "/srv/nexpanel/sites/1"}
 }
 
 func validInput() runtime.SetInput {
@@ -120,7 +120,7 @@ func TestSetRuntimeAppliesUnitAndReproxies(t *testing.T) {
 			call = &gw.calls[i]
 		}
 	}
-	if call == nil || call.input["vhost"] != "hps1" || call.input["home"] != "/srv/heropanel/sites/1" ||
+	if call == nil || call.input["vhost"] != "nps1" || call.input["home"] != "/srv/nexpanel/sites/1" ||
 		call.input["command"] != "node server.js" || call.input["port"] != 3000 {
 		t.Fatalf("app.unit_apply input = %+v", call)
 	}
@@ -149,7 +149,7 @@ func TestControlStopSetsStatusStopped(t *testing.T) {
 			call = &gw.calls[i]
 		}
 	}
-	if call == nil || call.input["action"] != "stop" || call.input["vhost"] != "hps1" {
+	if call == nil || call.input["action"] != "stop" || call.input["vhost"] != "nps1" {
 		t.Fatalf("app.unit_control input = %+v", call)
 	}
 
@@ -217,7 +217,7 @@ func TestProxyPortAndRemove(t *testing.T) {
 	}
 	var removed bool
 	for _, c := range gw.calls {
-		if c.capability == "app.unit_remove" && c.input["vhost"] == "hps1" {
+		if c.capability == "app.unit_remove" && c.input["vhost"] == "nps1" {
 			removed = true
 		}
 	}

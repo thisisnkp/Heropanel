@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # A minimal HTTPS smart-git server: HTTP Basic auth over TLS, bridging to
-# `git http-backend`. It exists only so the e2e can exercise HeroPanel's
+# `git http-backend`. It exists only so the e2e can exercise NexPanel's
 # token/HTTPS clone path against a real server with a real (private-CA)
 # certificate — the same shape as cloning a private GitHub repo with a PAT.
 #

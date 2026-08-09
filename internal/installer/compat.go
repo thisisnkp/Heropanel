@@ -1,6 +1,6 @@
 package installer
 
-import "github.com/thisisnkp/heropanel/pkg/arch"
+import "github.com/thisisnkp/nexpanel/pkg/arch"
 
 // Verdict is the overall compatibility outcome.
 type Verdict string
@@ -33,7 +33,7 @@ func supportedDistro(id string) (supported, bestEffort bool) {
 	}
 }
 
-// Compatibility evaluates whether the host can run HeroPanel.
+// Compatibility evaluates whether the host can run NexPanel.
 func Compatibility(p Profile) Report {
 	var r Report
 

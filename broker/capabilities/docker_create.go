@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Creating containers, volumes and networks.
@@ -18,7 +18,7 @@ import (
 // This is the file where the module stops being a viewer and starts placing
 // workloads on the host, so it is where the hardening lives. The rule
 // throughout: the caller describes *what* it wants in typed fields, and the
-// broker decides what argv that becomes. hpd never hands over flags.
+// broker decides what argv that becomes. npd never hands over flags.
 //
 // What is refused is as important as what is offered, and most of it is refused
 // by construction — there is simply no input that produces it:
@@ -42,7 +42,7 @@ import (
 // are evaluated *before* the host firewall's, so a container publishing on
 // 0.0.0.0 is reachable from the internet even on a host whose firewall denies
 // that port — operators discover this after the fact, which is how databases end
-// up publicly exposed. Everything HeroPanel puts in front of a container (the
+// up publicly exposed. Everything NexPanel puts in front of a container (the
 // reverse proxy) runs on the same host, so loopback is all that is ever needed.
 const bindHost = "127.0.0.1"
 
@@ -494,7 +494,7 @@ func requireManagedObject(c capability.Context, kind, name string) error {
 	}
 	if strings.TrimSpace(string(res.Stdout)) != "1" {
 		return errx.New(errx.KindForbidden, kind+"_not_managed",
-			"That "+kind+" was not created by HeroPanel, so the panel will not remove it.")
+			"That "+kind+" was not created by NexPanel, so the panel will not remove it.")
 	}
 	return nil
 }

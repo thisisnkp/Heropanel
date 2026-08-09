@@ -3,7 +3,7 @@ package totp_test
 import (
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/totp"
+	"github.com/thisisnkp/nexpanel/pkg/totp"
 )
 
 func TestGenerateCodeValidate(t *testing.T) {
@@ -30,7 +30,7 @@ func TestGenerateCodeValidate(t *testing.T) {
 }
 
 func TestProvisioningURI(t *testing.T) {
-	uri := totp.ProvisioningURI("ABCDEF", "user@example.com", "HeroPanel")
+	uri := totp.ProvisioningURI("ABCDEF", "user@example.com", "NexPanel")
 	if uri == "" || uri[:15] != "otpauth://totp/" {
 		t.Fatalf("bad uri: %q", uri)
 	}

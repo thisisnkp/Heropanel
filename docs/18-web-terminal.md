@@ -1,7 +1,7 @@
 # 18 — Web Terminal (module design)
 
 Phase 4, in-core. An interactive shell on a site, in the browser, running as
-that site's Linux user. xterm.js in the UI, a WebSocket to `hpd`, an upgraded
+that site's Linux user. xterm.js in the UI, a WebSocket to `npd`, an upgraded
 broker connection behind it, and a real PTY hosted by the root broker.
 
 This is the most powerful thing the panel exposes — it is arbitrary command
@@ -12,10 +12,10 @@ between the browser and the shell, and what bounds it at each hop.
 
 ## 1. Why the broker has to own the PTY
 
-`hpd` runs unprivileged, as the `heropanel` account. It **cannot** become another
-user, so it cannot start a shell as `hps1`. Only the root broker can. That single
+`npd` runs unprivileged, as the `nexpanel` account. It **cannot** become another
+user, so it cannot start a shell as `nps1`. Only the root broker can. That single
 fact determines the whole architecture: the PTY is allocated and owned by
-`hp-broker`, and `hpd` is a pipe between that and the browser.
+`np-broker`, and `npd` is a pipe between that and the browser.
 
 The shell is started as a fixed argv — `runuser -u <site-user> -- <shell> -l` —
 with no shell string ever constructed or interpolated. `runuser` drops privileges
@@ -52,7 +52,7 @@ is request → result), but it goes through the *same* authorization path:
 1. **Deny by default** — `terminal.open` must be enabled in policy.
 2. **Username validation** — the strict Linux-username allowlist.
 3. **Root is refused outright.** Policy path roots already keep sessions inside
-   `/srv/heropanel/sites`, but a terminal is the one place where "which user" is
+   `/srv/nexpanel/sites`, but a terminal is the one place where "which user" is
    the entire security question, so the refusal is stated explicitly rather than
    left implied.
 4. **Working directory clamped** — via `capability.ConfinedPath`, the *same*
@@ -201,7 +201,7 @@ both.
 | `ECHO` off, `ICANON` on | a password prompt | **redacted** |
 
 Only the broker can see this, because only the broker holds the PTY, so it
-reports the state to hpd over a `StreamEcho` control frame whenever it changes.
+reports the state to npd over a `StreamEcho` control frame whenever it changes.
 One marker is written per redacted *run*, not per keystroke — one per keystroke
 would leak the password's length, which is most of what redaction protects.
 
@@ -238,7 +238,7 @@ seen. `broker/pty` is unit-tested on Linux against a real PTY — I/O round-trip
 the window size the ioctl actually set, resize, the child's exit code, and that
 `Close` kills a *backgrounded* child, not just the process the broker started.
 
-hpd: `internal/terminal` (site resolution + provisioning gate), a streaming
+npd: `internal/terminal` (site resolution + provisioning gate), a streaming
 broker client, and a WebSocket endpoint gated by `terminal.use` and force-audited,
 with the broker stream opened *before* the upgrade so failures are clean JSON
 errors rather than opaque WebSocket closes.

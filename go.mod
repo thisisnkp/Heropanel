@@ -1,4 +1,4 @@
-module github.com/thisisnkp/heropanel
+module github.com/thisisnkp/nexpanel
 
 go 1.25.0
 

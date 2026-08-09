@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/audit"
 )
 
 // The webmail HTTP edge. Webmail rides the mail permission pair (mail.read /

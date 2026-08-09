@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Inbound verification policy (what the host does with mail it receives). DKIM

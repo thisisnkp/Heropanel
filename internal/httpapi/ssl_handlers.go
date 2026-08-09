@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
 )
 
 func listCertsHandler(d Deps) http.HandlerFunc {
@@ -75,7 +75,7 @@ func uploadCertHandler(d Deps) http.HandlerFunc {
 
 // issueCertHandler obtains a Let's Encrypt certificate. method "http" (default)
 // uses HTTP-01 and needs a webroot; method "dns" uses DNS-01 via a zone
-// HeroPanel is authoritative for, and is required for a wildcard ("*.example.com").
+// NexPanel is authoritative for, and is required for a wildcard ("*.example.com").
 func issueCertHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, _ := auth.FromContext(r.Context())

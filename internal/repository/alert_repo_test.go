@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 func testCipher(t *testing.T) *secrets.Cipher {

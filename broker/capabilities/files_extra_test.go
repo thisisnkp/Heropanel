@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ── file.compress ────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ func TestFileCompressSelectsToolAndRunsAsUser(t *testing.T) {
 	for archive, tool := range cases {
 		fr := &exec.FakeRunner{}
 		in := map[string]any{
-			"root": siteRoot, "username": "hps1",
+			"root": siteRoot, "username": "nps1",
 			"sources": []string{"assets/a.txt", "assets/b.txt"},
 			"archive": archive,
 		}
@@ -28,7 +28,7 @@ func TestFileCompressSelectsToolAndRunsAsUser(t *testing.T) {
 			t.Fatalf("compress %s: %v", archive, err)
 		}
 		c := fr.Calls[0]
-		assertRunAsUser(t, c, "hps1")
+		assertRunAsUser(t, c, "nps1")
 		if !hasToken(c, tool) {
 			t.Errorf("%s should use %s; args = %v", archive, tool, c.Args)
 		}
@@ -48,7 +48,7 @@ func TestFileCompressSelectsToolAndRunsAsUser(t *testing.T) {
 func TestFileCompressRejectsUnsupportedFormat(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	in := map[string]any{
-		"root": siteRoot, "username": "hps1",
+		"root": siteRoot, "username": "nps1",
 		"sources": []string{"a.txt"}, "archive": "out.rar",
 	}
 	if _, err := (capabilities.FileCompress{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindValidation) {
@@ -62,7 +62,7 @@ func TestFileCompressClampsSourcesAndRefusesMixedParents(t *testing.T) {
 	// than silently archiving something else.
 	fr := &exec.FakeRunner{}
 	in := map[string]any{
-		"root": siteRoot, "username": "hps1",
+		"root": siteRoot, "username": "nps1",
 		"sources": []string{"assets/a.txt", "../../../../etc/passwd"},
 		"archive": "out.zip",
 	}
@@ -80,7 +80,7 @@ func TestFileCompressClampsSourcesAndRefusesMixedParents(t *testing.T) {
 
 func TestFileCompressRefusesEmptySelection(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "username": "hps1", "sources": []string{}, "archive": "o.zip"}
+	in := map[string]any{"root": siteRoot, "username": "nps1", "sources": []string{}, "archive": "o.zip"}
 	if _, err := (capabilities.FileCompress{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindValidation) {
 		t.Errorf("compressing nothing must be refused, got %v", err)
 	}
@@ -93,7 +93,7 @@ func TestFileCompressRefusesEmptySelection(t *testing.T) {
 // the site root, and never through a symlink.
 func TestFileChownTargetsOnlyTheSiteUser(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "path": "public", "username": "hps1"}
+	in := map[string]any{"root": siteRoot, "path": "public", "username": "nps1"}
 	if _, err := (capabilities.FileChown{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 		t.Fatalf("chown: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestFileChownTargetsOnlyTheSiteUser(t *testing.T) {
 	if c.Path != "/bin/chown" {
 		t.Fatalf("path = %q, want /bin/chown", c.Path)
 	}
-	if !hasToken(c, "hps1:hps1") {
+	if !hasToken(c, "nps1:nps1") {
 		t.Errorf("owner must be <site-user>:<site-user>; args = %v", c.Args)
 	}
 	if !hasToken(c, "-Rh") {
@@ -125,7 +125,7 @@ func TestFileChownRefusesRootOwner(t *testing.T) {
 
 func TestFileChownClampsTraversal(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "path": "../../../../etc", "username": "hps1"}
+	in := map[string]any{"root": siteRoot, "path": "../../../../etc", "username": "nps1"}
 	if _, err := (capabilities.FileChown{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 		t.Fatalf("chown: %v", err)
 	}
@@ -138,12 +138,12 @@ func TestFileChownClampsTraversal(t *testing.T) {
 
 func TestFileSearchByNameUsesFindAsUser(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "path": "", "username": "hps1", "query": "config"}
+	in := map[string]any{"root": siteRoot, "path": "", "username": "nps1", "query": "config"}
 	if _, err := (capabilities.FileSearch{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 		t.Fatalf("search: %v", err)
 	}
 	c := fr.Calls[0]
-	assertRunAsUser(t, c, "hps1")
+	assertRunAsUser(t, c, "nps1")
 	if !hasToken(c, "/usr/bin/find") || !hasToken(c, "*config*") {
 		t.Errorf("name search args = %v", c.Args)
 	}
@@ -151,12 +151,12 @@ func TestFileSearchByNameUsesFindAsUser(t *testing.T) {
 
 func TestFileSearchByContentUsesFixedStringGrep(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "path": "", "username": "hps1", "query": "a.*b[", "mode": "content"}
+	in := map[string]any{"root": siteRoot, "path": "", "username": "nps1", "query": "a.*b[", "mode": "content"}
 	if _, err := (capabilities.FileSearch{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 		t.Fatalf("search: %v", err)
 	}
 	c := fr.Calls[0]
-	assertRunAsUser(t, c, "hps1")
+	assertRunAsUser(t, c, "nps1")
 	// -F means the term is a fixed string, so a user's search box can never
 	// become a regular expression (and never a ReDoS).
 	if !hasToken(c, "/bin/grep") || !hasToken(c, "-rlIFs") {
@@ -169,7 +169,7 @@ func TestFileSearchByContentUsesFixedStringGrep(t *testing.T) {
 
 func TestFileSearchRejectsEmptyQuery(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": siteRoot, "path": "", "username": "hps1", "query": "   "}
+	in := map[string]any{"root": siteRoot, "path": "", "username": "nps1", "query": "   "}
 	if _, err := (capabilities.FileSearch{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindValidation) {
 		t.Errorf("an empty query must be refused, got %v", err)
 	}
@@ -177,7 +177,7 @@ func TestFileSearchRejectsEmptyQuery(t *testing.T) {
 
 func TestFileSearchRejectsRootOutsidePolicy(t *testing.T) {
 	fr := &exec.FakeRunner{}
-	in := map[string]any{"root": "/etc", "path": "", "username": "hps1", "query": "passwd"}
+	in := map[string]any{"root": "/etc", "path": "", "username": "nps1", "query": "passwd"}
 	if _, err := (capabilities.FileSearch{}).Execute(gitCtx(fr), raw(t, in)); !errx.IsKind(err, errx.KindForbidden) {
 		t.Errorf("a root outside the policy roots must be forbidden, got %v", err)
 	}
@@ -188,14 +188,14 @@ func TestFileSearchRejectsRootOutsidePolicy(t *testing.T) {
 func TestFileCopyRunsAsUserWithConfinedPaths(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	in := map[string]any{
-		"root": siteRoot, "username": "hps1",
+		"root": siteRoot, "username": "nps1",
 		"from": "public/logo.png", "to": "backup/logo.png",
 	}
 	if _, err := (capabilities.FileCopy{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
 		t.Fatalf("copy: %v", err)
 	}
 	c := fr.Calls[0]
-	assertRunAsUser(t, c, "hps1")
+	assertRunAsUser(t, c, "nps1")
 	if !hasToken(c, "/bin/cp") {
 		t.Errorf("copy should use cp; args = %v", c.Args)
 	}
@@ -212,8 +212,8 @@ func TestFileCopyRunsAsUserWithConfinedPaths(t *testing.T) {
 
 func TestFileCopyClampsTraversalOnBothEnds(t *testing.T) {
 	for _, in := range []map[string]any{
-		{"root": siteRoot, "username": "hps1", "from": "../../etc/passwd", "to": "stolen"},
-		{"root": siteRoot, "username": "hps1", "from": "a.txt", "to": "../../../tmp/evil"},
+		{"root": siteRoot, "username": "nps1", "from": "../../etc/passwd", "to": "stolen"},
+		{"root": siteRoot, "username": "nps1", "from": "a.txt", "to": "../../../tmp/evil"},
 	} {
 		fr := &exec.FakeRunner{}
 		if _, err := (capabilities.FileCopy{}).Execute(gitCtx(fr), raw(t, in)); err != nil {
@@ -229,9 +229,9 @@ func TestFileCopyClampsTraversalOnBothEnds(t *testing.T) {
 
 func TestFileCopyRefusesSelfAndSubtree(t *testing.T) {
 	cases := map[string]map[string]any{
-		"same path": {"root": siteRoot, "username": "hps1", "from": "public", "to": "public"},
+		"same path": {"root": siteRoot, "username": "nps1", "from": "public", "to": "public"},
 		// Copying a folder into its own subtree recurses until the disk fills.
-		"into itself": {"root": siteRoot, "username": "hps1", "from": "public", "to": "public/nested/copy"},
+		"into itself": {"root": siteRoot, "username": "nps1", "from": "public", "to": "public/nested/copy"},
 	}
 	for name, in := range cases {
 		fr := &exec.FakeRunner{}

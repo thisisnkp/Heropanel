@@ -1,6 +1,6 @@
 go 1.25.0
 
-// HeroPanel is a monorepo. The core (hpd), broker, and shared pkg/ live in the
+// NexPanel is a monorepo. The core (npd), broker, and shared pkg/ live in the
 // root module. Satellite modules (modules/*) are added here as independent
 // modules as they are implemented, so each builds and versions independently.
 use .

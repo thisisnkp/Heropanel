@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // sqlTime is the timestamp format accepted by both SQLite (TEXT) and MariaDB
@@ -73,7 +73,7 @@ func (s *Service) requireBroker() error {
 func (s *Service) requireSecrets() error {
 	if !s.cipher.Configured() {
 		return errx.New(errx.KindUnavailable, "secrets_unavailable",
-			"Private repositories need an encryption key. Set security.secret_key (HP_SECRET_KEY) and restart the panel.")
+			"Private repositories need an encryption key. Set security.secret_key (NP_SECRET_KEY) and restart the panel.")
 	}
 	return nil
 }
@@ -200,7 +200,7 @@ func (s *Service) applyAuth(rec, existing *SourceRecord, in *SetSourceInput, ref
 			rec.CredentialEnc, rec.PublicKey = existing.CredentialEnc, existing.PublicKey
 			return nil
 		}
-		priv, pub, err := generateDeployKey("heropanel-" + ref.LinuxUser)
+		priv, pub, err := generateDeployKey("nexpanel-" + ref.LinuxUser)
 		if err != nil {
 			return err
 		}
@@ -277,7 +277,7 @@ func (s *Service) ListDeployments(ctx context.Context, siteUID string, limit int
 //     *this* payload, so a captured request cannot be replayed with a different
 //     body.
 //   - GitLabToken: GitLab's X-Gitlab-Token, a plain shared token.
-//   - Secret: the bare secret in the URL (?secret=) or X-HeroPanel-Secret, the
+//   - Secret: the bare secret in the URL (?secret=) or X-NexPanel-Secret, the
 //     fallback for a manual `curl` trigger.
 //
 // Any one that verifies authorizes the deploy; all comparisons are

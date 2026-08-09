@@ -1,4 +1,4 @@
--- HeroPanel managed databases: instances, users, grants (MariaDB).
+-- NexPanel managed databases: instances, users, grants (MariaDB).
 CREATE TABLE db_instances (
     id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     uid        CHAR(26) NOT NULL,

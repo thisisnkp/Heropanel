@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/mail"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // WebmailSSOStore persists the one-time Dovecot master-user sessions that back

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // PHP packaging differs between the two distro families the panel supports, and
@@ -95,7 +95,7 @@ func (f phpFamily) enabledDir(v string) string {
 // It lives in the FPM SAPI's conf.d (Debian) / flat php.d (RHEL) so it applies to
 // the whole version, not one pool. The 99- prefix makes it win over distro inis.
 func (f phpFamily) opcacheININPath(v string) string {
-	return f.enabledDir(v) + "/99-heropanel-opcache.ini"
+	return f.enabledDir(v) + "/99-nexpanel-opcache.ini"
 }
 
 // rawINIList returns the raw *.ini / *.ini.disabled filenames in dir. A missing

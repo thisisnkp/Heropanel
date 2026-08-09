@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // seedOwner inserts a minimal user and returns its id, for parked-domain

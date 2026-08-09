@@ -7,19 +7,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // gitAuthRoot holds the short-lived credential material for a private clone. It
 // lives on /run (tmpfs): the secrets never touch persistent disk, never reach a
 // backup, and are gone after a reboot even if a crash skips cleanup.
-const gitAuthRoot = "/run/heropanel/gitauth"
+const gitAuthRoot = "/run/nexpanel/gitauth"
 
 const sshPath = "/usr/bin/ssh"
 
-// Authentication kinds accepted from hpd. Deliberately restated here rather than
+// Authentication kinds accepted from npd. Deliberately restated here rather than
 // imported from internal/git: the broker is the privileged component and
 // re-derives its own view of every input, exactly as it re-validates repo URLs
 // and refs below.

@@ -1,4 +1,4 @@
-// Package ws is hpd's realtime WebSocket hub. Authenticated clients subscribe to
+// Package ws is npd's realtime WebSocket hub. Authenticated clients subscribe to
 // channels (e.g. "job:<uid>"); the hub bridges Redis Pub/Sub events (published by
 // the job worker and other subsystems) out to subscribed browsers. Subscriptions
 // are authorized per channel so a client only receives events for resources it
@@ -16,7 +16,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth"
 )
 
 // pattern is the Redis Pub/Sub pattern the hub bridges. More families

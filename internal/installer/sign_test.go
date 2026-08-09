@@ -37,7 +37,7 @@ func TestSignedManifestInstalls(t *testing.T) {
 	if err := ex.Execute(context.Background()); err != nil {
 		t.Fatalf("a correctly signed manifest must install: %v", err)
 	}
-	mustExist(t, filepath.Join(ex.Layout.BinDir, "hpd"))
+	mustExist(t, filepath.Join(ex.Layout.BinDir, "npd"))
 }
 
 func TestUnsignedManifestRefusedWhenKeyPinned(t *testing.T) {
@@ -50,7 +50,7 @@ func TestUnsignedManifestRefusedWhenKeyPinned(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "SHA256SUMS.sig is missing") {
 		t.Fatalf("a pinned key with no signature must abort, got %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(ex.Layout.BinDir, "hpd")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(ex.Layout.BinDir, "npd")); !os.IsNotExist(statErr) {
 		t.Error("nothing may install when the manifest is unsigned")
 	}
 }
@@ -87,7 +87,7 @@ func TestWrongKeyRejected(t *testing.T) {
 func TestKeyMaterialEncodings(t *testing.T) {
 	pub, _, _ := GenerateReleaseKey()
 	// base64 (as emitted)
-	if _, err := parsePublicKey(pub); err != nil {
+	if _, err := ParsePublicKey(pub); err != nil {
 		t.Fatalf("base64 key: %v", err)
 	}
 	// @path form
@@ -96,11 +96,11 @@ func TestKeyMaterialEncodings(t *testing.T) {
 	if err := os.WriteFile(kp, []byte(pub+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := parsePublicKey("@" + kp); err != nil {
+	if _, err := ParsePublicKey("@" + kp); err != nil {
 		t.Fatalf("@path key: %v", err)
 	}
 	// garbage
-	if _, err := parsePublicKey("not-a-key!!"); err == nil {
+	if _, err := ParsePublicKey("not-a-key!!"); err == nil {
 		t.Fatal("garbage key must be rejected")
 	}
 }

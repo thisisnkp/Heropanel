@@ -1,6 +1,6 @@
 // Package safe runs background work in supervised goroutines. A panic inside a
 // background task (a scheduler, sweeper, sampler, dispatcher) is recovered and
-// logged instead of crashing the whole hpd process, and a long-running loop is
+// logged instead of crashing the whole npd process, and a long-running loop is
 // restarted with backoff while its context is alive. This is the backend half of
 // fault isolation: one module's background goroutine must never take the panel
 // down with it. HTTP handlers are already covered by the recoverer middleware;

@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ResourceKind names an owned resource the tenant guard can resolve to an owner.

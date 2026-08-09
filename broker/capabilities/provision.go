@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // SystemProvision installs and enables the hosting-stack components chosen in the
-// first-run setup wizard. It is the privileged half of that flow: hpd records the
+// first-run setup wizard. It is the privileged half of that flow: npd records the
 // operator's choices and asks the broker to realize them on the host.
 //
 // It is deliberately not a generic package installer. The input is a list of
-// *logical components* from a fixed allowlist (the contract with hpd's
+// *logical components* from a fixed allowlist (the contract with npd's
 // internal/setup Selection.Components()); the broker is the only place that knows
 // this host's distro family and the matching package names and service units, so
-// hpd stays distro-agnostic. Anything outside the allowlist is refused.
+// npd stays distro-agnostic. Anything outside the allowlist is refused.
 
 const (
 	aptGetPath = "/usr/bin/apt-get"
@@ -36,7 +36,7 @@ type provisionComponent struct {
 	rhelSvc    string
 }
 
-// provisionComponents is the allowlist. Keys match the component ids hpd sends
+// provisionComponents is the allowlist. Keys match the component ids npd sends
 // (webserver + db engine enum values, plus bind/postfix/dovecot).
 var provisionComponents = map[string]provisionComponent{
 	"openlitespeed":        {debianPkgs: []string{"openlitespeed"}, rhelPkgs: []string{"openlitespeed"}, debianSvc: "lshttpd", rhelSvc: "lshttpd"},

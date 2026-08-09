@@ -45,11 +45,11 @@ func TestRenderMasterFile(t *testing.T) {
 		t.Fatalf("empty set should render empty, got %q", got)
 	}
 	rows := []WebmailSSORecord{
-		{MasterUser: "hpsso_bbb", PWHash: "{BLF-CRYPT}h2"},
-		{MasterUser: "hpsso_aaa", PWHash: "{BLF-CRYPT}h1"},
+		{MasterUser: "npsso_bbb", PWHash: "{BLF-CRYPT}h2"},
+		{MasterUser: "npsso_aaa", PWHash: "{BLF-CRYPT}h1"},
 	}
 	got := renderMasterFile(rows)
-	want := "hpsso_aaa:{BLF-CRYPT}h1\nhpsso_bbb:{BLF-CRYPT}h2\n"
+	want := "npsso_aaa:{BLF-CRYPT}h1\nnpsso_bbb:{BLF-CRYPT}h2\n"
 	if got != want {
 		t.Fatalf("render = %q, want %q", got, want)
 	}
@@ -74,8 +74,8 @@ func TestStartWebmailSSO(t *testing.T) {
 	if ho.URL != "https://webmail.example.com/" {
 		t.Errorf("url = %q", ho.URL)
 	}
-	if !strings.HasPrefix(ho.User, "info@shop.test*hpsso_") {
-		t.Errorf("user = %q, want info@shop.test*hpsso_…", ho.User)
+	if !strings.HasPrefix(ho.User, "info@shop.test*npsso_") {
+		t.Errorf("user = %q, want info@shop.test*npsso_…", ho.User)
 	}
 	if ho.Pass == "" {
 		t.Error("no one-time password returned")
@@ -111,8 +111,8 @@ func TestSweepWebmailSSO(t *testing.T) {
 	past := time.Now().UTC().Add(-time.Hour).Format(sqlTimeMail)
 	future := time.Now().UTC().Add(time.Hour).Format(sqlTimeMail)
 	sso.rows = []WebmailSSORecord{
-		{UID: "a", MasterUser: "hpsso_old", PWHash: "h", Mailbox: "a@x", ExpiresAt: past},
-		{UID: "b", MasterUser: "hpsso_new", PWHash: "h", Mailbox: "b@x", ExpiresAt: future},
+		{UID: "a", MasterUser: "npsso_old", PWHash: "h", Mailbox: "a@x", ExpiresAt: past},
+		{UID: "b", MasterUser: "npsso_new", PWHash: "h", Mailbox: "b@x", ExpiresAt: future},
 	}
 	n, err := svc.SweepWebmailSSO(context.Background())
 	if err != nil || n != 1 {
@@ -128,7 +128,7 @@ func TestSweepWebmailSSO(t *testing.T) {
 			applied, _ = gw.inputs[i]["master"].(string)
 		}
 	}
-	if strings.Contains(applied, "hpsso_old") || !strings.Contains(applied, "hpsso_new") {
+	if strings.Contains(applied, "npsso_old") || !strings.Contains(applied, "npsso_new") {
 		t.Errorf("re-apply after sweep wrong: %q", applied)
 	}
 }

@@ -1,6 +1,6 @@
 // Package pty allocates a pseudo-terminal and runs a process attached to it.
 //
-// It exists so hp-broker can host an interactive shell *as a site's Linux user*:
+// It exists so np-broker can host an interactive shell *as a site's Linux user*:
 // a terminal needs a controlling TTY (job control, line editing, SIGWINCH), which
 // a plain exec with pipes cannot provide. The implementation is a few Linux
 // ioctls over /dev/ptmx rather than a third-party dependency — the broker is the

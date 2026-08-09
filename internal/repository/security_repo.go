@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/security"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/security"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // FirewallStore implements security.FirewallRepo over the datastore.

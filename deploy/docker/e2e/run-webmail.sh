@@ -15,7 +15,7 @@ base=http://127.0.0.1:18499
 
 sec "start OpenLiteSpeed + php-fpm 8.3"
 /usr/local/lsws/bin/lswsctrl start >/dev/null 2>&1
-mkdir -p /run/php /run/heropanel/fpm && chmod 755 /run/heropanel /run/heropanel/fpm
+mkdir -p /run/php /run/nexpanel/fpm && chmod 755 /run/nexpanel /run/nexpanel/fpm
 /usr/sbin/php-fpm8.3 --daemonize 2>/tmp/fpm-wm.log
 sleep 1
 
@@ -23,18 +23,18 @@ sec "seed postfix base config"
 cp /usr/share/postfix/main.cf.debian /etc/postfix/main.cf
 postconf -e "myhostname=mail.shop.test" "mydestination=localhost" "inet_interfaces=loopback-only"
 
-sec "start hp-broker + hpd (mail host + webmail host configured)"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker-wm.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18499 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp-wm.db \
-  HP_MAIL_HOSTNAME=mail.shop.test \
-  HP_WEBMAIL_HOSTNAME=webmail.shop.test \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd-wm.log 2>&1 &
+sec "start np-broker + npd (mail host + webmail host configured)"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker-wm.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18499 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-wm.db \
+  NP_MAIL_HOSTNAME=mail.shop.test \
+  NP_WEBMAIL_HOSTNAME=webmail.shop.test \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd-wm.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -42,7 +42,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/cw.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/cw.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/cw.txt)
 api(){ curl -s -b /tmp/cw.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 jget(){ python3 -c "import json,sys; d=json.load(sys.stdin)['data']; print(eval(sys.argv[1]))" "$1"; }
 
@@ -52,7 +52,7 @@ duid=$(echo "$dom" | jget "d['uid']")
 [ -n "$duid" ] && pass "mail domain provisioned" || fail "mail domain create failed: $dom"
 api -X POST $base/api/v1/mail/domains/$duid/accounts -H 'Content-Type: application/json' \
   -d '{"local_part":"info","password":"s3cretpass1","quota_mb":64}' >/dev/null
-grep -q 'info@shop.test:{BLF-CRYPT}' /etc/dovecot/heropanel-users && pass "mailbox created" || fail "mailbox missing"
+grep -q 'info@shop.test:{BLF-CRYPT}' /etc/dovecot/nexpanel-users && pass "mailbox created" || fail "mailbox missing"
 
 sec "enable mail TLS explicitly (Roundcube connects over TLS)"
 tls=$(api -X POST $base/api/v1/mail/tls -H 'Content-Type: application/json' -d '{}')
@@ -77,17 +77,17 @@ echo "$inst"
 echo "$inst" | grep -q '"installed":true' && pass "the API reports webmail installed" || fail "install did not report success: $inst"
 echo "$inst" | grep -q '"url":"https://webmail.shop.test/"' && pass "the webmail URL is reported" || fail "no webmail url"
 id webmail >/dev/null 2>&1 && pass "the dedicated webmail user exists" || fail "no webmail user"
-[ -f /usr/share/heropanel/roundcube/config/config.inc.php ] && pass "the Roundcube config was written" || fail "no roundcube config"
-grep -q "imap_host'] = 'tls://127.0.0.1:143'" /usr/share/heropanel/roundcube/config/config.inc.php \
+[ -f /usr/share/nexpanel/roundcube/config/config.inc.php ] && pass "the Roundcube config was written" || fail "no roundcube config"
+grep -q "imap_host'] = 'tls://127.0.0.1:143'" /usr/share/nexpanel/roundcube/config/config.inc.php \
   && pass "Roundcube is wired to the LOCAL Dovecot over TLS" || fail "roundcube imap_host wrong"
-grep -q "smtp_host'] = 'tls://127.0.0.1:587'" /usr/share/heropanel/roundcube/config/config.inc.php \
+grep -q "smtp_host'] = 'tls://127.0.0.1:587'" /usr/share/nexpanel/roundcube/config/config.inc.php \
   && pass "Roundcube sends through the LOCAL submission (587)" || fail "roundcube smtp_host wrong"
-[ -f /var/lib/heropanel/webmail/roundcube.db ] && pass "the sqlite schema was initialised" || fail "no roundcube.db"
+[ -f /var/lib/nexpanel/webmail/roundcube.db ] && pass "the sqlite schema was initialised" || fail "no roundcube.db"
 [ -f /etc/php/8.3/fpm/pool.d/webmail.conf ] && pass "the webmail FPM pool was written" || fail "no webmail pool"
-grep -q 'webmail' /usr/local/lsws/conf/heropanel.conf && pass "the webmail vhost is in the OLS config" || fail "no webmail vhost in OLS"
+grep -q 'webmail' /usr/local/lsws/conf/nexpanel.conf && pass "the webmail vhost is in the OLS config" || fail "no webmail vhost in OLS"
 
 sec "make the FPM socket reachable by OLS (container-only; prod shares a group) + reload"
-chmod 0666 /run/heropanel/fpm/webmail.sock 2>/dev/null
+chmod 0666 /run/nexpanel/fpm/webmail.sock 2>/dev/null
 /usr/local/lsws/bin/lswsctrl reload >/dev/null 2>&1; sleep 1
 
 sec "*** SERVE: the Roundcube login page loads over the webmail vhost ***"
@@ -139,7 +139,7 @@ for cap in webmail.install php.write_pool webserver.apply; do
 done
 
 sec "cleanup"
-pkill -f 'hpd' 2>/dev/null; pkill -f 'hp-broker' 2>/dev/null
+pkill -f 'npd' 2>/dev/null; pkill -f 'np-broker' 2>/dev/null
 postfix stop 2>/dev/null; doveadm stop 2>/dev/null; /usr/local/lsws/bin/lswsctrl stop >/dev/null 2>&1; true
 
 if [ "$FAILED" = "0" ]; then echo "run-webmail.sh : PASS"; else echo "run-webmail.sh : FAIL"; fi

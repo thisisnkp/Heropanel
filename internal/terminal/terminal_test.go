@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/brokerwire"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/brokerwire"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeStream is a no-op broker stream.
@@ -42,7 +42,7 @@ type fakeSites struct {
 func (s fakeSites) Resolve(context.Context, string) (*SiteRef, error) { return s.ref, s.err }
 
 func provisionedRef() *SiteRef {
-	return &SiteRef{ID: 1, UID: "site1", LinuxUser: "hps1", HomeDir: "/srv/heropanel/sites/1", DeployMode: "baremetal"}
+	return &SiteRef{ID: 1, UID: "site1", LinuxUser: "nps1", HomeDir: "/srv/nexpanel/sites/1", DeployMode: "baremetal"}
 }
 
 func TestOpenSendsSiteIdentityAndSize(t *testing.T) {
@@ -57,13 +57,13 @@ func TestOpenSendsSiteIdentityAndSize(t *testing.T) {
 		t.Errorf("capability = %q, want %q", gw.capability, Capability)
 	}
 	// The Linux user is derived from the resolved site, never from the caller.
-	if gw.input["username"] != "hps1" || gw.input["root"] != "/srv/heropanel/sites/1" {
+	if gw.input["username"] != "nps1" || gw.input["root"] != "/srv/nexpanel/sites/1" {
 		t.Errorf("payload identity = %v", gw.input)
 	}
 	if gw.input["cwd"] != "public" || gw.input["cols"] != uint16(120) || gw.input["rows"] != uint16(40) {
 		t.Errorf("payload session = %v", gw.input)
 	}
-	if ref.LinuxUser != "hps1" {
+	if ref.LinuxUser != "nps1" {
 		t.Errorf("returned ref = %+v", ref)
 	}
 }
@@ -84,8 +84,8 @@ func TestOpenDefaultsWindowSize(t *testing.T) {
 // clean refusal, not a broker call that fails deep in the stack.
 func TestOpenRefusesUnprovisionedSite(t *testing.T) {
 	for _, ref := range []*SiteRef{
-		{UID: "s", LinuxUser: "", HomeDir: "/srv/heropanel/sites/1"},
-		{UID: "s", LinuxUser: "hps1", HomeDir: ""},
+		{UID: "s", LinuxUser: "", HomeDir: "/srv/nexpanel/sites/1"},
+		{UID: "s", LinuxUser: "nps1", HomeDir: ""},
 	} {
 		gw := &fakeStreamGateway{}
 		svc := NewService(fakeSites{ref: ref}, gw)

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // PostgreSQL support, the second database engine.
@@ -29,7 +29,7 @@ const (
 	psqlPath    = "/usr/bin/psql"
 	pgDumpPath  = "/usr/bin/pg_dump"
 	pgUser      = "postgres"
-	pgStageRoot = "/var/lib/heropanel/pgstage"
+	pgStageRoot = "/var/lib/nexpanel/pgstage"
 )
 
 // pgPrivileges is the set of grantable PostgreSQL privilege tokens the panel
@@ -152,13 +152,13 @@ func (PGUserCreate) Execute(c capability.Context, raw json.RawMessage) (capabili
 	name := escapePGString(in.Username)
 	// Create-or-update the role atomically in a DO block, so a rotated password
 	// applies whether or not the role already exists.
-	sql := fmt.Sprintf(`DO $hp$ BEGIN
+	sql := fmt.Sprintf(`DO $np$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '%s') THEN
     CREATE ROLE "%s" LOGIN PASSWORD '%s';
   ELSE
     ALTER ROLE "%s" LOGIN PASSWORD '%s';
   END IF;
-END $hp$;`, name, in.Username, pw, in.Username, pw)
+END $np$;`, name, in.Username, pw, in.Username, pw)
 	res, err := pgExec(c, "", sql)
 	if err != nil {
 		return capability.Result{}, errx.Upstream(err, "pg_failed", "The database operation failed.")
@@ -420,7 +420,7 @@ func (PGImport) Execute(c capability.Context, raw json.RawMessage) (capability.R
 	if err := validateDumpFile(in.File); err != nil {
 		return capability.Result{}, err
 	}
-	staged := dumpRoot + "/" + in.File // hpd staged it here (panel-owned)
+	staged := dumpRoot + "/" + in.File // npd staged it here (panel-owned)
 	if ok, err := c.FS.Exists(staged); err != nil || !ok {
 		return capability.Result{}, errx.NotFound("dump_not_found", "The uploaded dump could not be found.")
 	}

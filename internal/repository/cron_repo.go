@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/cron"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/cron"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // CronStore implements cron.Repo over the datastore.

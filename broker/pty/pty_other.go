@@ -5,7 +5,7 @@ package pty
 import "errors"
 
 // ErrUnsupported is returned when a PTY is requested on a platform this broker
-// build does not implement. HeroPanel targets Linux; this stub exists so the
+// build does not implement. NexPanel targets Linux; this stub exists so the
 // repository still compiles (and its tests still run) on a developer's machine.
 var ErrUnsupported = errors.New("pty: pseudo-terminals are only supported on Linux")
 

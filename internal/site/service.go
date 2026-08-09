@@ -7,19 +7,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/webserver"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Provisioning constants. Site users are placed in a dedicated uid range and
 // under a single filesystem root (matching the broker's policy).
 const (
-	sitesRoot   = "/srv/heropanel/sites"
+	sitesRoot   = "/srv/nexpanel/sites"
 	uidBase     = 20000
-	siteUserPfx = "hps"
+	siteUserPfx = "nps"
 	nologinPath = "/usr/sbin/nologin"
 )
 

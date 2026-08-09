@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/brokerwire"
+	"github.com/thisisnkp/nexpanel/pkg/brokerwire"
 )
 
 func TestFrameRoundTrip(t *testing.T) {

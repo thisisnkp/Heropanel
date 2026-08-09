@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ImpersonationTTL bounds an impersonation session. It is deliberately short: an

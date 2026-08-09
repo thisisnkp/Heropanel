@@ -1,4 +1,4 @@
-// Package cache wires HeroPanel's two-tier cache: it adapts Redis as the L2
+// Package cache wires NexPanel's two-tier cache: it adapts Redis as the L2
 // tier behind the pkg/cache.Cache interface, composes it with an in-process L1
 // (pkg/cache.LocalCache), and maintains cross-process coherence via a Redis
 // Pub/Sub invalidation bus. See docs/01 §3.4 and ADR-0005.
@@ -13,12 +13,12 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 // keyPrefix namespaces cache entries in Redis so they never collide with the
 // queue or Pub/Sub keyspaces.
-const keyPrefix = "hp:c:"
+const keyPrefix = "np:c:"
 
 // RedisCache is the L2 (shared, distributed) tier. It implements pcache.Cache.
 type RedisCache struct {

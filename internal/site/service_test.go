@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/webserver"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // fakeApplier records the web-server sites it is asked to apply.
@@ -189,7 +189,7 @@ func TestCreateProvisionsAndActivates(t *testing.T) {
 	if out.Status != site.StatusActive {
 		t.Fatalf("status = %q, want active", out.Status)
 	}
-	if out.SystemUser != "hps1" || out.DocumentRoot != "/srv/heropanel/sites/1/public" {
+	if out.SystemUser != "nps1" || out.DocumentRoot != "/srv/nexpanel/sites/1/public" {
 		t.Fatalf("unexpected provisioning: user=%q docroot=%q", out.SystemUser, out.DocumentRoot)
 	}
 
@@ -202,13 +202,13 @@ func TestCreateProvisionsAndActivates(t *testing.T) {
 		gw.calls[2].capability != "site.apply_slice" {
 		t.Fatalf("unexpected broker calls: %+v", gw.calls)
 	}
-	if gw.calls[0].input["username"] != "hps1" || gw.calls[0].input["home"] != "/srv/heropanel/sites/1" {
+	if gw.calls[0].input["username"] != "nps1" || gw.calls[0].input["home"] != "/srv/nexpanel/sites/1" {
 		t.Fatalf("system_user.create input = %+v", gw.calls[0].input)
 	}
 	// A new site's slice has accounting, CPU/memory unlimited (0), and the default
 	// fork-bomb guard on tasks so one site cannot exhaust the node's PIDs.
 	sl := gw.calls[2].input
-	if sl["vhost"] != "hps1" || sl["cpu_quota_pct"] != 0 || sl["pids_max"] != 512 {
+	if sl["vhost"] != "nps1" || sl["cpu_quota_pct"] != 0 || sl["pids_max"] != 512 {
 		t.Fatalf("site.apply_slice input = %+v", sl)
 	}
 }
@@ -229,8 +229,8 @@ func TestCreateAppliesWebserver(t *testing.T) {
 		t.Fatalf("webserver applied %d times, want 1", len(web.calls))
 	}
 	applied := web.calls[0]
-	if len(applied) != 1 || applied[0].VhostName != "hps1" ||
-		applied[0].DocumentRoot != "/srv/heropanel/sites/1/public" ||
+	if len(applied) != 1 || applied[0].VhostName != "nps1" ||
+		applied[0].DocumentRoot != "/srv/nexpanel/sites/1/public" ||
 		applied[0].PrimaryDomain != "acme.example.com" {
 		t.Fatalf("unexpected applied vhost: %+v", applied)
 	}
@@ -262,13 +262,13 @@ func TestCreatePHPSiteEnsuresPoolAndSelector(t *testing.T) {
 			poolCall = &gw.calls[i]
 		}
 	}
-	if poolCall == nil || poolCall.input["version"] != php.DefaultVersion || poolCall.input["pool_name"] != "hps1" {
-		t.Fatalf("expected php.write_pool for hps1 @ default version, calls=%+v", gw.calls)
+	if poolCall == nil || poolCall.input["version"] != php.DefaultVersion || poolCall.input["pool_name"] != "nps1" {
+		t.Fatalf("expected php.write_pool for nps1 @ default version, calls=%+v", gw.calls)
 	}
 
 	// The rendered vhost points at the site's FPM socket.
 	applied := web.calls[len(web.calls)-1]
-	if len(applied) != 1 || !applied[0].IsPHP || applied[0].FpmSocket != "/run/heropanel/fpm/hps1.sock" {
+	if len(applied) != 1 || !applied[0].IsPHP || applied[0].FpmSocket != "/run/nexpanel/fpm/nps1.sock" {
 		t.Fatalf("vhost not PHP-wired: %+v", applied)
 	}
 
@@ -401,13 +401,13 @@ func TestDeleteDeprovisions(t *testing.T) {
 		deprov[2].capability != "site.remove_dirs" {
 		t.Fatalf("unexpected deprovision calls: %+v", deprov)
 	}
-	if deprov[0].input["vhost"] != "hps1" {
+	if deprov[0].input["vhost"] != "nps1" {
 		t.Fatalf("site.remove_slice input = %+v", deprov[0].input)
 	}
-	if deprov[1].input["username"] != "hps1" {
+	if deprov[1].input["username"] != "nps1" {
 		t.Fatalf("userdel input = %+v", deprov[1].input)
 	}
-	if deprov[2].input["root"] != "/srv/heropanel/sites/1" {
+	if deprov[2].input["root"] != "/srv/nexpanel/sites/1" {
 		t.Fatalf("remove_dirs input = %+v", deprov[2].input)
 	}
 }

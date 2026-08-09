@@ -7,6 +7,7 @@ import {
   useInstallModule,
   useSetModuleEnabled,
   useUninstallModule,
+  useUpdateModule,
   type CatalogEntry,
 } from "./marketplace";
 
@@ -35,7 +36,7 @@ export function MarketplacePage() {
       {catalog.data && !catalog.data.trust_anchored && (
         <Alert>
           No publisher key is pinned, so nothing can be installed. Set <span className="font-mono">marketplace.keys</span>{" "}
-          (or <span className="font-mono">HP_MARKETPLACE_KEYS</span>) to the ed25519 public key of a publisher you trust.
+          (or <span className="font-mono">NP_MARKETPLACE_KEYS</span>) to the ed25519 public key of a publisher you trust.
         </Alert>
       )}
 
@@ -58,9 +59,10 @@ export function MarketplacePage() {
 
 function ModuleCard({ m, canManage }: { m: CatalogEntry; canManage: boolean }) {
   const install = useInstallModule();
+  const update = useUpdateModule();
   const setEnabled = useSetModuleEnabled();
   const uninstall = useUninstallModule();
-  const busy = install.isPending || setEnabled.isPending || uninstall.isPending;
+  const busy = install.isPending || update.isPending || setEnabled.isPending || uninstall.isPending;
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -68,7 +70,16 @@ function ModuleCard({ m, canManage }: { m: CatalogEntry; canManage: boolean }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-sm font-semibold text-fg">{m.name || m.slug}</h2>
-            <span className="text-xs text-muted">{m.version}</span>
+            {/* When an update is pending, showing only the catalog's version would
+                read as the version this panel is running. Show the move instead. */}
+            {m.update_available ? (
+              <span className="text-xs text-muted">
+                {m.installed_version} <span aria-hidden="true">→</span>{" "}
+                <span className="font-medium text-brand">{m.version}</span>
+              </span>
+            ) : (
+              <span className="text-xs text-muted">{m.installed_version || m.version}</span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-muted">{m.description || m.slug}</p>
         </div>
@@ -124,6 +135,21 @@ function ModuleCard({ m, canManage }: { m: CatalogEntry; canManage: boolean }) {
             </Button>
           ) : (
             <>
+              {m.update_available && (
+                <Button
+                  className="h-8 px-3"
+                  disabled={busy}
+                  loading={update.isPending}
+                  onClick={() =>
+                    update.mutate(m.slug, {
+                      onSuccess: () => toast.success(`Updated to ${m.version}`),
+                      onError: (e) => toast.error(e.message),
+                    })
+                  }
+                >
+                  Update to {m.version}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 className="h-8 px-3"

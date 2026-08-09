@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 type mockGateway struct{ calls []call }
@@ -95,7 +95,7 @@ func TestIssueRoutesToZeroSSLProvider(t *testing.T) {
 	svc, _ := newSvc(t, def)
 	svc = svc.WithIssuer(ssl.ProviderZeroSSL, zs)
 
-	cert, err := svc.Issue(context.Background(), 1, "z.example.com", "/srv/heropanel/sites/1", ssl.ProviderZeroSSL)
+	cert, err := svc.Issue(context.Background(), 1, "z.example.com", "/srv/nexpanel/sites/1", ssl.ProviderZeroSSL)
 	if err != nil {
 		t.Fatalf("issue zerossl: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestIssueUnknownProviderFallsBackToDefault(t *testing.T) {
 	def := &fakeACME{}
 	svc, _ := newSvc(t, def)
 	// No zerossl registered => falls back to the default issuer, not an error.
-	cert, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1", ssl.ProviderZeroSSL)
+	cert, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/nexpanel/sites/1", ssl.ProviderZeroSSL)
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestIssueACMEOrchestration(t *testing.T) {
 	fa := &fakeACME{}
 	svc, gw := newSvc(t, fa)
 
-	cert, err := svc.Issue(context.Background(), 1, "le.example.com", "/srv/heropanel/sites/1", "")
+	cert, err := svc.Issue(context.Background(), 1, "le.example.com", "/srv/nexpanel/sites/1", "")
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -164,14 +164,14 @@ func TestIssueACMEOrchestration(t *testing.T) {
 
 func TestIssueACMEUnavailable(t *testing.T) {
 	svc, _ := newSvc(t, nil) // no ACME provider
-	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1", ""); !errx.IsKind(err, errx.KindUnavailable) {
+	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/nexpanel/sites/1", ""); !errx.IsKind(err, errx.KindUnavailable) {
 		t.Fatalf("want unavailable, got %v", err)
 	}
 }
 
 func TestIssueACMEFailurePropagates(t *testing.T) {
 	svc, _ := newSvc(t, &fakeACME{fail: true})
-	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/heropanel/sites/1", ""); !errx.IsKind(err, errx.KindUpstream) {
+	if _, err := svc.Issue(context.Background(), 1, "x.example.com", "/srv/nexpanel/sites/1", ""); !errx.IsKind(err, errx.KindUpstream) {
 		t.Fatalf("want upstream, got %v", err)
 	}
 }

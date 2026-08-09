@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // ── FPM process manager ─────────────────────────────────────────────────────

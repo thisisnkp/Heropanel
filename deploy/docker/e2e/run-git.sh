@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# Real Git deployment: HeroPanel points a site at a public repo, clones + builds
+# Real Git deployment: NexPanel points a site at a public repo, clones + builds
 # it as the site's own unprivileged Linux user, atomically activates the release,
 # and OpenLiteSpeed serves it. Then a second deploy + rollback proves the swap is
-# reversible. Everything privileged goes through hp-broker (git.deploy/rollback).
+# reversible. Everything privileged goes through np-broker (git.deploy/rollback).
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
 sec "start OpenLiteSpeed"
 /usr/local/lsws/bin/lswsctrl start >/dev/null 2>&1
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -27,7 +27,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "CREATE GIT SITE (deploy_mode=git)"
@@ -39,7 +39,7 @@ echo "site uid=$uid"
 # The build command creates deterministic output regardless of the cloned repo's
 # files, so the served bytes prove the clone+build+activate pipeline end to end.
 srcjson(){ cat >/tmp/src.json <<EOF
-{"repo_url":"https://github.com/octocat/Hello-World.git","branch":"master","web_root":"site","build_command":"mkdir -p site && printf '<h1>$1 via HeroPanel Git</h1>' > site/index.html"}
+{"repo_url":"https://github.com/octocat/Hello-World.git","branch":"master","web_root":"site","build_command":"mkdir -p site && printf '<h1>$1 via NexPanel Git</h1>' > site/index.html"}
 EOF
 }
 

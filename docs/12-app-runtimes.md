@@ -20,7 +20,7 @@ Builds directly on: Sites (per-site Linux user + home), Git deployments
   it listens on), `env` (key/value pairs), and a `runtime` label
   (node|python|go|generic, informational).
 - Broker `app.unit_apply` / `app.unit_remove`: write, enable, and manage a
-  **hardened systemd unit** `heropanel-app-<vhost>.service` that runs
+  **hardened systemd unit** `nexpanel-app-<vhost>.service` that runs
   `command` as the site user with `WorkingDirectory=<home>/current`, **inside the
   site's cgroup slice** (§3.2).
 - Process controls: **start / stop / restart / status**.
@@ -49,7 +49,7 @@ files, a systemd unit runs the app and OLS proxies to it:
 ```
 domain ──▶ OpenLiteSpeed vhost (context / → proxy) ──▶ 127.0.0.1:<port>
                                                           ▲
-                     heropanel-app-<vhost>.service ───────┘
+                     nexpanel-app-<vhost>.service ───────┘
                      User=<siteuser>  WorkingDirectory=<home>/current
                      ExecStart=<command>   (e.g. `node server.js`)
 ```
@@ -67,12 +67,12 @@ app_runtimes
 
 ## 3. The systemd unit (broker `app.unit_apply`)
 
-Written to `/etc/systemd/system/heropanel-app-<vhost>.service`, root-owned 0644,
+Written to `/etc/systemd/system/nexpanel-app-<vhost>.service`, root-owned 0644,
 then `systemctl daemon-reload` + `systemctl enable --now <unit>`:
 
 ```ini
 [Unit]
-Description=HeroPanel app <vhost>
+Description=NexPanel app <vhost>
 After=network.target
 
 [Service]
@@ -134,7 +134,7 @@ primitive. Any 2xx or 3xx counts as serving (a `204` is as much a "yes" as a
 
 ### 3.2 The site slice
 
-Every site gets a systemd slice, `heropanel-site-<vhost>.slice`, written at
+Every site gets a systemd slice, `nexpanel-site-<vhost>.slice`, written at
 provisioning time by the broker's `site.apply_slice`. The app unit names it in
 `Slice=`, which is what "supervised **in the site slice**" means: without that
 directive the unit lands in `system.slice` and a runaway app is bounded only by
@@ -154,7 +154,7 @@ the size of the node.
 - **Slice naming escapes `-`.** In systemd a `-` in a slice name is the
   *hierarchy separator*: `a-b-c.slice` means `c` inside `a-b` inside `a`. A vhost
   may legally contain `-`, so `my-site` would silently nest as
-  heropanel/site/my/site — a different cgroup than intended, and one that
+  nexpanel/site/my/site — a different cgroup than intended, and one that
   collides with a site actually named `my`. The literal is escaped to `\x2d`,
   as systemd's own escaping does.
 
@@ -229,7 +229,7 @@ an omitted field means "unlimited" rather than "leave as-is".
 - [x] **Live e2e** (`deploy/docker/e2e/run-app.sh`): a `proxy` site is git-deployed,
       the runtime is set, a real Node process runs as the site user, and OLS
       reverse-proxies the domain to it — `curl` returns the app's dynamic
-      response (`HeroPanel app live on port 3000 pid …`); restart changes the pid.
+      response (`NexPanel app live on port 3000 pid …`); restart changes the pid.
       The health probe returns `{"healthy":true,"status_code":200}` for the live
       app, and a runtime pointed at a command that exits immediately reports
       `"status":"error"` / `"healthy":false` rather than a green light.
@@ -250,7 +250,7 @@ an omitted field means "unlimited" rather than "leave as-is".
       webhook endpoint (no session, no CSRF) → a `"trigger":"webhook"` deployment
       → the app restarts and serves v2; then rollback → the app restarts and
       serves v1 again.
-- [x] The app unit is asserted to carry `Slice=heropanel-site-<vhost>.slice`, and
+- [x] The app unit is asserted to carry `Slice=nexpanel-site-<vhost>.slice`, and
       `PUT /limits` is asserted to reach the slice as `CPUQuota=` / `MemoryMax=` /
       `TasksMax=` (see §3.2 for what is *not* verified live).
 

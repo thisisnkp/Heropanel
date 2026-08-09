@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
 )
 
 type recordingRepo struct {
@@ -232,7 +232,7 @@ func TestRequestsThroughTheEdgeFormAVerifiableChain(t *testing.T) {
 	}
 }
 
-// hpd runs without a datastore in dev; the edge must still serve.
+// npd runs without a datastore in dev; the edge must still serve.
 func TestAuditorWithNoServicePassesTheRequestThrough(t *testing.T) {
 	r := chi.NewRouter()
 	r.Use(auditor(nil, slog.New(slog.NewTextHandler(io.Discard, nil))))

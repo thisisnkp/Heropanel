@@ -12,9 +12,9 @@ The privileged half is deliberately tiny. The broker knows three verbs:
 `backup.create` (tar a validated site tree into a staging file),
 `backup.restore` (untar a staged file into a site tree and re-own it), and
 `backup.prune` (delete one staged file). Every clever thing — sealing, uploads,
-chain bookkeeping, scheduling, retention — lives in **unprivileged hpd**, which
+chain bookkeeping, scheduling, retention — lives in **unprivileged npd**, which
 can be wrong without being root. The staging directory
-(`/var/lib/heropanel/backups`, 0700, panel-owned) is the hand-off point, the
+(`/var/lib/nexpanel/backups`, 0700, panel-owned) is the hand-off point, the
 same pattern as database dumps.
 
 ## 2. Incrementals are GNU tar's own
@@ -40,7 +40,7 @@ STREAM construction: per-file random nonce prefix, per-chunk counter, a
 final-chunk flag so truncation fails authentication — tamper, reorder, truncate
 or append and the restore refuses with nothing written). The key is a
 purpose-derived subkey of the panel master key (HKDF, `"backup-v1"`), so backup
-and column-sealing keys can never be confused. **No `HP_SECRET_KEY`, no
+and column-sealing keys can never be confused. **No `NP_SECRET_KEY`, no
 backups** — the module reports unavailable rather than ever storing a site's
 data in the clear. The plaintext staging archive is removed before Create
 returns, success or failure.
@@ -49,14 +49,14 @@ returns, success or failure.
 
 - **local** — the sealed file stays in the staging directory. Always available.
 - **s3** — any S3-compatible endpoint (AWS, R2, B2, MinIO), configured via
-  `backup.s3.*` / `HP_BACKUP_S3_*`. The client is ~200 lines of stdlib with
+  `backup.s3.*` / `NP_BACKUP_S3_*`. The client is ~200 lines of stdlib with
   hand-rolled **SigV4** (the panel's lean-dependency rule; three verbs do not
   justify an SDK's tree), verified in tests by *recomputing* the signature
   server-side rather than matching a golden string — and proven live in e2e
   against a real **MinIO** (an independent S3 implementation the client did not
   write): upload, restore-from-bucket, delete. Uploads use UNSIGNED-PAYLOAD —
   the payload is already AEAD-sealed, so integrity does not rest on the
-  transport hash. At startup hpd creates the bucket if it is missing
+  transport hash. At startup npd creates the bucket if it is missing
   (idempotent PUT; 409 = fine), so the most common S3 misconfiguration
   surfaces at boot instead of at the first scheduled backup.
 
@@ -89,20 +89,20 @@ packages cannot rebuild — rides the same pipeline: snapshotted (SQLite
 wrapped with a small manifest, sealed with the same derived key, stored on a
 configured target, swept hourly against `backup.panel.*` (enabled by default,
 daily, keep 7 — it costs a few MB and is the difference between a bad day and
-a disaster; it still runs only when `HP_SECRET_KEY` exists).
+a disaster; it still runs only when `NP_SECRET_KEY` exists).
 
 Restore is deliberately **not an API endpoint**: a panel that needs its
 database back cannot be trusted to serve that request. Recovery is
 out-of-band —
 
 ```
-HP_SECRET_KEY=<the master key you kept safe> \
-  hpd decrypt <snapshot>.enc panel.tar.gz
+NP_SECRET_KEY=<the master key you kept safe> \
+  npd decrypt <snapshot>.enc panel.tar.gz
 tar -xzf panel.tar.gz          # panel.db (or panel.sql.gz) + manifest.json
-# stop hpd; put the database back (copy the file / import the dump); start hpd
+# stop npd; put the database back (copy the file / import the dump); start npd
 ```
 
-`hpd decrypt` works with nothing but the binary and the master key — no
+`npd decrypt` works with nothing but the binary and the master key — no
 config, no datastore, no broker — and opens *any* sealed backup object (site
 archive, database dump, panel snapshot). The master key is the one thing the
 operator must hold outside the backups themselves; without it every stored
@@ -111,7 +111,7 @@ object is ciphertext, which is the point.
 ## 5. Scheduling and retention
 
 A per-site policy (`enabled`, `interval_hours`, `target`, `keep_chains`) drives
-an in-process hourly sweep — hpd's own ticker, like the SSL renewer, because the
+an in-process hourly sweep — npd's own ticker, like the SSL renewer, because the
 job needs the panel's key and database (a systemd cron unit could carry
 neither). Any enabled site whose newest backup is older than its interval gets
 one (auto level: full for a fresh chain, incremental after). A new full retires
@@ -149,7 +149,7 @@ backup lands in the bucket (and *not* on the local disk), restores from the
 bucket, and leaves the bucket when deleted; the **database leg against a real
 MariaDB** — a row written before the backup comes back in a **new** database
 restored beside a new site, the original database untouched; and the **panel
-leg** — a sealed snapshot taken via the API, opened offline with `hpd
+leg** — a sealed snapshot taken via the API, opened offline with `npd
 decrypt`, and yielding a tarball whose `panel.db` actually contains the
 panel's data.
 
@@ -178,21 +178,21 @@ An **rclone-backed target** reaches rclone's 70+ cloud backends — Google Drive
 Dropbox, OneDrive, Backblaze and the rest — **without the panel implementing any
 provider API or OAuth flow**. The operator configures the remote once with
 `rclone config`; the panel streams its already-sealed blobs to it. rclone is a
-local CLI hpd execs directly (like local/S3/SFTP — no broker; there is no
+local CLI npd execs directly (like local/S3/SFTP — no broker; there is no
 privilege to cross, only the operator's rclone config and the network): `rclone
 rcat` to upload, `rclone cat` to fetch, `rclone deletefile` to remove, with a
-missing object tolerated on delete. Configured via `HP_BACKUP_RCLONE_REMOTE`
-(e.g. `gdrive:heropanel-backups`) + optional `HP_BACKUP_RCLONE_CONFIG`.
+missing object tolerated on delete. Configured via `NP_BACKUP_RCLONE_REMOTE`
+(e.g. `gdrive:nexpanel-backups`) + optional `NP_BACKUP_RCLONE_CONFIG`.
 
 Live proof (`run-backup.sh`, against an rclone `:local:` backend in e2e): a
-sealed backup is **streamed to the remote via rclone** and is **not** on hpd's
+sealed backup is **streamed to the remote via rclone** and is **not** on npd's
 local disk; the object at rest is blobcrypt ciphertext; restore **fetches it
 back via rclone** and replays it into a new site; delete removes it.
 
 This is the lean answer to "OAuth drive targets": one external tool, no OAuth
-code or provider SDKs in hpd. Native in-panel OAuth per provider stays out of
+code or provider SDKs in npd. Native in-panel OAuth per provider stays out of
 scope by design. The panel-restore procedure is documented and its decrypt half
-proven, but the "stop hpd, swap the database, start hpd" walk-through is manual
+proven, but the "stop npd, swap the database, start npd" walk-through is manual
 by design.
 
 ---

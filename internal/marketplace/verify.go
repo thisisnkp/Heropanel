@@ -1,4 +1,4 @@
-// Package marketplace is the trust layer under HeroPanel's module catalog: it
+// Package marketplace is the trust layer under NexPanel's module catalog: it
 // decides whether a third-party module may be installed at all.
 //
 // The manifest (pkg/proto) already describes what a module is and Validate
@@ -8,11 +8,13 @@
 // publisher signature: an ed25519 signature over the canonical manifest bytes,
 // checked against a keyring the operator pins out-of-band. Signature valid ⇒ the
 // manifest (and therefore the artifact checksum it names) was authored by a key
-// hpd was told to trust; the private key never touches the host.
+// npd was told to trust; the private key never touches the host.
 //
 // This is the same discipline internal/installer applies to the panel's own
 // SHA256SUMS, carried to modules: no code derived from a manifest touches the
-// system until a trusted key has vouched for that exact manifest.
+// system until a trusted key has vouched for that exact manifest — and both
+// read their trust anchors through the one parser in pkg/edkey, so a hardening
+// applied to one cannot silently miss the other.
 package marketplace
 
 import (
@@ -28,7 +30,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/edkey"
+
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // Trust outcomes. These are named errors so the surface can tell an operator
@@ -54,7 +58,7 @@ type TrustedKey struct {
 	Key ed25519.PublicKey
 }
 
-// Keyring is the set of publisher keys hpd trusts to sign modules. It is built
+// Keyring is the set of publisher keys npd trusts to sign modules. It is built
 // once at boot from pinned key material and never mutated, so it is safe to read
 // concurrently.
 type Keyring struct {
@@ -71,14 +75,11 @@ func NewKeyring(encoded ...string) (*Keyring, error) {
 		if e == "" {
 			continue
 		}
-		raw, err := decodeKeyMaterial(e)
+		pub, err := edkey.PublicKey(e)
 		if err != nil {
 			return nil, fmt.Errorf("marketplace: publisher key: %w", err)
 		}
-		if len(raw) != ed25519.PublicKeySize {
-			return nil, fmt.Errorf("marketplace: public key must be %d bytes, got %d", ed25519.PublicKeySize, len(raw))
-		}
-		kr.keys = append(kr.keys, TrustedKey{ID: KeyID(raw), Key: ed25519.PublicKey(raw)})
+		kr.keys = append(kr.keys, TrustedKey{ID: KeyID(pub), Key: pub})
 	}
 	return kr, nil
 }
@@ -190,26 +191,5 @@ func canonicalManifest(m proto.Manifest) ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// decodeKeyMaterial accepts a "@/path/to/key" reference, a base64 string, or a
-// hex string and returns the raw key bytes. The @path form lets an operator keep
-// a key in a file rather than on a command line or in a process environment.
-func decodeKeyMaterial(s string) ([]byte, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, errors.New("empty key")
-	}
-	if strings.HasPrefix(s, "@") {
-		b, err := os.ReadFile(s[1:])
-		if err != nil {
-			return nil, err
-		}
-		s = strings.TrimSpace(string(b))
-	}
-	if raw, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return raw, nil
-	}
-	if raw, err := hex.DecodeString(s); err == nil {
-		return raw, nil
-	}
-	return nil, errors.New("key is neither valid base64 nor hex")
-}
+// Key parsing lives in pkg/edkey, shared with the release-signing chain in
+// internal/installer.

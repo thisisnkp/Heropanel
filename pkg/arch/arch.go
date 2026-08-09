@@ -1,4 +1,4 @@
-// Package arch is HeroPanel's single source of truth for CPU architecture and OS
+// Package arch is NexPanel's single source of truth for CPU architecture and OS
 // detection, and for turning them into the names used to fetch per-arch
 // artifacts (the installer's own binary, satellite-module binaries, PHP builds).
 //
@@ -8,7 +8,7 @@
 // arm64. There is one normalization here and everyone uses it.
 //
 // Nothing here shells out or reads the network. Detection is from the running
-// binary's own GOOS/GOARCH, which is correct precisely because HeroPanel ships a
+// binary's own GOOS/GOARCH, which is correct precisely because NexPanel ships a
 // native build per arch: the binary that asks "what am I" is already the right
 // one to answer from.
 package arch
@@ -18,7 +18,7 @@ import (
 	"sort"
 )
 
-// Arch is a supported CPU architecture, in HeroPanel's own naming (which happens
+// Arch is a supported CPU architecture, in NexPanel's own naming (which happens
 // to match Go's for the three it supports).
 type Arch string
 
@@ -28,7 +28,7 @@ const (
 	I386  Arch = "386"
 )
 
-// OS is a supported operating system family. HeroPanel targets Linux; the type
+// OS is a supported operating system family. NexPanel targets Linux; the type
 // exists so a manifest or an artifact path can name an OS without a bare string,
 // and so a non-Linux host (a developer's machine) is a recognizable value rather
 // than an assumption.
@@ -45,7 +45,7 @@ var supported = map[Arch]string{
 	I386:  "x86 (32-bit)",
 }
 
-// Supported reports whether a is an architecture HeroPanel builds for.
+// Supported reports whether a is an architecture NexPanel builds for.
 func (a Arch) Supported() bool { _, ok := supported[a]; return ok }
 
 // Label returns a human-readable name, or the raw value if unknown.
@@ -59,7 +59,7 @@ func (a Arch) Label() string {
 // String implements fmt.Stringer.
 func (a Arch) String() string { return string(a) }
 
-// Supported lists every architecture HeroPanel builds for, in a stable order so
+// Supported lists every architecture NexPanel builds for, in a stable order so
 // installer output and the release matrix agree.
 func Supported() []Arch {
 	out := make([]Arch, 0, len(supported))
@@ -70,7 +70,7 @@ func Supported() []Arch {
 	return out
 }
 
-// Normalize maps a Go GOARCH (or an equivalent alias) onto a HeroPanel Arch.
+// Normalize maps a Go GOARCH (or an equivalent alias) onto a NexPanel Arch.
 //
 // The aliases are the ones that actually turn up: `uname -m` and package
 // managers say "x86_64", "aarch64", "i686"; Go says "amd64", "arm64", "386". A
@@ -90,7 +90,7 @@ func Normalize(s string) Arch {
 	}
 }
 
-// Current is the architecture of the running binary. Because HeroPanel ships a
+// Current is the architecture of the running binary. Because NexPanel ships a
 // native build per arch, this is authoritative: no `uname`, no guessing.
 func Current() Arch { return Normalize(runtime.GOARCH) }
 
@@ -98,7 +98,7 @@ func Current() Arch { return Normalize(runtime.GOARCH) }
 func CurrentOS() OS { return OS(runtime.GOOS) }
 
 // ArtifactName builds the canonical download name for a component: e.g.
-// ArtifactName("hp-installer", Linux, ARM64) -> "hp-installer-linux-arm64".
+// ArtifactName("np-installer", Linux, ARM64) -> "np-installer-linux-arm64".
 //
 // This is the one place the naming scheme lives. The installer's bootstrap
 // script, the module installer, and the release build all have to agree on it,

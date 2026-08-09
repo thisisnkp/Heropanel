@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Token / HTTPS clone, end to end against a real HTTPS git server.
 #
-# HeroPanel seals a personal access token with the panel's master key and, at
+# NexPanel seals a personal access token with the panel's master key and, at
 # deploy time, hands the broker a git-credential-store line so `git clone` can
 # authenticate over HTTPS. This proves that path live: a private-CA TLS cert
 # (installed into the system trust store, so the clone verifies TLS normally —
@@ -10,7 +10,7 @@
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 host=githttp.test
 port=9443
 TOKEN=ghp_$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
@@ -33,8 +33,8 @@ export GIT_PROJECT_ROOT=/srv/githttp
 mkdir -p "$GIT_PROJECT_ROOT"
 git init --bare -q "$GIT_PROJECT_ROOT/app.git"
 work=$(mktemp -d)
-git init -q "$work"; git -C "$work" config user.email ci@heropanel.test; git -C "$work" config user.name CI
-mkdir -p "$work/site"; printf '<h1>token repo via HeroPanel</h1>' > "$work/site/index.html"
+git init -q "$work"; git -C "$work" config user.email ci@nexpanel.test; git -C "$work" config user.name CI
+mkdir -p "$work/site"; printf '<h1>token repo via NexPanel</h1>' > "$work/site/index.html"
 git -C "$work" add -A; git -C "$work" commit -qm seed; git -C "$work" branch -M main
 git -C "$work" remote add origin "$GIT_PROJECT_ROOT/app.git"; git -C "$work" push -q origin main
 # http-backend must be allowed to serve this repo without a per-repo flag.
@@ -47,17 +47,17 @@ for i in $(seq 1 40); do (echo > /dev/tcp/127.0.0.1/$port) >/dev/null 2>&1 && br
 echo -n "no-auth  info/refs -> "; curl -s -o /dev/null -w '%{http_code}\n' "https://$host:$port/app.git/info/refs?service=git-upload-pack"
 echo -n "with-tok info/refs -> "; curl -s -o /dev/null -w '%{http_code}\n' -u "deployer:$TOKEN" "https://$host:$port/app.git/info/refs?service=git-upload-pack"
 
-sec "start hp-broker + hpd (master key set, so token sealing is enabled)"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+sec "start np-broker + npd (master key set, so token sealing is enabled)"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 SECRET_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY="$SECRET_KEY" \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY="$SECRET_KEY" \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth + create git site"
@@ -65,7 +65,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 api -X POST $base/api/v1/sites -H 'Content-Type: application/json' \
   -d '{"name":"Tok","primary_domain":"tok.test","type":"static","deploy_mode":"git"}' >/dev/null
@@ -77,7 +77,7 @@ printf '{"repo_url":"https://%s:%s/app.git","branch":"main","web_root":"site","a
 api -X PUT $base/api/v1/sites/$uid/git -H 'Content-Type: application/json' --data @/tmp/src.json >/dev/null
 # The token must never come back out.
 if api $base/api/v1/sites/$uid/git | grep -q "$TOKEN"; then echo "FAIL: token echoed by the API"; else echo "token absent from API response: OK"; fi
-if grep -aq "$TOKEN" /tmp/hp.db; then echo "FAIL: token stored in the clear"; else echo "token sealed at rest (not in the db): OK"; fi
+if grep -aq "$TOKEN" /tmp/np.db; then echo "FAIL: token stored in the clear"; else echo "token sealed at rest (not in the db): OK"; fi
 api -X POST $base/api/v1/sites/$uid/git/deploy >/tmp/dep.json 2>&1
 echo -n "token deploy "; grep -oE '"status":"[a-z]+"' /tmp/dep.json | head -1
 
@@ -102,7 +102,7 @@ grep -oE '"capability":"git\.deploy","outcome":"[^"]+"' /tmp/broker.log
 sec "RESULT"
 fail=0
 grep -q '"status":"success"' /tmp/dep.json || { echo "  FAIL token deploy did not succeed"; fail=1; }
-if [ "$(cat /tmp/body)" = '<h1>token repo via HeroPanel</h1>' ]; then echo "  ok   page served from HTTPS token clone"; else echo "  FAIL page not served"; fail=1; fi
+if [ "$(cat /tmp/body)" = '<h1>token repo via NexPanel</h1>' ]; then echo "  ok   page served from HTTPS token clone"; else echo "  FAIL page not served"; fail=1; fi
 # A wrong token fails the clone: the deploy comes back as a failed deployment or
 # an error envelope (never success), and the broker records the failure.
 if grep -q '"status":"success"' /tmp/dep_bad.json; then

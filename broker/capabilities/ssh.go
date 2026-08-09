@@ -5,14 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // SSH hardening: write the panel's sshd drop-in, config-test it with `sshd -t`
 // BEFORE it can take effect, and reload (not restart) so live sessions survive.
-// The config text is rendered by hpd from validated fields; the broker writes
+// The config text is rendered by npd from validated fields; the broker writes
 // only the one pinned path, tests it, reloads, and rolls back on any failure —
 // the same reload-first discipline as php.write_pool and webserver.apply, and
 // it matters as much here: a bad sshd config that the daemon refuses on restart
@@ -20,7 +20,7 @@ import (
 
 const (
 	sshdPath          = "/usr/sbin/sshd"
-	sshHardenDropin   = "/etc/ssh/sshd_config.d/50-heropanel.conf"
+	sshHardenDropin   = "/etc/ssh/sshd_config.d/50-nexpanel.conf"
 	sshMaxConfig      = 32 << 10
 	sshServiceName    = "ssh"
 	sshServiceNameAlt = "sshd"

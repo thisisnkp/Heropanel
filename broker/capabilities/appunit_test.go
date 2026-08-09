@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func appCtx(r exec.Runner, fsy fsys.FS) capability.Context {
@@ -19,9 +19,9 @@ func appCtx(r exec.Runner, fsy fsys.FS) capability.Context {
 
 func validUnitInput() map[string]any {
 	return map[string]any{
-		"vhost":    "hps1",
-		"username": "hps1",
-		"home":     "/srv/heropanel/sites/1",
+		"vhost":    "nps1",
+		"username": "nps1",
+		"home":     "/srv/nexpanel/sites/1",
 		"command":  "node server.js",
 		"port":     3000,
 		"env":      map[string]any{"NODE_ENV": "production"},
@@ -36,30 +36,30 @@ func TestAppUnitApplyWritesHardenedUnit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	if res.Data["unit"] != "heropanel-app-hps1.service" {
+	if res.Data["unit"] != "nexpanel-app-nps1.service" {
 		t.Fatalf("result = %+v", res.Data)
 	}
 
 	// The command lives in a launcher script (so no systemd/shell quoting).
-	launcher, ok := ff.Written("/srv/heropanel/sites/1/.heropanel-run")
+	launcher, ok := ff.Written("/srv/nexpanel/sites/1/.nexpanel-run")
 	if !ok || !strings.Contains(launcher, "exec node server.js") {
 		t.Fatalf("launcher = %q", launcher)
 	}
 
-	unit, ok := ff.Written("/etc/systemd/system/heropanel-app-hps1.service")
+	unit, ok := ff.Written("/etc/systemd/system/nexpanel-app-nps1.service")
 	if !ok {
 		t.Fatal("unit file not written")
 	}
 	for _, want := range []string{
-		"User=hps1",
-		"Group=hps1",
-		"WorkingDirectory=/srv/heropanel/sites/1/current",
+		"User=nps1",
+		"Group=nps1",
+		"WorkingDirectory=/srv/nexpanel/sites/1/current",
 		`Environment="NODE_ENV=production"`,
 		"Environment=PORT=3000",
-		"ExecStart=/srv/heropanel/sites/1/.heropanel-run",
+		"ExecStart=/srv/nexpanel/sites/1/.nexpanel-run",
 		"NoNewPrivileges=true",
 		"ProtectSystem=strict",
-		"ReadWritePaths=/srv/heropanel/sites/1",
+		"ReadWritePaths=/srv/nexpanel/sites/1",
 		"WantedBy=multi-user.target",
 	} {
 		if !strings.Contains(unit, want) {
@@ -70,8 +70,8 @@ func TestAppUnitApplyWritesHardenedUnit(t *testing.T) {
 	// systemctl daemon-reload, enable, restart — in that order.
 	if len(fr.Calls) != 3 ||
 		fr.Calls[0].Args[0] != "daemon-reload" ||
-		fr.Calls[1].Args[0] != "enable" || fr.Calls[1].Args[1] != "heropanel-app-hps1.service" ||
-		fr.Calls[2].Args[0] != "restart" || fr.Calls[2].Args[1] != "heropanel-app-hps1.service" {
+		fr.Calls[1].Args[0] != "enable" || fr.Calls[1].Args[1] != "nexpanel-app-nps1.service" ||
+		fr.Calls[2].Args[0] != "restart" || fr.Calls[2].Args[1] != "nexpanel-app-nps1.service" {
 		t.Fatalf("unexpected systemctl calls: %+v", fr.Calls)
 	}
 }
@@ -109,17 +109,17 @@ func TestAppUnitControl(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	ff := fsys.NewFake()
 	if _, err := (capabilities.AppUnitControl{}).Execute(appCtx(fr, ff), raw(t, map[string]any{
-		"vhost": "hps1", "action": "restart",
+		"vhost": "nps1", "action": "restart",
 	})); err != nil {
 		t.Fatalf("control: %v", err)
 	}
 	last, _ := fr.Last()
-	if last.Args[0] != "restart" || last.Args[1] != "heropanel-app-hps1.service" {
+	if last.Args[0] != "restart" || last.Args[1] != "nexpanel-app-nps1.service" {
 		t.Fatalf("unexpected control call: %+v", last.Args)
 	}
 
 	if _, err := (capabilities.AppUnitControl{}).Execute(appCtx(&exec.FakeRunner{}, ff), raw(t, map[string]any{
-		"vhost": "hps1", "action": "frobnicate",
+		"vhost": "nps1", "action": "frobnicate",
 	})); !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("bad action should be rejected, got %v", err)
 	}
@@ -128,16 +128,16 @@ func TestAppUnitControl(t *testing.T) {
 func TestAppUnitRemoveIsIdempotent(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	ff := fsys.NewFake()
-	_ = ff.WriteFile("/etc/systemd/system/heropanel-app-hps1.service", []byte("stub"), 0o644)
+	_ = ff.WriteFile("/etc/systemd/system/nexpanel-app-nps1.service", []byte("stub"), 0o644)
 
-	if _, err := (capabilities.AppUnitRemove{}).Execute(appCtx(fr, ff), raw(t, map[string]any{"vhost": "hps1"})); err != nil {
+	if _, err := (capabilities.AppUnitRemove{}).Execute(appCtx(fr, ff), raw(t, map[string]any{"vhost": "nps1"})); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	if _, ok := ff.Written("/etc/systemd/system/heropanel-app-hps1.service"); ok {
+	if _, ok := ff.Written("/etc/systemd/system/nexpanel-app-nps1.service"); ok {
 		t.Fatal("unit file should have been removed")
 	}
 	// disable --now then daemon-reload were issued.
-	if _, ok := findCall(fr.Calls, "disable", "--now", "heropanel-app-hps1.service"); !ok {
+	if _, ok := findCall(fr.Calls, "disable", "--now", "nexpanel-app-nps1.service"); !ok {
 		t.Fatalf("disable not issued: %+v", fr.Calls)
 	}
 	if _, ok := findCall(fr.Calls, "daemon-reload"); !ok {

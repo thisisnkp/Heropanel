@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // auditLoginActor files an authentication under the account it authenticated,
@@ -112,8 +112,8 @@ func unconfiguredStatusHandler() http.HandlerFunc {
 func unconfiguredAuthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, errx.New(errx.KindUnavailable, "datastore_not_configured",
-			"HeroPanel has no datastore configured, so it cannot sign anyone in. "+
-				"Set database.dsn in the config file (or the HP_DATABASE_DSN environment variable) and restart."))
+			"NexPanel has no datastore configured, so it cannot sign anyone in. "+
+				"Set database.dsn in the config file (or the NP_DATABASE_DSN environment variable) and restart."))
 	}
 }
 

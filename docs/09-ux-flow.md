@@ -1,6 +1,6 @@
 # 09 — UX Flow & Frontend Architecture
 
-**Inspiration, not imitation.** We borrow hPanel's *clarity, speed, and task-oriented flow* — nothing else. Zero copied markup, CSS, icons, illustrations, assets, layout code, or branding. HeroPanel has its own visual identity, component library, and iconography.
+**Inspiration, not imitation.** We borrow hPanel's *clarity, speed, and task-oriented flow* — nothing else. Zero copied markup, CSS, icons, illustrations, assets, layout code, or branding. NexPanel has its own visual identity, component library, and iconography.
 
 ## 1. Design principles
 - **Task-first, not menu-first.** The operator's job ("deploy a site", "issue a cert") is the unit of navigation, not the technology.
@@ -30,7 +30,7 @@
 
 ```
 ┌ Top bar ───────────────────────────────────────────────────────────────┐
-│ ⬢ HeroPanel   [ ⌘K Global Search ]        ◑ theme  🔔 notifs  ⚙  ◕ user │
+│ ⬢ NexPanel   [ ⌘K Global Search ]        ◑ theme  🔔 notifs  ⚙  ◕ user │
 ├ Sidebar (collapsible) ─────────────┬ Content ─────────────────────────── │
 │ Dashboard                          │                                     │
 │ Sites            ▸ per-site tabs   │   context-aware, task-oriented views │

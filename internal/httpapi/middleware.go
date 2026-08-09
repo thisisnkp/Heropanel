@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // mw is the standard middleware constructor shape.

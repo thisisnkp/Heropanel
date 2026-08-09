@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// The lifecycle contract (docs/06 §3). These are the requests and responses hpd
+// The lifecycle contract (docs/06 §3). These are the requests and responses npd
 // exchanges with a module across its life: a handshake on connect, health
 // probes, config pushes, graceful shutdown. Expressed as Go types so an
 // in-process module and a future gRPC module answer the same shapes.
@@ -21,7 +21,7 @@ const (
 	Degraded   ServingState = "DEGRADED"
 )
 
-// HandshakeResponse is what a module answers when hpd first connects. hpd checks
+// HandshakeResponse is what a module answers when npd first connects. npd checks
 // APIVersion for compatibility before it will enable the module; a mismatch
 // leaves the module in `error`, never half-enabled.
 type HandshakeResponse struct {
@@ -39,7 +39,7 @@ type HealthResponse struct {
 }
 
 // ConfigureRequest pushes validated config to a module for a hot reload. The
-// config has already been checked against the module's schema by hpd, so the
+// config has already been checked against the module's schema by npd, so the
 // module can apply it without re-validating the shape.
 type ConfigureRequest struct {
 	ConfigJSON []byte `json:"config_json"`
@@ -52,7 +52,7 @@ type ConfigureResponse struct {
 }
 
 // State is a module's position in the lifecycle state machine (docs/06 §4). It
-// lives here, with the contract, because both hpd and the registry reason about
+// lives here, with the contract, because both npd and the registry reason about
 // it and it must mean the same thing to each.
 type State string
 
@@ -66,7 +66,7 @@ const (
 )
 
 // reSlug bounds a module slug. It becomes part of a systemd unit name
-// (heropanel-mod@<slug>.service), a socket path, and an install directory, so it
+// (nexpanel-mod@<slug>.service), a socket path, and an install directory, so it
 // is confined to the characters that are safe in all three — no separators that
 // could climb a path or split a unit name.
 var reSlug = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
@@ -78,12 +78,12 @@ var reSlug = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
 var reCapability = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
 
 // Validate checks a manifest is well-formed and compatible enough to act on. It
-// is the gate before hpd does anything with a module — the manifest is untrusted
+// is the gate before npd does anything with a module — the manifest is untrusted
 // input (it arrives with a downloaded package), so nothing derived from it
 // touches the system until this passes.
 func (m *Manifest) Validate() error {
 	if m.APIVersion != APIVersion {
-		return fmt.Errorf("proto: unsupported apiVersion %q (this hpd speaks %q)", m.APIVersion, APIVersion)
+		return fmt.Errorf("proto: unsupported apiVersion %q (this npd speaks %q)", m.APIVersion, APIVersion)
 	}
 	if m.Kind != "Module" {
 		return fmt.Errorf("proto: manifest kind is %q, want %q", m.Kind, "Module")
@@ -112,7 +112,7 @@ func (m *Manifest) Validate() error {
 }
 
 // Compatible reports whether a module built for apiVersion can run against this
-// hpd. It is intentionally exact today: the contract is v1 and there is no range
+// npd. It is intentionally exact today: the contract is v1 and there is no range
 // to negotiate yet. It exists as the single decision point so that when a v2
 // arrives, the semver range lives here and nowhere else has to learn about it.
 func Compatible(apiVersion string) bool {

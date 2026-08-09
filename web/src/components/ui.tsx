@@ -120,10 +120,10 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   function Select({ className, children, ...rest }, ref) {
-    // hp-select (index.css) suppresses the OS dropdown arrow and draws a themed
+    // np-select (index.css) suppresses the OS dropdown arrow and draws a themed
     // chevron — the native one cannot be styled and dates the whole page.
     return (
-      <select ref={ref} className={cn(fieldBase, fieldFocus, "hp-select h-9 px-3", className)} {...rest}>
+      <select ref={ref} className={cn(fieldBase, fieldFocus, "np-select h-9 px-3", className)} {...rest}>
         {children}
       </select>
     );
@@ -253,7 +253,7 @@ export function Combobox({
         <ul
           id={listId}
           role="listbox"
-          className="hp-pop-in absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-border bg-panel p-1 shadow-lg"
+          className="np-pop-in absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-border bg-panel p-1 shadow-lg"
         >
           {matches.length === 0 ? (
             <li className="px-2.5 py-2 text-xs text-muted">{emptyLabel}</li>
@@ -557,7 +557,7 @@ export function Spinner({ className }: { className?: string }) {
 // spinner wherever the layout is predictable: it shows how much is coming and
 // stops the page reflowing when it lands.
 export function Skeleton({ className }: { className?: string }) {
-  return <span className={cn("hp-skeleton block h-4 w-full rounded-md", className)} aria-hidden />;
+  return <span className={cn("np-skeleton block h-4 w-full rounded-md", className)} aria-hidden />;
 }
 
 // Alert defaults to the danger tone because that is what every existing caller
@@ -718,10 +718,10 @@ export function Modal({
 
   return (
     <div
-      className="hp-fade-in fixed inset-0 z-50 grid place-items-center bg-fg/40 p-4 backdrop-blur-sm"
+      className="np-fade-in fixed inset-0 z-50 grid place-items-center bg-fg/40 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <Card className={cn("hp-pop-in w-full p-6 shadow-lg", wide ? "max-w-2xl" : "max-w-md")}>
+      <Card className={cn("np-pop-in w-full p-6 shadow-lg", wide ? "max-w-2xl" : "max-w-md")}>
         <div
           ref={dialogRef}
           role="dialog"

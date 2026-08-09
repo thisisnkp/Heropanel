@@ -1,6 +1,6 @@
 // Package php manages per-site PHP-FPM pools and the PHP version selector. Each
 // PHP site gets a dedicated FPM pool listening on a private Unix socket, running
-// as the site's Linux user with open_basedir confinement (docs/05 §3). hpd
+// as the site's Linux user with open_basedir confinement (docs/05 §3). npd
 // renders the pool config; the broker writes it and reloads php-fpm.
 package php
 
@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"text/template"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // DefaultVersion is used when a PHP site does not specify a version.
@@ -34,7 +34,7 @@ func IsSupported(v string) bool {
 // SocketPath is the deterministic FPM socket path for a site's Linux user. The
 // web-server vhost and the FPM pool both derive from it, so no lookup is needed
 // to wire them together.
-func SocketPath(user string) string { return "/run/heropanel/fpm/" + user + ".sock" }
+func SocketPath(user string) string { return "/run/nexpanel/fpm/" + user + ".sock" }
 
 // FpmBinary returns the php-fpm binary path for a version (Debian/Ubuntu layout).
 // OpenLiteSpeed requires a path on the fcgi extProcessor even for an externally-

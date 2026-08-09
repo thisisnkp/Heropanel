@@ -3,7 +3,7 @@ package arch_test
 import (
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/arch"
+	"github.com/thisisnkp/nexpanel/pkg/arch"
 )
 
 // The aliases that actually turn up: uname and package managers speak one
@@ -52,10 +52,10 @@ func TestSupportedSet(t *testing.T) {
 // The artifact name is the one string the bootstrap script, module installer,
 // and release build must all agree on. Pin it.
 func TestArtifactName(t *testing.T) {
-	if got := arch.ArtifactName("hp-installer", arch.Linux, arch.ARM64); got != "hp-installer-linux-arm64" {
+	if got := arch.ArtifactName("np-installer", arch.Linux, arch.ARM64); got != "np-installer-linux-arm64" {
 		t.Errorf("ArtifactName = %q", got)
 	}
-	if got := arch.ArtifactName("hp-mod-docker", arch.Linux, arch.AMD64); got != "hp-mod-docker-linux-amd64" {
+	if got := arch.ArtifactName("np-mod-docker", arch.Linux, arch.AMD64); got != "np-mod-docker-linux-amd64" {
 		t.Errorf("ArtifactName = %q", got)
 	}
 }

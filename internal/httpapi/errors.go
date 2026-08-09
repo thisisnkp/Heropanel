@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // statusFor maps a domain error Kind to an HTTP status. The mapping lives in one

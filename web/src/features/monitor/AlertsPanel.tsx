@@ -139,7 +139,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
       <Input placeholder="Rule name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
       <div className="flex flex-wrap gap-2">
         <select
-          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
+          className="np-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={f.metric}
           onChange={(e) => setF({ ...f, metric: e.target.value })}
         >
@@ -150,7 +150,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
           ))}
         </select>
         <select
-          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
+          className="np-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={f.op}
           onChange={(e) => setF({ ...f, op: e.target.value })}
         >
@@ -176,7 +176,7 @@ function RuleForm({ onDone }: { onDone: () => void }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select
-          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
+          className="np-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={f.notify_kind}
           onChange={(e) => setF({ ...f, notify_kind: e.target.value })}
         >

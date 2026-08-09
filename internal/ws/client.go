@@ -7,7 +7,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/thisisnkp/heropanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth"
 )
 
 // pingInterval keeps idle connections alive and detects dead peers.

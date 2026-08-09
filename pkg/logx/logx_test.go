@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/logx"
+	"github.com/thisisnkp/nexpanel/pkg/logx"
 )
 
 func TestParseLevel(t *testing.T) {

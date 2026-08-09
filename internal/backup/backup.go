@@ -4,11 +4,11 @@
 // on any S3-compatible endpoint, on a schedule, with restore into a fresh site.
 //
 // The split of trust: the broker only ever tars a validated site tree into a
-// staging file and untars a staged file back (small, auditable, root). hpd —
+// staging file and untars a staged file back (small, auditable, root). npd —
 // unprivileged — does everything else: sealing, uploading, chain bookkeeping,
 // scheduling, retention. A backup is sealed with a key derived from the panel's
 // master key, so a stolen bucket or disk yields ciphertext; without
-// HP_SECRET_KEY the module reports unavailable rather than ever storing a
+// NP_SECRET_KEY the module reports unavailable rather than ever storing a
 // site's data in the clear.
 package backup
 
@@ -20,15 +20,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/blobcrypt"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/blobcrypt"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
-// StagingDir is where the broker stages plain archives and hpd writes sealed
+// StagingDir is where the broker stages plain archives and npd writes sealed
 // ones; owned by the panel user, mode 0700.
-const StagingDir = "/var/lib/heropanel/backups"
+const StagingDir = "/var/lib/nexpanel/backups"
 
 // Levels and targets.
 const (
@@ -211,7 +211,7 @@ func (s *Service) requireAvailable() error {
 		return nil
 	}
 	return errx.New(errx.KindUnavailable, "backup_unavailable",
-		"Backups need the broker and a data key (HP_SECRET_KEY); encrypted-at-rest is not optional.")
+		"Backups need the broker and a data key (NP_SECRET_KEY); encrypted-at-rest is not optional.")
 }
 
 // remoteKey names a sealed archive on its target.
@@ -687,13 +687,13 @@ func (s *Service) pruneChains(ctx context.Context, ref *SiteRef, siteUID string)
 }
 
 // RunScheduler sweeps hourly: every enabled site whose newest backup is older
-// than its interval gets one (auto level). It is hpd's own ticker — like the SSL
+// than its interval gets one (auto level). It is npd's own ticker — like the SSL
 // renewer — rather than a cron unit, because it needs the panel's key and DB.
 func (s *Service) RunScheduler(ctx context.Context, sitesByID func(ctx context.Context, id int64) (string, bool), log interface{ Info(string, ...any) }) {
 	if !s.Available() {
 		return
 	}
-	// Sweep once at startup: a backup that came due while hpd was down must not
+	// Sweep once at startup: a backup that came due while npd was down must not
 	// wait up to a whole tick to run. This is the difference between a schedule
 	// that is *stored* and one that actually *fires*.
 	s.sweepDue(ctx, sitesByID, log)

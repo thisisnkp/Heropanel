@@ -4,8 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/semver"
 )
 
 // Module lifecycle states, as persisted by the store. Installing a module
@@ -98,6 +99,12 @@ type CatalogEntry struct {
 	VerifyError string `json:"verify_error,omitempty"`
 	Installed   bool   `json:"installed"`
 	State       string `json:"state,omitempty"`
+	// InstalledVersion is what this panel has, where Version is what the catalog
+	// offers. They are usually the same and interesting exactly when they differ.
+	InstalledVersion string `json:"installed_version,omitempty"`
+	// UpdateAvailable is true only when Update would succeed — verified, same
+	// publisher, strictly newer.
+	UpdateAvailable bool `json:"update_available,omitempty"`
 }
 
 // Browse returns the catalog with each entry's trust verdict and install state.
@@ -125,6 +132,13 @@ func (s *Service) Browse(ctx context.Context) ([]CatalogEntry, error) {
 		if inst, ok := installed[m.Metadata.Slug]; ok {
 			e.Installed = true
 			e.State = inst.State
+			e.InstalledVersion = inst.Version
+			// Offered only when Update would actually succeed: a newer version,
+			// from the same publisher, on a manifest that verified. Advertising an
+			// update the operator cannot apply is worse than not advertising one.
+			e.UpdateAvailable = e.Verified &&
+				(inst.PublisherKey == "" || inst.PublisherKey == e.PublisherKey) &&
+				semver.Newer(inst.Version, m.Metadata.Version)
 		}
 		out = append(out, e)
 	}
@@ -194,6 +208,71 @@ func (s *Service) Install(ctx context.Context, slug string) (*InstalledModule, e
 	}
 	s.log.Info("module installed", "slug", rec.Slug, "version", rec.Version, "publisher", keyID)
 	return s.store.Get(ctx, slug)
+}
+
+// Update moves an installed module to the version the catalog now offers.
+//
+// It re-runs the full install gate — a signature verified once is not a
+// signature verified forever, and the bytes on offer are not the bytes that were
+// on offer at install time — and then applies two checks install does not need:
+//
+//   - **The publisher may not change.** A module installed under key A must be
+//     updated by key A. Both keys being trusted is not enough: the operator
+//     pinned a set of publishers, not a promise that any of them may take over
+//     any other's module. Silently accepting a re-signed module is publisher
+//     takeover with a version bump for cover.
+//   - **The version must move forward.** A catalog that regressed — rolled back,
+//     rebuilt from an older tag, or tampered with — must not walk an operator
+//     backwards into a known-vulnerable release under the name "update".
+//
+// The installed record's enable state survives, because an operator who updates
+// a running module did not ask for it to be turned off.
+//
+// It returns the version that was replaced alongside the new record: the audit
+// trail needs to answer "which version was running before this", and reading the
+// record twice around the write would both race and be answerable here for free.
+func (s *Service) Update(ctx context.Context, slug string) (*InstalledModule, string, error) {
+	current, err := s.store.Get(ctx, slug)
+	if err != nil {
+		return nil, "", err
+	}
+	m, ok := s.catalog.find(slug)
+	if !ok {
+		// Installed but no longer offered. Uninstall still works; there is simply
+		// nothing to move to, and saying so beats a generic failure.
+		return nil, "", errx.NotFound("module_not_in_catalog",
+			"This module is installed but the catalog no longer offers it, so there is no version to update to.")
+	}
+	if err := m.Validate(); err != nil {
+		return nil, "", errx.New(errx.KindValidation, "module_invalid", err.Error())
+	}
+	keyID, err := s.keyring.VerifyManifest(m)
+	if err != nil {
+		return nil, "", errx.Forbidden("module_unverified", err.Error())
+	}
+	if current.PublisherKey != "" && current.PublisherKey != keyID {
+		return nil, "", errx.Forbidden("module_publisher_changed",
+			"The offered version is signed by a different publisher than the installed one. Uninstall and install it deliberately if this change is intended.")
+	}
+	if !semver.Newer(current.Version, m.Metadata.Version) {
+		return nil, "", errx.Conflict("module_not_newer",
+			"The catalog does not offer a newer version of this module.")
+	}
+
+	rec := InstalledModule{
+		Slug:         m.Metadata.Slug,
+		Name:         m.Metadata.Name,
+		Version:      m.Metadata.Version,
+		Category:     m.Metadata.Category,
+		State:        current.State,
+		PublisherKey: keyID,
+	}
+	if err := s.store.Upsert(ctx, rec); err != nil {
+		return nil, "", err
+	}
+	s.log.Info("module updated", "slug", rec.Slug, "from", current.Version, "to", rec.Version, "publisher", keyID)
+	updated, err := s.store.Get(ctx, slug)
+	return updated, current.Version, err
 }
 
 // SetEnabled toggles an installed module between enabled and disabled. It refuses

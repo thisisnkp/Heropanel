@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestValidate(t *testing.T) {

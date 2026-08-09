@@ -497,7 +497,7 @@ function CountryImportPanel() {
       </div>
       {!available ? (
         <p className="p-4 text-xs text-muted">
-          Country import is not configured — set a geo CIDR source URL (<span className="font-mono">HP_SECURITY_GEODB_URL</span>).
+          Country import is not configured — set a geo CIDR source URL (<span className="font-mono">NP_SECURITY_GEODB_URL</span>).
         </p>
       ) : (
         <form

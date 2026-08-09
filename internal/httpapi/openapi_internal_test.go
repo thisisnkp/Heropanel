@@ -14,37 +14,38 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/apps"
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/backup"
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/cron"
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/internal/dns"
-	"github.com/thisisnkp/heropanel/internal/docker"
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/internal/files"
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/keyring"
-	"github.com/thisisnkp/heropanel/internal/mail"
-	"github.com/thisisnkp/heropanel/internal/marketplace"
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/registry"
-	"github.com/thisisnkp/heropanel/internal/runtime"
-	"github.com/thisisnkp/heropanel/internal/security"
-	"github.com/thisisnkp/heropanel/internal/setup"
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/internal/tenancy"
-	"github.com/thisisnkp/heropanel/internal/terminal"
-	"github.com/thisisnkp/heropanel/internal/users"
-	"github.com/thisisnkp/heropanel/internal/webhook"
-	"github.com/thisisnkp/heropanel/internal/webmail"
-	"github.com/thisisnkp/heropanel/internal/ws"
+	"github.com/thisisnkp/nexpanel/internal/apps"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/backup"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/cron"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/internal/docker"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/internal/files"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/keyring"
+	"github.com/thisisnkp/nexpanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/registry"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/internal/security"
+	"github.com/thisisnkp/nexpanel/internal/setup"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/internal/tenancy"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/internal/update"
+	"github.com/thisisnkp/nexpanel/internal/users"
+	"github.com/thisisnkp/nexpanel/internal/webhook"
+	"github.com/thisisnkp/nexpanel/internal/webmail"
+	"github.com/thisisnkp/nexpanel/internal/ws"
 )
 
 // stubUsers satisfies UserDirectory so the /users route mounts. It is never
@@ -250,6 +251,7 @@ func fullRouterDeps(t *testing.T) Deps {
 		Webhooks:    webhook.NewService(nil, nil, nil, nil),
 		Marketplace: marketplace.NewService(nil, nil, nil, nil),
 		Setup:       setup.NewService(nil, nil, nil),
+		Update:      update.NewService(nil, nil, update.Config{}, "0.0.0-test", t.TempDir(), nil),
 		Keyring:     keyring.NewService(nil, nil),
 		Sites:       &site.Service{},
 		PHP:         &php.Service{},
@@ -367,7 +369,7 @@ func TestOpenAPIShape(t *testing.T) {
 }
 
 // TestOpenAPIGolden keeps docs/openapi.json in step with the code. Regenerate
-// with:  HP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden
+// with:  NP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden
 func TestOpenAPIGolden(t *testing.T) {
 	doc := buildOpenAPI(fullRouter(t), openapiGoldenVersion)
 	got, err := json.MarshalIndent(doc, "", "  ")
@@ -377,7 +379,7 @@ func TestOpenAPIGolden(t *testing.T) {
 	got = append(got, '\n')
 
 	path := filepath.Join("..", "..", "docs", "openapi.json")
-	if os.Getenv("HP_UPDATE_OPENAPI") == "1" {
+	if os.Getenv("NP_UPDATE_OPENAPI") == "1" {
 		if err := os.WriteFile(path, got, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -386,10 +388,10 @@ func TestOpenAPIGolden(t *testing.T) {
 	}
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read golden (regenerate with HP_UPDATE_OPENAPI=1): %v", err)
+		t.Fatalf("read golden (regenerate with NP_UPDATE_OPENAPI=1): %v", err)
 	}
 	if strings.ReplaceAll(string(want), "\r\n", "\n") != string(got) {
-		t.Fatalf("docs/openapi.json is stale — regenerate with HP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden")
+		t.Fatalf("docs/openapi.json is stale — regenerate with NP_UPDATE_OPENAPI=1 go test ./internal/httpapi -run Golden")
 	}
 }
 

@@ -18,16 +18,16 @@ sec "start OpenLiteSpeed (site provisioning applies a vhost)"
 /usr/local/lsws/bin/lswsctrl start 2>&1
 sleep 1
 
-sec "start hp-broker (root) + hpd (sqlite)"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker-cron.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18466 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp-cron.db \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd-cron.log 2>&1 &
+sec "start np-broker (root) + npd (sqlite)"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker-cron.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18466 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-cron.db \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd-cron.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth (bootstrap + login + CSRF)"
@@ -35,7 +35,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/cc.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/cc.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/cc.txt)
 api(){ curl -s -b /tmp/cc.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 code(){ curl -s -o /dev/null -w '%{http_code}' -b /tmp/cc.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
@@ -52,12 +52,12 @@ echo "$job"
 jid=$(echo "$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["uid"])')
 [ -n "$jid" ] && pass "job scheduled ($jid)" || fail "job create failed"
 
-svc_unit="/etc/systemd/system/heropanel-cron-$jid.service"
-timer_unit="/etc/systemd/system/heropanel-cron-$jid.timer"
+svc_unit="/etc/systemd/system/nexpanel-cron-$jid.service"
+timer_unit="/etc/systemd/system/nexpanel-cron-$jid.timer"
 [ -f "$svc_unit" ] && [ -f "$timer_unit" ] \
   && pass "the timer and service units exist on disk" \
   || fail "unit files missing"
-grep -q 'User=hps1' "$svc_unit" && grep -q 'Type=oneshot' "$svc_unit" \
+grep -q 'User=nps1' "$svc_unit" && grep -q 'Type=oneshot' "$svc_unit" \
   && pass "the service runs as the site user, oneshot" \
   || fail "service unit not hardened as expected: $(cat "$svc_unit")"
 grep -q 'OnCalendar=\*-\*-\* 03:00:00' "$timer_unit" && grep -q 'Persistent=true' "$timer_unit" \
@@ -75,8 +75,8 @@ logs=$(api "$base/api/v1/sites/$uid/cron/$jid/logs")
 echo "$logs"
 # The job was `id -un` — its output IS the user it ran as. It must be the site
 # user, never root: this is the module's whole safety claim, observed live.
-echo "$logs" | grep -q 'hps1' \
-  && pass "THE JOB RAN AS THE SITE USER (hps1), NOT ROOT" \
+echo "$logs" | grep -q 'nps1' \
+  && pass "THE JOB RAN AS THE SITE USER (nps1), NOT ROOT" \
   || fail "the job did not run as the site user: $logs"
 
 sec "A BAD SCHEDULE IS REFUSED"
@@ -100,6 +100,6 @@ api "$base/api/v1/sites/$uid/cron" | grep -q 'who-runs-me' \
   && fail "the job survived deletion" || pass "the job is gone"
 
 sec "cleanup"
-pkill -f 'hpd' 2>/dev/null; pkill -f 'hp-broker' 2>/dev/null; true
+pkill -f 'npd' 2>/dev/null; pkill -f 'np-broker' 2>/dev/null; true
 
 if [ "$FAILED" = "0" ]; then echo "run-cron.sh : PASS"; else echo "run-cron.sh : FAIL"; fi

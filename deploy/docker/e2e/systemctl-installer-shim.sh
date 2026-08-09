@@ -3,7 +3,7 @@
 # systemd, but the installer's execute path calls `systemctl enable --now` to
 # bring up the units it just wrote — and we want its own verify step to prove the
 # panel actually serves. This shim is just enough of systemd to start/stop the
-# hpd and hp-broker units it is handed: it parses User / EnvironmentFile /
+# npd and np-broker units it is handed: it parses User / EnvironmentFile /
 # Environment / ExecStart out of the unit file and supervises the process.
 # Production uses real systemd; this exists only so the installer e2e can prove an
 # end-to-end install brings the panel up.

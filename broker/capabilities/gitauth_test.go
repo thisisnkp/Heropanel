@@ -7,11 +7,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // recordFS is an in-memory FS that keeps every live file and appends a marker to
@@ -85,7 +85,7 @@ func (f *recordFS) live() []string {
 	return out
 }
 
-const gitAuthDir = "/run/heropanel/gitauth"
+const gitAuthDir = "/run/nexpanel/gitauth"
 
 func gitAuthCtx(r exec.Runner, f *recordFS) capability.Context {
 	return capability.Context{Ctx: context.Background(), Runner: r, Policy: policy.Default(), FS: f}
@@ -167,7 +167,7 @@ func TestCredentialDirectoryIsTraversableByTheSiteUser(t *testing.T) {
 	if _, ok := findCall(fr.Calls, "/bin/chmod", "0711", gitAuthDir); !ok {
 		t.Fatalf("credential parent was not made traversable; calls=%+v", fr.Calls)
 	}
-	perDeploy, ok := findCall(fr.Calls, "/usr/bin/install", "-d", "-m", "0700", "-o", "hps1", "-g", "hps1")
+	perDeploy, ok := findCall(fr.Calls, "/usr/bin/install", "-d", "-m", "0700", "-o", "nps1", "-g", "nps1")
 	if !ok {
 		t.Fatalf("per-deploy credential dir not created for the site user; calls=%+v", fr.Calls)
 	}
@@ -175,7 +175,7 @@ func TestCredentialDirectoryIsTraversableByTheSiteUser(t *testing.T) {
 		t.Fatalf("per-deploy dir is not under the credential root: %+v", perDeploy.Args)
 	}
 	// And the key itself is 0600, owned by the site user.
-	if _, ok := findCall(fr.Calls, "/usr/bin/install", "-m", "0600", "-o", "hps1", "-g", "hps1"); !ok {
+	if _, ok := findCall(fr.Calls, "/usr/bin/install", "-m", "0600", "-o", "nps1", "-g", "nps1"); !ok {
 		t.Fatalf("credential file not restricted to the site user; calls=%+v", fr.Calls)
 	}
 }
@@ -260,7 +260,7 @@ func TestCredentialIsDestroyedWhenTheCloneFails(t *testing.T) {
 	}
 }
 
-// The broker re-validates independently of hpd: an SSH remote is only legal
+// The broker re-validates independently of npd: an SSH remote is only legal
 // when a deploy key came with it, and vice versa.
 func TestBrokerRejectsURLAuthMismatch(t *testing.T) {
 	cases := map[string]map[string]any{

@@ -4,12 +4,13 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/thisisnkp/nexpanel/pkg/edkey"
 )
 
 // Release signing closes the gap the bare checksum manifest leaves open: an
@@ -26,14 +27,20 @@ import (
 // ed25519 bytes (32-byte public, 64-byte private seed+public per the stdlib),
 // which is what GenerateReleaseKey emits and what the signer/verifier accept —
 // a hex form and a `@path` form are accepted too, so an operator can point at a
-// key file without shelling it into an argument.
+// key file without shelling it into an argument. Key parsing itself lives in
+// pkg/edkey, shared with the marketplace's publisher keys.
+//
+// Self-update (docs/26) verifies the *same* chain from npd, which is why
+// ParsePublicKey, VerifyDetachedSig and VerifyChecksum are exported: the
+// updater must check a downloaded release with this code rather than a second
+// implementation of it.
 
 const manifestSigName = "SHA256SUMS.sig"
 
 // GenerateReleaseKey mints a fresh ed25519 release keypair, returned as base64
 // strings. The private key is held offline by whoever cuts releases; only the
 // public key is ever distributed (pinned into install.sh or passed to
-// hp-installer). This is the one-time bootstrap of the trust root.
+// np-installer). This is the one-time bootstrap of the trust root.
 func GenerateReleaseKey() (pub string, priv string, err error) {
 	pk, sk, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -45,52 +52,32 @@ func GenerateReleaseKey() (pub string, priv string, err error) {
 // SignManifest signs the manifest bytes with a base64/hex/@path private key and
 // returns the base64 signature to write into SHA256SUMS.sig.
 func SignManifest(manifest []byte, privKey string) (string, error) {
-	raw, err := decodeKeyMaterial(privKey)
+	key, err := edkey.PrivateKey(privKey)
 	if err != nil {
 		return "", fmt.Errorf("private key: %w", err)
 	}
-	if len(raw) != ed25519.PrivateKeySize {
-		return "", fmt.Errorf("private key must be %d bytes, got %d", ed25519.PrivateKeySize, len(raw))
-	}
-	sig := ed25519.Sign(ed25519.PrivateKey(raw), manifest)
-	return base64.StdEncoding.EncodeToString(sig), nil
+	return base64.StdEncoding.EncodeToString(ed25519.Sign(key, manifest)), nil
 }
 
-// parsePublicKey decodes a base64/hex/@path ed25519 public key.
-func parsePublicKey(s string) (ed25519.PublicKey, error) {
-	raw, err := decodeKeyMaterial(s)
+// ParsePublicKey decodes a base64/hex/@path ed25519 public key.
+func ParsePublicKey(s string) (ed25519.PublicKey, error) { return edkey.PublicKey(s) }
+
+// VerifyDetachedSig checks a base64 detached ed25519 signature over msg. It is
+// the single primitive behind every signed release artifact — the SHA256SUMS
+// manifest here, and the update channel manifest in internal/update — so there
+// is one place where "is this signed by the release key" is decided.
+func VerifyDetachedSig(msg []byte, sigB64 string, pub ed25519.PublicKey) error {
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(sigB64))
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("signature is not valid base64: %w", err)
 	}
-	if len(raw) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("public key must be %d bytes, got %d", ed25519.PublicKeySize, len(raw))
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("signature must be %d bytes, got %d", ed25519.SignatureSize, len(sig))
 	}
-	return ed25519.PublicKey(raw), nil
-}
-
-// decodeKeyMaterial accepts a "@/path/to/key" reference, a base64 string, or a
-// hex string, and returns the raw key bytes. The @path form lets an operator
-// keep a key in a file rather than on a command line (where it would land in the
-// process table and shell history).
-func decodeKeyMaterial(s string) ([]byte, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, errors.New("empty key")
+	if !ed25519.Verify(pub, msg, sig) {
+		return errors.New("signature does not verify against the release public key")
 	}
-	if strings.HasPrefix(s, "@") {
-		b, err := os.ReadFile(s[1:])
-		if err != nil {
-			return nil, err
-		}
-		s = strings.TrimSpace(string(b))
-	}
-	if raw, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return raw, nil
-	}
-	if raw, err := hex.DecodeString(s); err == nil {
-		return raw, nil
-	}
-	return nil, errors.New("key is neither valid base64 nor hex")
+	return nil
 }
 
 // verifyManifestSignature checks SHA256SUMS.sig against the manifest and the
@@ -112,12 +99,8 @@ func verifyManifestSignature(sourceDir string, pub ed25519.PublicKey) error {
 		}
 		return err
 	}
-	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sigB64)))
-	if err != nil {
-		return fmt.Errorf("SHA256SUMS.sig is not valid base64: %w", err)
-	}
-	if !ed25519.Verify(pub, manifest, sig) {
-		return errors.New("manifest signature does not verify against the release public key")
+	if err := VerifyDetachedSig(manifest, string(sigB64), pub); err != nil {
+		return fmt.Errorf("SHA256SUMS: %w", err)
 	}
 	return nil
 }

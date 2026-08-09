@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/pty"
+	"github.com/thisisnkp/nexpanel/broker/pty"
 )
 
 // On a non-Linux developer machine the PTY layer is a stub. It must fail

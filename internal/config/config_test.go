@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/config"
 )
 
 func TestDefaults(t *testing.T) {
@@ -23,9 +23,9 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestEnvOverride(t *testing.T) {
-	t.Setenv("HP_SERVER_PORT", "9000")
-	t.Setenv("HP_LOG_LEVEL", "debug")
-	t.Setenv("HP_REDIS_ADDR", "10.0.0.5:6379")
+	t.Setenv("NP_SERVER_PORT", "9000")
+	t.Setenv("NP_LOG_LEVEL", "debug")
+	t.Setenv("NP_REDIS_ADDR", "10.0.0.5:6379")
 
 	c, err := config.Load("")
 	if err != nil {
@@ -57,7 +57,7 @@ log:
 	}
 
 	// Env must win over the file.
-	t.Setenv("HP_LOG_LEVEL", "error")
+	t.Setenv("NP_LOG_LEVEL", "error")
 
 	c, err := config.Load(path)
 	if err != nil {

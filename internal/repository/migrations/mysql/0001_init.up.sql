@@ -1,4 +1,4 @@
--- HeroPanel Phase-0 schema (MariaDB/MySQL dialect).
+-- NexPanel Phase-0 schema (MariaDB/MySQL dialect).
 -- Identity, RBAC, sessions, API keys, audit, settings, jobs.
 
 CREATE TABLE users (

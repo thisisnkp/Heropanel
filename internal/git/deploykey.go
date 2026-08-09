@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // generateDeployKey creates an ed25519 deploy keypair for a site.
@@ -19,7 +19,7 @@ import (
 // clipboard, or a request log. The operator only ever handles the public half,
 // which they register as a read-only deploy key on the repository.
 //
-// ed25519 because every host HeroPanel targets (GitHub, GitLab, Bitbucket)
+// ed25519 because every host NexPanel targets (GitHub, GitLab, Bitbucket)
 // accepts it, the keys are small, and there is no key-size decision to get wrong.
 //
 // It returns the OpenSSH-format private key and the authorized_keys line.

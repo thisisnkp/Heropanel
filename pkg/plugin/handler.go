@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // Handler drives a Module through its lifecycle and enforces the rules that do

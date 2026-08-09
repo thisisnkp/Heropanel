@@ -75,7 +75,7 @@ export function BackupsTab({ uid }: { uid: string }) {
   if (!data.available) {
     return (
       <Alert>
-        Backups need the privileged broker and a data key (<code className="font-mono text-xs">HP_SECRET_KEY</code>).
+        Backups need the privileged broker and a data key (<code className="font-mono text-xs">NP_SECRET_KEY</code>).
         Encryption at rest is not optional — without a key the panel will not store a site&apos;s data at all.
       </Alert>
     );
@@ -237,7 +237,7 @@ function ConfigForm({
         chains
       </label>
       <select
-        className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
+        className="np-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
         value={c.target}
         onChange={(e) => setC({ ...c, target: e.target.value })}
       >
@@ -249,7 +249,7 @@ function ConfigForm({
       <label className="flex items-center gap-1.5 text-xs text-muted">
         database
         <select
-          className="hp-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
+          className="np-select rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-fg"
           value={c.db_uid ?? ""}
           onChange={(e) => setC({ ...c, db_uid: e.target.value })}
           title="Include a full dump of this database with every backup, sealed alongside the files"

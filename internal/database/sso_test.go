@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestStartSSOMintsAThrowawayAccountScopedToOneDatabase(t *testing.T) {
@@ -22,7 +22,7 @@ func TestStartSSOMintsAThrowawayAccountScopedToOneDatabase(t *testing.T) {
 		t.Fatalf("session = %+v", sess)
 	}
 	// A throwaway account, clearly marked as ours.
-	if !strings.HasPrefix(sess.Username, "hpsso_") {
+	if !strings.HasPrefix(sess.Username, "npsso_") {
 		t.Fatalf("username is not a hand-off account: %q", sess.Username)
 	}
 	if len(sess.Password) < 24 {
@@ -74,7 +74,7 @@ func TestStartSSOIssuesAFreshAccountEveryTime(t *testing.T) {
 	}
 }
 
-// If the grant fails the account must not survive: an ungranted hpsso_ user is
+// If the grant fails the account must not survive: an ungranted npsso_ user is
 // still a live login on the server.
 func TestStartSSODropsTheAccountWhenTheGrantFails(t *testing.T) {
 	svc, gw, store := newSSOSvc(t)
@@ -120,7 +120,7 @@ func TestSweepDropsExpiredAccountsAndLeavesLiveOnes(t *testing.T) {
 	}
 	// A session that expired in the past, as the sweeper would find it.
 	expired := &database.SSOSessionRecord{
-		DBInstanceID: 1, Username: "hpsso_expired1", ExpiresAt: "2000-01-01 00:00:00",
+		DBInstanceID: 1, Username: "npsso_expired1", ExpiresAt: "2000-01-01 00:00:00",
 	}
 	if err := store.InsertSSOSession(ctx, expired); err != nil {
 		t.Fatalf("insert: %v", err)
@@ -134,7 +134,7 @@ func TestSweepDropsExpiredAccountsAndLeavesLiveOnes(t *testing.T) {
 		t.Fatalf("swept %d, want 1", n)
 	}
 	dropped := gw.last("db.user.drop")
-	if dropped == nil || dropped.input["username"] != "hpsso_expired1" {
+	if dropped == nil || dropped.input["username"] != "npsso_expired1" {
 		t.Fatalf("the expired account was not dropped: %+v", dropped)
 	}
 	// The live session is untouched.
@@ -152,7 +152,7 @@ func TestSweepKeepsTheRowWhenTheDropFails(t *testing.T) {
 	seed(t, svc)
 
 	if err := store.InsertSSOSession(ctx, &database.SSOSessionRecord{
-		DBInstanceID: 1, Username: "hpsso_expired1", ExpiresAt: "2000-01-01 00:00:00",
+		DBInstanceID: 1, Username: "npsso_expired1", ExpiresAt: "2000-01-01 00:00:00",
 	}); err != nil {
 		t.Fatalf("insert: %v", err)
 	}

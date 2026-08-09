@@ -4,16 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 const bkFile = "01HXXXXXXXXXXXXXXXXXXXXXXX.tar.zst"
 
 func backupOK(extra map[string]any) map[string]any {
 	in := map[string]any{
-		"vhost": "hps1", "home": "/srv/heropanel/sites/1", "file": bkFile, "level": "full",
+		"vhost": "nps1", "home": "/srv/nexpanel/sites/1", "file": bkFile, "level": "full",
 	}
 	for k, v := range extra {
 		in[k] = v
@@ -27,13 +27,13 @@ func TestBackupCreateFullResetsSnapshotAndStagesPrivately(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	fs := fsys.NewFake()
 	// Pre-existing snapshot from an earlier chain.
-	_ = fs.WriteFile("/var/lib/heropanel/backups/snap-hps1.snar", []byte("old"), 0o600)
+	_ = fs.WriteFile("/var/lib/nexpanel/backups/snap-nps1.snar", []byte("old"), 0o600)
 
 	res, err := (capabilities.BackupCreate{}).Execute(appCtx(fr, fs), raw(t, backupOK(nil)))
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, ok := fs.Written("/var/lib/heropanel/backups/snap-hps1.snar"); ok {
+	if _, ok := fs.Written("/var/lib/nexpanel/backups/snap-nps1.snar"); ok {
 		t.Error("a FULL backup did not reset the incremental snapshot")
 	}
 
@@ -49,10 +49,10 @@ func TestBackupCreateFullResetsSnapshotAndStagesPrivately(t *testing.T) {
 	argv := strings.Join(tarCall.Args, " ")
 	for _, want := range []string{
 		"--zstd",
-		"--listed-incremental=/var/lib/heropanel/backups/snap-hps1.snar",
-		"-cf /var/lib/heropanel/backups/" + bkFile,
+		"--listed-incremental=/var/lib/nexpanel/backups/snap-nps1.snar",
+		"-cf /var/lib/nexpanel/backups/" + bkFile,
 		// Relative paths, so a restore lands wherever it is pointed.
-		"-C /srv/heropanel/sites/1 .",
+		"-C /srv/nexpanel/sites/1 .",
 	} {
 		if !strings.Contains(argv, want) {
 			t.Errorf("tar args missing %q: %v", want, tarCall.Args)
@@ -61,7 +61,7 @@ func TestBackupCreateFullResetsSnapshotAndStagesPrivately(t *testing.T) {
 	// chmod 0600 — a backup holds everything the site holds.
 	found := false
 	for _, call := range fr.Calls {
-		if call.Path == "/bin/chmod" && strings.Join(call.Args, " ") == "0600 /var/lib/heropanel/backups/"+bkFile {
+		if call.Path == "/bin/chmod" && strings.Join(call.Args, " ") == "0600 /var/lib/nexpanel/backups/"+bkFile {
 			found = true
 		}
 	}
@@ -77,11 +77,11 @@ func TestBackupCreateFullResetsSnapshotAndStagesPrivately(t *testing.T) {
 func TestBackupCreateIncrementalKeepsSnapshot(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	fs := fsys.NewFake()
-	_ = fs.WriteFile("/var/lib/heropanel/backups/snap-hps1.snar", []byte("state"), 0o600)
+	_ = fs.WriteFile("/var/lib/nexpanel/backups/snap-nps1.snar", []byte("state"), 0o600)
 	if _, err := (capabilities.BackupCreate{}).Execute(appCtx(fr, fs), raw(t, backupOK(map[string]any{"level": "incr"}))); err != nil {
 		t.Fatalf("incr: %v", err)
 	}
-	if _, ok := fs.Written("/var/lib/heropanel/backups/snap-hps1.snar"); !ok {
+	if _, ok := fs.Written("/var/lib/nexpanel/backups/snap-nps1.snar"); !ok {
 		t.Error("an incremental backup deleted the snapshot it needs")
 	}
 }
@@ -113,7 +113,7 @@ func TestBackupValidation(t *testing.T) {
 func TestBackupRestoreExtractsAndReowns(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	if _, err := (capabilities.BackupRestore{}).Execute(appCtx(fr, fsys.NewFake()), raw(t, map[string]any{
-		"home": "/srv/heropanel/sites/2", "username": "hps2", "file": bkFile,
+		"home": "/srv/nexpanel/sites/2", "username": "nps2", "file": bkFile,
 	})); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
@@ -124,15 +124,15 @@ func TestBackupRestoreExtractsAndReowns(t *testing.T) {
 			sawTar = true
 			for _, want := range []string{
 				"--listed-incremental=/dev/null",
-				"-xf /var/lib/heropanel/backups/" + bkFile,
-				"-C /srv/heropanel/sites/2",
+				"-xf /var/lib/nexpanel/backups/" + bkFile,
+				"-C /srv/nexpanel/sites/2",
 			} {
 				if !strings.Contains(argv, want) {
 					t.Errorf("restore tar missing %q: %v", want, call.Args)
 				}
 			}
 		}
-		if call.Path == "/bin/chown" && strings.Contains(argv, "-R hps2:hps2 /srv/heropanel/sites/2") {
+		if call.Path == "/bin/chown" && strings.Contains(argv, "-R nps2:nps2 /srv/nexpanel/sites/2") {
 			sawChown = true
 		}
 	}

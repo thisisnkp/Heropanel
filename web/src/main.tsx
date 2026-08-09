@@ -14,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {/* Root boundary: the last-resort net so an error anywhere shows a recover
         screen instead of a blank page. */}
-    <ErrorBoundary title="HeroPanel">
+    <ErrorBoundary title="NexPanel">
       <I18nProvider>
         <QueryClientProvider client={queryClient}>
           <App />

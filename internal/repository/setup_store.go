@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/setup"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/setup"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // SetupStore persists the panel's first-run setup state as a single row

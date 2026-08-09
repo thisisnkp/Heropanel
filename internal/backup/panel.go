@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Panel self-backup: the panel's own state (its database, the one thing that
@@ -17,8 +17,8 @@ import (
 //
 // One deliberate asymmetry: restore is NOT an API endpoint. A panel that needs
 // its database restored is a panel that cannot be trusted to serve the request
-// — recovery is `hpd decrypt` on the sealed object plus the documented manual
-// steps (docs/22 §7), with HP_SECRET_KEY as the one thing the operator must
+// — recovery is `npd decrypt` on the sealed object plus the documented manual
+// steps (docs/22 §7), with NP_SECRET_KEY as the one thing the operator must
 // hold outside the backup itself.
 
 // PanelRecord is the persistence view of one panel snapshot.
@@ -86,7 +86,7 @@ func (s *Service) requirePanel() error {
 		return nil
 	}
 	return errx.New(errx.KindUnavailable, "panel_backup_unavailable",
-		"Panel self-backup needs the broker and a data key (HP_SECRET_KEY).")
+		"Panel self-backup needs the broker and a data key (NP_SECRET_KEY).")
 }
 
 // panelRemoteKey names a sealed panel snapshot on its target.
@@ -202,7 +202,7 @@ func (s *Service) prunePanel(ctx context.Context) {
 }
 
 // RunPanelScheduler sweeps hourly: a snapshot whenever the newest is older
-// than the policy interval. hpd's own ticker for the same reason the site
+// than the policy interval. npd's own ticker for the same reason the site
 // sweep is — the job needs the panel's key.
 func (s *Service) RunPanelScheduler(ctx context.Context, log interface{ Info(string, ...any) }) {
 	if !s.PanelAvailable() {

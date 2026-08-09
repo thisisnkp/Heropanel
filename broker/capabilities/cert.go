@@ -3,12 +3,12 @@ package capabilities
 import (
 	"encoding/json"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // sslRoot is where per-domain certificate material is stored.
-const sslRoot = "/etc/heropanel/ssl"
+const sslRoot = "/etc/nexpanel/ssl"
 
 // CertInstall writes a domain's certificate chain and private key. The domain
 // is validated as an FQDN, so the derived path cannot escape sslRoot.

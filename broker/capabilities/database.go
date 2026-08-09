@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // mysqlPath is the MariaDB/MySQL client. Running as root, it authenticates over
@@ -245,7 +245,7 @@ func (DBRevoke) Execute(c capability.Context, raw json.RawMessage) (capability.R
 	}
 
 	// No `REVOKE IF EXISTS` here: that is MySQL 8.0.16+ syntax and MariaDB — the
-	// engine HeroPanel actually targets — rejects it outright. Instead run the
+	// engine NexPanel actually targets — rejects it outright. Instead run the
 	// plain statement and forgive the one error that means "already true".
 	sql := fmt.Sprintf("REVOKE %s ON `%s`.* FROM '%s'@'%s'; FLUSH PRIVILEGES;",
 		strings.Join(privs, ", "), in.Database, in.Username, in.Host)

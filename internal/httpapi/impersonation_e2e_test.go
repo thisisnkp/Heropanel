@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/users"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/users"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
 )
 
 // newImpersonationRouter wires Auth + UserMgmt + a real audit chain over one

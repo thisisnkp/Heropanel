@@ -3,7 +3,7 @@
 Phase 5, in-core. Containers on the host — list, inspect, logs, stats, and
 lifecycle — from the panel.
 
-Docker is the sharpest privilege HeroPanel touches. Everything below follows
+Docker is the sharpest privilege NexPanel touches. Everything below follows
 from one fact: **the Docker daemon socket is root**. Anyone who can reach it can
 run `docker run -v /:/host --privileged` and own the machine, without ever
 appearing in the panel's audit log. So the interesting content here is not the
@@ -15,20 +15,20 @@ leaking.
 ## 1. Why this is not a `docker`-group module
 
 [06](06-plugin-architecture.md)'s manifest example shows the Docker module
-running as `heropanel` with `groups: [docker]`. **That is not what was built,
+running as `nexpanel` with `groups: [docker]`. **That is not what was built,
 and the example is wrong.**
 
-Membership of the `docker` group is root by another name. Putting `hpd` — the
+Membership of the `docker` group is root by another name. Putting `npd` — the
 network-facing process, the one exposed to the internet — in that group would
 make a compromise of the HTTP layer a compromise of the host, and would retire
 the privilege separation every other module in this panel is built on
 ([05](05-security-architecture.md), [ADR-0002](adr/0002-module-isolation-hybrid.md)).
-A dedicated module user in the `docker` group is better — it is not `hpd` — but
+A dedicated module user in the `docker` group is better — it is not `npd` — but
 it still creates a second root-equivalent principal outside the audited boundary,
 which is precisely the thing the broker exists to avoid.
 
 So Docker went where every other privileged operation already lives: **named
-broker capabilities**. The socket is reachable only by the root broker. `hpd`
+broker capabilities**. The socket is reachable only by the root broker. `npd`
 asks for `docker.container.stop` and gets an answer; it cannot ask for anything
 that is not on the list. The peer-credential check, the policy gate, and the
 hash-chained audit apply exactly as they do to `file.write` or `db.export`.
@@ -52,7 +52,7 @@ habit ("read the arguments") covers all of them.
 
 This is the equivalent of the File Manager's path confinement ([17](17-file-manager.md) §4),
 and it is the whole security story of the module. Every **mutating** capability
-first inspects the target and requires the label `io.heropanel.managed=1`.
+first inspects the target and requires the label `io.nexpanel.managed=1`.
 
 Without it, `docker.container.stop` is a remote off-switch for every container on
 the host: the site's database, a CI runner, the monitoring agent, another
@@ -60,8 +60,8 @@ tenant's workload. The caller chooses the name, so nothing else bounds it.
 
 The check is a **live inspect**, not a name convention. A name is something the
 caller supplies; a label is something the daemon reports. A container called
-`hp-site1-web` that the panel never created would sail through a prefix check —
-it cannot fake the label. Containers also carry `io.heropanel.site=<uid>`, which
+`np-site1-web` that the panel never created would sail through a prefix check —
+it cannot fake the label. Containers also carry `io.nexpanel.site=<uid>`, which
 is what attributes a container to a site in the UI.
 
 **Reading is deliberately not restricted this way.** The listing shows every
@@ -106,7 +106,7 @@ would be indistinguishable from the safe one right up until it was not. The UI
 says the volumes are kept.
 
 **The stop grace is 10 seconds, and that number is coupled to the HTTP layer.**
-hpd's write timeout is 30s. A container that ignores `SIGTERM` — `sleep`, and
+npd's write timeout is 30s. A container that ignores `SIGTERM` — `sleep`, and
 plenty of real images — consumes the entire grace, so a 30s grace consumed the
 entire request budget: the connection closed before the handler answered and the
 operator saw a failed request for an operation that had in fact succeeded. The
@@ -135,7 +135,7 @@ connection open forever; the client polls instead.
 Everything above reads or acts on containers that already exist. Creating one is
 where the module starts placing workloads on the host, so it is where the
 hardening is, and the rule is: **the caller describes what it wants in typed
-fields, and the broker decides the argv**. hpd never hands over a flag.
+fields, and the broker decides the argv**. npd never hands over a flag.
 
 Most of what is refused is refused *by construction* — there is no input that
 produces it:
@@ -192,7 +192,7 @@ compose is treated as what it is: an **advanced, explicit escape hatch**.
 
 What the broker still guarantees is narrower but real: the project name is
 validated (no flag, no path); the operator's file is written to a
-**broker-chosen** directory, never a path hpd names; and the stack is
+**broker-chosen** directory, never a path npd names; and the stack is
 **labelled**, so tear-down and the ownership boundary reach its containers. That
 last one takes work — `docker compose up` has no per-container label flag, so the
 stack is deployed with a generated override file that stamps the managed label on
@@ -279,7 +279,7 @@ values are rejected without executing anything, that an absent daemon is reporte
 rather than thrown, that a log tail is clamped whatever is asked, that stats never
 stream, and that a remove never carries `--volumes`.
 
-hpd: `internal/docker` — daemon probe with caching, CLI-output parsing (a
+npd: `internal/docker` — daemon probe with caching, CLI-output parsing (a
 malformed row costs that row, not the page), and a verb→capability map that
 refuses an unknown verb before it reaches the broker.
 

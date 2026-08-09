@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 const dkimPEM = "-----BEGIN RSA PRIVATE KEY-----\nMIIB\n-----END RSA PRIVATE KEY-----\n"
@@ -14,10 +14,10 @@ const dkimPEM = "-----BEGIN RSA PRIVATE KEY-----\nMIIB\n-----END RSA PRIVATE KEY
 func dkimInput(extra map[string]any) map[string]any {
 	in := map[string]any{
 		"keys": []map[string]any{
-			{"domain": "example.com", "selector": "hp1", "private_pem": dkimPEM},
+			{"domain": "example.com", "selector": "np1", "private_pem": dkimPEM},
 		},
-		"keytable":     "hp1._domainkey.example.com example.com:hp1:/etc/opendkim/heropanel/keys/example.com/hp1.private\n",
-		"signingtable": "*@example.com hp1._domainkey.example.com\n",
+		"keytable":     "np1._domainkey.example.com example.com:np1:/etc/opendkim/nexpanel/keys/example.com/np1.private\n",
+		"signingtable": "*@example.com np1._domainkey.example.com\n",
 	}
 	for k, v := range extra {
 		in[k] = v
@@ -40,7 +40,7 @@ func TestMailDKIMApplyWritesSignerState(t *testing.T) {
 		t.Errorf("keys_applied = %v", res.Data["keys_applied"])
 	}
 
-	key, ok := fs.Written("/etc/opendkim/heropanel/keys/example.com/hp1.private")
+	key, ok := fs.Written("/etc/opendkim/nexpanel/keys/example.com/np1.private")
 	if !ok || key != dkimPEM {
 		t.Error("the private key was not written to its derived path")
 	}
@@ -56,7 +56,7 @@ func TestMailDKIMApplyWritesSignerState(t *testing.T) {
 		argv := strings.Join(call.Args, " ")
 		switch call.Path {
 		case "/bin/chown":
-			if strings.Contains(argv, "opendkim:opendkim") && strings.Contains(argv, "hp1.private") {
+			if strings.Contains(argv, "opendkim:opendkim") && strings.Contains(argv, "np1.private") {
 				sawChown = true
 			}
 		case "/usr/sbin/postconf":
@@ -84,9 +84,9 @@ func TestMailDKIMApplyWritesSignerState(t *testing.T) {
 // Bad domains, selectors and keys are refused before anything is written.
 func TestMailDKIMApplyRefusesBadInput(t *testing.T) {
 	for _, keys := range [][]map[string]any{
-		{{"domain": "not_a_domain", "selector": "hp1", "private_pem": dkimPEM}},
-		{{"domain": "example.com", "selector": "../hp1", "private_pem": dkimPEM}},
-		{{"domain": "example.com", "selector": "hp1", "private_pem": "not a pem"}},
+		{{"domain": "not_a_domain", "selector": "np1", "private_pem": dkimPEM}},
+		{{"domain": "example.com", "selector": "../np1", "private_pem": dkimPEM}},
+		{{"domain": "example.com", "selector": "np1", "private_pem": "not a pem"}},
 	} {
 		fr := &exec.FakeRunner{}
 		fs := fsys.NewFake()

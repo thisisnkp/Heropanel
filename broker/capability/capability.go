@@ -14,18 +14,26 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/policy"
 )
 
-// Actor identifies who requested a privileged action (propagated from hpd for
+// Actor identifies who requested a privileged action (propagated from npd for
 // correlation and audit). It never confers authority by itself — the broker
 // authorizes against policy.
 type Actor struct {
 	UserID        string
 	IP            string
 	CorrelationID string
+
+	// Node is the calling node's identity, and it is the one field here the
+	// broker establishes for itself: the transport fills it from the verified
+	// TLS client certificate and it is never read off the wire. Everything else
+	// in this struct is what the caller said about itself, which is fine for
+	// correlation and worthless as evidence. Empty means the call arrived over
+	// the local Unix socket, where SO_PEERCRED already proved the peer.
+	Node string
 }
 
 // Context carries everything a capability needs to execute.

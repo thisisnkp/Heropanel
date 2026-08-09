@@ -1,5 +1,5 @@
 // Package webserver renders web-server configuration for hosted sites and applies
-// it through the privileged broker. hpd owns rendering (from DB state); the broker
+// it through the privileged broker. npd owns rendering (from DB state); the broker
 // writes the validated config, tests it, and reloads (ADR-0007, docs/05 §2). The
 // full desired state is rendered into a single included config file per engine, so
 // there is no per-site config drift.
@@ -27,8 +27,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Engine identifies the web server the panel renders for. The values match the
@@ -55,12 +55,12 @@ func normalizeEngine(e Engine) Engine {
 
 // Site is the per-site information needed to render a vhost.
 type Site struct {
-	VhostName     string   // internal id, e.g. "hps1"
+	VhostName     string   // internal id, e.g. "nps1"
 	PrimaryDomain string   // e.g. "acme.example.com"
 	Domains       []string // all domains mapped to this vhost
-	DocumentRoot  string   // e.g. /srv/heropanel/sites/1/public
-	Home          string   // e.g. /srv/heropanel/sites/1
-	LogDir        string   // e.g. /srv/heropanel/sites/1/logs
+	DocumentRoot  string   // e.g. /srv/nexpanel/sites/1/public
+	Home          string   // e.g. /srv/nexpanel/sites/1
+	LogDir        string   // e.g. /srv/nexpanel/sites/1/logs
 	IsPHP         bool
 	FpmSocket     string // php-fpm pool socket (php only)
 	PhpBin        string // php-fpm binary path (php only); OLS requires a path on
@@ -99,7 +99,7 @@ func (s Site) AliasDomains() []string {
 
 // WAFRulesFile is the pinned path the WAF-enabled vhost references. The panel
 // writes it (base ModSecurity config + the OWASP CRS + SecRuleEngine On).
-const WAFRulesFile = "/etc/heropanel/waf/main.conf"
+const WAFRulesFile = "/etc/nexpanel/waf/main.conf"
 
 // RenderWAFConfig renders the ModSecurity rules file the WAF vhosts load: the
 // recommended base config, then the OWASP Core Rule Set, then SecRuleEngine On
@@ -116,7 +116,7 @@ func RenderWAFConfig() string {
 	// modsecurity.conf that some packages do not ship; the CRS is then pulled in
 	// by its concrete pieces (setup first, then every rule). SecDefaultAction is
 	// deliberately left to crs-setup.conf, which may set it only once.
-	return `# HeroPanel WAF (ModSecurity + OWASP CRS; rendered, do not edit).
+	return `# NexPanel WAF (ModSecurity + OWASP CRS; rendered, do not edit).
 SecRuleEngine On
 SecRequestBodyAccess On
 SecResponseBodyAccess Off
@@ -230,7 +230,7 @@ var olsFuncs = template.FuncMap{
 // handlers (server-level), inline virtual hosts, and the listener with its
 // domain map.
 var configTmpl = template.Must(template.New("olsconfig").Funcs(olsFuncs).Parse(
-	`{{range .}}{{if and .IsPHP (not .Suspended)}}extProcessor hps_{{.VhostName}} {
+	`{{range .}}{{if and .IsPHP (not .Suspended)}}extProcessor nps_{{.VhostName}} {
   type                    fcgi
   address                 uds://{{.FpmSocket}}
   maxConns                10
@@ -281,10 +281,10 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
   }
 {{end}}{{if and .WAFEnabled (not .Suspended)}}  module mod_security {
     modsecurity           on
-    modsecurity_rules_file /etc/heropanel/waf/main.conf
+    modsecurity_rules_file /etc/nexpanel/waf/main.conf
   }
 {{end}}{{if .IsPHP}}  scriptHandler  {
-    add                   fcgi:hps_{{.VhostName}} php
+    add                   fcgi:nps_{{.VhostName}} php
   }
 {{end}}{{if .ProxyTarget}}  context / {
     type                  proxy
@@ -292,7 +292,7 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
     addDefaultCharset     off
   }
 {{end}}{{end}}}
-{{end}}listener HeroPanelHTTP {
+{{end}}listener NexPanelHTTP {
   address                 *:80
   secure                  0
 {{range .}}  map                     {{.VhostName}} {{join .Domains}}
@@ -332,7 +332,7 @@ func anyWAF(sites []Site) bool {
 // suspended site returns 503 for everything. Redirects and force-HTTPS are
 // evaluated first, as guard `if`s that short-circuit with a redirect.
 var nginxTmpl = template.Must(template.New("nginx").Funcs(tmplFuncs).Parse(
-	`# HeroPanel nginx configuration (rendered, do not edit).
+	`# NexPanel nginx configuration (rendered, do not edit).
 {{range .}}server {
     listen 80;
     server_name {{join .Domains}};
@@ -344,7 +344,7 @@ var nginxTmpl = template.Must(template.New("nginx").Funcs(tmplFuncs).Parse(
 {{range .Redirects}}    if ($host = "{{.From}}") { return {{.Code}} {{.To}}$request_uri; }
 {{end}}{{if .ForceHTTPS}}    if ($scheme != "https") { return 301 https://$host$request_uri; }
 {{end}}{{if .WAFEnabled}}    modsecurity on;
-    modsecurity_rules_file /etc/heropanel/waf/main.conf;
+    modsecurity_rules_file /etc/nexpanel/waf/main.conf;
 {{end}}{{if .ProxyTarget}}    location / {
         proxy_pass http://{{.ProxyTarget}};
         proxy_set_header Host $host;
@@ -370,7 +370,7 @@ var nginxTmpl = template.Must(template.New("nginx").Funcs(tmplFuncs).Parse(
 // mod_proxy_fcgi; an app site reverse-proxies to its upstream; a suspended site
 // answers 503. AllowOverride All keeps .htaccess working as operators expect.
 var apacheTmpl = template.Must(template.New("apache").Funcs(tmplFuncs).Parse(
-	`# HeroPanel Apache configuration (rendered, do not edit).
+	`# NexPanel Apache configuration (rendered, do not edit).
 {{range .}}<VirtualHost *:80>
     ServerName {{.PrimaryDomain}}
 {{range .AliasDomains}}    ServerAlias {{.}}
@@ -391,7 +391,7 @@ var apacheTmpl = template.Must(template.New("apache").Funcs(tmplFuncs).Parse(
     RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
 {{end}}{{end}}{{if .WAFEnabled}}    <IfModule security2_module>
         SecRuleEngine On
-        Include /etc/heropanel/waf/main.conf
+        Include /etc/nexpanel/waf/main.conf
     </IfModule>
 {{end}}{{if .ProxyTarget}}    ProxyPreserveHost On
     ProxyPass / http://{{.ProxyTarget}}/

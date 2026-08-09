@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func dumpCtx(r exec.Runner, f *fsys.Fake) capability.Context {
@@ -65,7 +65,7 @@ func TestDBExportDumpsToAFileAndHandsItToThePanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	if res.Data["path"] != "/var/lib/heropanel/dumps/acme_db-01H.sql.gz" || res.Data["bytes"] != int64(4096) {
+	if res.Data["path"] != "/var/lib/nexpanel/dumps/acme_db-01H.sql.gz" || res.Data["bytes"] != int64(4096) {
 		t.Fatalf("result = %+v", res.Data)
 	}
 
@@ -75,7 +75,7 @@ func TestDBExportDumpsToAFileAndHandsItToThePanel(t *testing.T) {
 	if !ok {
 		t.Fatalf("mysqldump did not run; calls=%+v", fr.Calls)
 	}
-	if !hasToken(dump, "--result-file=/var/lib/heropanel/dumps/acme_db-01H.sql") {
+	if !hasToken(dump, "--result-file=/var/lib/nexpanel/dumps/acme_db-01H.sql") {
 		t.Fatalf("dump was not written to a file: %+v", dump.Args)
 	}
 	// --single-transaction is what keeps an export from locking a live site out.
@@ -84,27 +84,27 @@ func TestDBExportDumpsToAFileAndHandsItToThePanel(t *testing.T) {
 			t.Fatalf("mysqldump missing %s: %+v", flag, dump.Args)
 		}
 	}
-	if _, ok := findCall(fr.Calls, "/usr/bin/gzip", "-f", "/var/lib/heropanel/dumps/acme_db-01H.sql"); !ok {
+	if _, ok := findCall(fr.Calls, "/usr/bin/gzip", "-f", "/var/lib/nexpanel/dumps/acme_db-01H.sql"); !ok {
 		t.Fatalf("dump was not compressed; calls=%+v", fr.Calls)
 	}
 
-	// The dump directory belongs to the panel user: hpd has to traverse it to
+	// The dump directory belongs to the panel user: npd has to traverse it to
 	// stream the export back, and a 0700 root-owned directory would lock it out.
 	if _, ok := findCall(fr.Calls, "/usr/bin/install", "-d", "-m", "0700",
-		"-o", "heropanel", "-g", "heropanel", "/var/lib/heropanel/dumps"); !ok {
+		"-o", "nexpanel", "-g", "nexpanel", "/var/lib/nexpanel/dumps"); !ok {
 		t.Fatalf("dump directory was not created for the panel user; calls=%+v", fr.Calls)
 	}
 
 	// 0600 + owned by the panel user. mysqldump writes under root's umask (0644),
 	// which would leave one customer's whole database readable by every other
 	// site user on the box.
-	chmod, ok := findCall(fr.Calls, "/bin/chmod", "0600", "/var/lib/heropanel/dumps/acme_db-01H.sql.gz")
+	chmod, ok := findCall(fr.Calls, "/bin/chmod", "0600", "/var/lib/nexpanel/dumps/acme_db-01H.sql.gz")
 	if !ok {
 		t.Fatalf("dump was not restricted to 0600; calls=%+v", fr.Calls)
 	}
 	_ = chmod
-	if _, ok := findCall(fr.Calls, "/bin/chown", "heropanel:heropanel",
-		"/var/lib/heropanel/dumps/acme_db-01H.sql.gz"); !ok {
+	if _, ok := findCall(fr.Calls, "/bin/chown", "nexpanel:nexpanel",
+		"/var/lib/nexpanel/dumps/acme_db-01H.sql.gz"); !ok {
 		t.Fatalf("dump was not handed to the panel user; calls=%+v", fr.Calls)
 	}
 }
@@ -166,7 +166,7 @@ func TestDBExportRejectsBadDatabaseName(t *testing.T) {
 
 func TestDBImportLoadsAStagedDump(t *testing.T) {
 	f := fsys.NewFake()
-	_ = f.WriteFile("/var/lib/heropanel/dumps/import-01H.sql", []byte("CREATE TABLE t (id INT);"), 0o600)
+	_ = f.WriteFile("/var/lib/nexpanel/dumps/import-01H.sql", []byte("CREATE TABLE t (id INT);"), 0o600)
 	fr := &exec.FakeRunner{}
 
 	res, err := (capabilities.DBImport{}).Execute(dumpCtx(fr, f),
@@ -182,30 +182,30 @@ func TestDBImportLoadsAStagedDump(t *testing.T) {
 		t.Fatalf("mysql did not run; calls=%+v", fr.Calls)
 	}
 	if !hasToken(load, "--database=acme_db") ||
-		!hasToken(load, "--execute=SOURCE /var/lib/heropanel/dumps/import-01H.sql") {
+		!hasToken(load, "--execute=SOURCE /var/lib/nexpanel/dumps/import-01H.sql") {
 		t.Fatalf("import did not source the staged file: %+v", load.Args)
 	}
 	// The customer's data must not be left lying around afterwards.
-	if _, still := f.Written("/var/lib/heropanel/dumps/import-01H.sql"); still {
+	if _, still := f.Written("/var/lib/nexpanel/dumps/import-01H.sql"); still {
 		t.Fatal("the staged dump survived the import")
 	}
 }
 
 func TestDBImportDecompressesGzip(t *testing.T) {
 	f := fsys.NewFake()
-	_ = f.WriteFile("/var/lib/heropanel/dumps/import-01H.sql.gz", []byte("gzipped"), 0o600)
+	_ = f.WriteFile("/var/lib/nexpanel/dumps/import-01H.sql.gz", []byte("gzipped"), 0o600)
 	fr := &exec.FakeRunner{}
 
 	if _, err := (capabilities.DBImport{}).Execute(dumpCtx(fr, f),
 		raw(t, map[string]any{"name": "acme_db", "file": "import-01H.sql.gz"})); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if _, ok := findCall(fr.Calls, "/usr/bin/gunzip", "-f", "/var/lib/heropanel/dumps/import-01H.sql.gz"); !ok {
+	if _, ok := findCall(fr.Calls, "/usr/bin/gunzip", "-f", "/var/lib/nexpanel/dumps/import-01H.sql.gz"); !ok {
 		t.Fatalf("gzipped dump was not decompressed; calls=%+v", fr.Calls)
 	}
 	// SOURCE gets the decompressed path.
 	load, _ := findCall(fr.Calls, "/usr/bin/mysql")
-	if !hasToken(load, "--execute=SOURCE /var/lib/heropanel/dumps/import-01H.sql") {
+	if !hasToken(load, "--execute=SOURCE /var/lib/nexpanel/dumps/import-01H.sql") {
 		t.Fatalf("import sourced the wrong path: %+v", load.Args)
 	}
 }
@@ -252,7 +252,7 @@ func TestDBRevokeBuildsTheStatement(t *testing.T) {
 		t.Fatalf("unexpected statement: %s", sql)
 	}
 	// `REVOKE IF EXISTS` is MySQL 8 syntax that MariaDB rejects outright, and
-	// MariaDB is what HeroPanel targets.
+	// MariaDB is what NexPanel targets.
 	if strings.Contains(sql, "IF EXISTS") {
 		t.Fatalf("REVOKE IF EXISTS is not valid on MariaDB: %s", sql)
 	}

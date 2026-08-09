@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 func testCipher(t *testing.T) *secrets.Cipher {
@@ -66,10 +66,10 @@ func TestDKIMSealedAtRestUnsealedForSigner(t *testing.T) {
 	if len(keys) != 1 || !strings.HasPrefix(keys[0]["private_pem"].(string), "-----BEGIN RSA PRIVATE KEY-----") {
 		t.Error("the signer did not receive the unsealed key")
 	}
-	if kt := dkimIn["keytable"].(string); !strings.Contains(kt, "hp1._domainkey.example.com example.com:hp1:") {
+	if kt := dkimIn["keytable"].(string); !strings.Contains(kt, "np1._domainkey.example.com example.com:np1:") {
 		t.Errorf("keytable = %q", kt)
 	}
-	if st := dkimIn["signingtable"].(string); !strings.Contains(st, "*@example.com hp1._domainkey.example.com") {
+	if st := dkimIn["signingtable"].(string); !strings.Contains(st, "*@example.com np1._domainkey.example.com") {
 		t.Errorf("signingtable = %q", st)
 	}
 }
@@ -96,7 +96,7 @@ func TestNoCipherMeansNoDKIMNotNoDomain(t *testing.T) {
 // The expected record set: MX and DMARC replace, SPF appends (the apex TXT
 // label is shared with operator records), DKIM appears once generated.
 func TestExpectedRecords(t *testing.T) {
-	d := &DomainRecord{Domain: "example.com", DKIMSelector: "hp1"}
+	d := &DomainRecord{Domain: "example.com", DKIMSelector: "np1"}
 	recs := expectedRecords(d)
 	if len(recs) != 3 {
 		t.Fatalf("without DKIM: %d records, want 3", len(recs))
@@ -116,7 +116,7 @@ func TestExpectedRecords(t *testing.T) {
 	if spf := byLabel["@/TXT"]; spf.Replace || spf.Value != "v=spf1 mx ~all" {
 		t.Errorf("SPF = %+v (must append, never clobber operator TXT records)", spf)
 	}
-	if dk := byLabel["hp1._domainkey/TXT"]; !dk.Replace || dk.Value != d.DKIMPublic {
+	if dk := byLabel["np1._domainkey/TXT"]; !dk.Replace || dk.Value != d.DKIMPublic {
 		t.Errorf("DKIM = %+v", dk)
 	}
 	if dm := byLabel["_dmarc/TXT"]; !strings.HasPrefix(dm.Value, "v=DMARC1; p=quarantine") {

@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
-	"github.com/thisisnkp/heropanel/internal/marketplace"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/tenancy"
-	"github.com/thisisnkp/heropanel/internal/users"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/tenancy"
+	"github.com/thisisnkp/nexpanel/internal/users"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // mktManifest is a valid module manifest for the marketplace e2e.
@@ -31,7 +31,7 @@ func mktManifest(slug, name string) proto.Manifest {
 		Kind:       "Module",
 		Metadata:   proto.Metadata{Slug: slug, Name: name, Version: "1.0.0", Category: "backup"},
 		Spec: proto.Spec{
-			Binary:       "hp-mod-" + slug,
+			Binary:       "np-mod-" + slug,
 			Capabilities: []string{"backup.offsite"},
 			Arch:         []string{"amd64"},
 			Signing:      proto.Signing{Checksum: "abc123"},

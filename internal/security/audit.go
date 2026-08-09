@@ -3,8 +3,8 @@ package security
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/broker"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/broker"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Host audit scanners (rkhunter, lynis). Thin orchestration over the broker,

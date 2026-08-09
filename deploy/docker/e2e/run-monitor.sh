@@ -13,24 +13,24 @@ fail(){ echo "FAIL: $*"; FAILED=1; }
 FAILED=0
 base=http://127.0.0.1:18455
 
-sec "start hp-broker (root) + hpd (sqlite)"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker-monitor.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-# HP_SECRET_KEY seals alert notification targets; HP_MONITOR_PERSIST_SEC shortens
+sec "start np-broker (root) + npd (sqlite)"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker-monitor.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+# NP_SECRET_KEY seals alert notification targets; NP_MONITOR_PERSIST_SEC shortens
 # the persist/evaluate cadence so a firing can be proven without a real minute.
-export HP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18455 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp-monitor.db \
-  HP_MONITOR_PERSIST_SEC=2 \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd-monitor.log 2>&1 &
+export NP_SECRET_KEY=$(head -c32 /dev/urandom | base64 -w0)
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18455 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-monitor.db \
+  NP_MONITOR_PERSIST_SEC=2 \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd-monitor.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 # The realtime hub must come up even without Redis — its local push needs none.
-grep -q 'realtime hub enabled' /tmp/hpd-monitor.log \
+grep -q 'realtime hub enabled' /tmp/npd-monitor.log \
   && pass "the realtime hub is up without Redis" \
   || fail "the realtime hub did not start on a Redis-less install"
 
@@ -39,7 +39,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/cm.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/cm.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/cm.txt)
 api(){ curl -s -b /tmp/cm.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 code(){ curl -s -o /dev/null -w '%{http_code}' -b /tmp/cm.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
@@ -70,7 +70,7 @@ c=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/monitor/node")
 sec "*** LIVE PUSH: SUBSCRIPTION-GATED SAMPLING ***"
 # wsprobe subscribes to monitor:node. The server was sampling NOTHING until this
 # subscription; receiving an event proves the gate opened and the push works.
-if probe=$(/hp/wsprobe "$base" a@h.io supersecret1 monitor:node 15 2>/tmp/wsprobe.err); then
+if probe=$(/np/wsprobe "$base" a@h.io supersecret1 monitor:node 15 2>/tmp/wsprobe.err); then
   echo "  $probe"
   echo "$probe" | grep -q 'EVENT monitor:node' && echo "$probe" | grep -q 'cpu_percent' \
     && pass "a live node sample was pushed to a subscriber over the hub" \
@@ -81,7 +81,7 @@ else
 fi
 
 sec "SERVICE HEALTH (via the broker's service.status)"
-# Proves the pipeline hpd -> broker -> systemctl is-active -> parsed state -> API.
+# Proves the pipeline npd -> broker -> systemctl is-active -> parsed state -> API.
 svc=$(api "$base/api/v1/monitor/services")
 echo "$svc"
 echo "$svc" | grep -q 'openlitespeed' && echo "$svc" | grep -q '"state"' \
@@ -103,7 +103,7 @@ echo "$sites" | grep -q '"sites"' \
   || fail "the per-site metrics endpoint did not respond"
 
 sec "*** LIVE PUSH: SERVICE HEALTH IS ALSO GATED + PUSHED ***"
-if probe=$(/hp/wsprobe "$base" a@h.io supersecret1 monitor:services 15 2>/tmp/wsprobe2.err); then
+if probe=$(/np/wsprobe "$base" a@h.io supersecret1 monitor:services 15 2>/tmp/wsprobe2.err); then
   echo "  $probe"
   echo "$probe" | grep -q 'EVENT monitor:services' && echo "$probe" | grep -q '"service"' \
     && pass "live service health was pushed to a subscriber" \
@@ -170,6 +170,6 @@ api "$base/api/v1/monitor/alerts/events" | grep -q '"state":"firing"' \
 kill "$recv" 2>/dev/null || true
 
 sec "cleanup"
-pkill -f 'hpd' 2>/dev/null; pkill -f 'hp-broker' 2>/dev/null; true
+pkill -f 'npd' 2>/dev/null; pkill -f 'np-broker' 2>/dev/null; true
 
 if [ "$FAILED" = "0" ]; then echo "run-monitor.sh : PASS"; else echo "run-monitor.sh : FAIL"; fi

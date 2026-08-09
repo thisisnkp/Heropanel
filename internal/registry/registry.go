@@ -1,4 +1,4 @@
-// Package registry is hpd's live view of which modules exist, what state each is
+// Package registry is npd's live view of which modules exist, what state each is
 // in, and — the question everything else asks — which capabilities are currently
 // available.
 //
@@ -22,7 +22,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 // Provider is a module the registry can talk to, whatever it is underneath. The
@@ -59,7 +59,7 @@ func New() *Registry {
 }
 
 // Register brings a module online: it handshakes to learn the capabilities, then
-// advertises them. It refuses a module whose API version this hpd cannot speak,
+// advertises them. It refuses a module whose API version this npd cannot speak,
 // and a module claiming a capability another module already owns.
 //
 // The version check is here, at the boundary, and not left to each caller: an
@@ -117,7 +117,7 @@ func (r *Registry) Deregister(ctx context.Context, slug string) {
 	r.mu.Unlock()
 
 	// Shut down outside the lock: a module's drain may be slow, and holding the
-	// registry lock through it would stall every capability check hpd makes.
+	// registry lock through it would stall every capability check npd makes.
 	e.provider.Shutdown(ctx)
 }
 

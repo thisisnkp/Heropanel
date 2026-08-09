@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // mail.tls wires the mail host's certificate into Postfix (main.cf TLS + the
@@ -18,8 +18,8 @@ func TestMailTLSWiresPostfixAndDovecot(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	fs := fsys.NewFake()
 	// The cert must already be installed for the hostname.
-	_ = fs.WriteFile("/etc/heropanel/ssl/mail.example.com/fullchain.pem", []byte("CERT"), 0o644)
-	_ = fs.WriteFile("/etc/heropanel/ssl/mail.example.com/privkey.pem", []byte("KEY"), 0o600)
+	_ = fs.WriteFile("/etc/nexpanel/ssl/mail.example.com/fullchain.pem", []byte("CERT"), 0o644)
+	_ = fs.WriteFile("/etc/nexpanel/ssl/mail.example.com/privkey.pem", []byte("KEY"), 0o600)
 
 	res, err := (capabilities.MailTLS{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
 		"hostname": "mail.example.com",
@@ -39,7 +39,7 @@ func TestMailTLSWiresPostfixAndDovecot(t *testing.T) {
 		argv := strings.Join(call.Args, " ")
 		switch {
 		case strings.HasPrefix(argv, "-e "):
-			mainCF = strings.Contains(argv, "smtpd_tls_cert_file=/etc/heropanel/ssl/mail.example.com/fullchain.pem") &&
+			mainCF = strings.Contains(argv, "smtpd_tls_cert_file=/etc/nexpanel/ssl/mail.example.com/fullchain.pem") &&
 				strings.Contains(argv, "smtpd_sasl_path=private/auth")
 		case strings.HasPrefix(argv, "-M "):
 			if strings.Contains(argv, "submission inet") || strings.Contains(argv, "smtps inet") {
@@ -61,14 +61,14 @@ func TestMailTLSWiresPostfixAndDovecot(t *testing.T) {
 		t.Error("the submission/smtps per-service overrides were not applied")
 	}
 
-	conf, ok := fs.Written("/etc/dovecot/conf.d/96-heropanel-ssl.conf")
+	conf, ok := fs.Written("/etc/dovecot/conf.d/96-nexpanel-ssl.conf")
 	if !ok {
 		t.Fatal("the dovecot TLS drop-in was not written")
 	}
 	for _, want := range []string{
 		"ssl = required",
-		"ssl_cert = </etc/heropanel/ssl/mail.example.com/fullchain.pem",
-		"ssl_key = </etc/heropanel/ssl/mail.example.com/privkey.pem",
+		"ssl_cert = </etc/nexpanel/ssl/mail.example.com/fullchain.pem",
+		"ssl_key = </etc/nexpanel/ssl/mail.example.com/privkey.pem",
 		"unix_listener /var/spool/postfix/private/auth",
 	} {
 		if !strings.Contains(conf, want) {

@@ -16,7 +16,7 @@ package tenancy
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/repository"
 )
 
 // Resolver decides tenant visibility from the ownership tree.

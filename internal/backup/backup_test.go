@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/blobcrypt"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/blobcrypt"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // codeOf extracts an *errx.Error's machine code, or "" if err is not one.
@@ -118,7 +118,7 @@ func uids(recs []Record) string {
 // The S3 target signs with real SigV4 — verified by recomputing the signature
 // server-side from the same inputs, not by matching a golden string.
 func TestS3SigV4RoundTrip(t *testing.T) {
-	const access, secret, region, bucket = "AKIDEXAMPLE", "topsecret", "eu-central-1", "hp-backups"
+	const access, secret, region, bucket = "AKIDEXAMPLE", "topsecret", "eu-central-1", "np-backups"
 
 	var gotAuth, gotDate, gotSHA, gotPath string
 	var gotBody []byte
@@ -196,14 +196,14 @@ func TestS3EnsureBucket(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s3 := NewS3(S3Config{Endpoint: srv.URL, Region: "us-east-1", Bucket: "hp", AccessKey: "a", SecretKey: "s"})
+	s3 := NewS3(S3Config{Endpoint: srv.URL, Region: "us-east-1", Bucket: "np", AccessKey: "a", SecretKey: "s"})
 	s3.client = srv.Client()
 
 	if err := s3.EnsureBucket(t.Context()); err != nil {
 		t.Fatalf("fresh bucket: %v", err)
 	}
-	if gotPath != "/hp" {
-		t.Errorf("path = %q, want /hp (the bucket, not an object)", gotPath)
+	if gotPath != "/np" {
+		t.Errorf("path = %q, want /np (the bucket, not an object)", gotPath)
 	}
 	if !strings.Contains(gotAuth, "AWS4-HMAC-SHA256") {
 		t.Error("the bucket create was not signed")
@@ -296,7 +296,7 @@ func (m *memRepo) EnabledConfigs(context.Context) ([]ConfigRow, error) {
 type fakeSites struct{}
 
 func (fakeSites) Resolve(_ context.Context, uid string) (*SiteRef, error) {
-	return &SiteRef{ID: 1, UID: uid, LinuxUser: "hps1", HomeDir: "/srv/1"}, nil
+	return &SiteRef{ID: 1, UID: uid, LinuxUser: "nps1", HomeDir: "/srv/1"}, nil
 }
 
 // fakeDBs plays the database module: Export writes a plaintext dump file.
@@ -401,7 +401,7 @@ func TestCreateWithDatabaseSealsTheDumpAlongside(t *testing.T) {
 		if err != nil {
 			t.Fatalf("sealed object %s missing: %v", name, err)
 		}
-		if !strings.HasPrefix(string(blob), "HPB1") {
+		if !strings.HasPrefix(string(blob), "NPB1") {
 			t.Errorf("%s is not blobcrypt ciphertext", name)
 		}
 	}
@@ -556,7 +556,7 @@ func TestPanelBackupSealsAndPrunes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("kept object missing: %v", err)
 	}
-	if !strings.HasPrefix(string(blob), "HPB1") {
+	if !strings.HasPrefix(string(blob), "NPB1") {
 		t.Error("the stored panel snapshot is not blobcrypt ciphertext")
 	}
 	// The stored object decrypts to a valid, complete panel archive.
@@ -671,7 +671,7 @@ func TestVerifyPanelBackupDetectsCorruption(t *testing.T) {
 	}
 	// Corrupt the sealed object on the local target (staging file by basename).
 	obj := filepath.Join(dir, filepath.Base(panelRemoteKey(b.UID)))
-	if err := os.WriteFile(obj, []byte("HPB1 not really ciphertext at all"), 0o600); err != nil {
+	if err := os.WriteFile(obj, []byte("NPB1 not really ciphertext at all"), 0o600); err != nil {
 		t.Fatalf("corrupt object: %v", err)
 	}
 	if err := svc.VerifyPanelBackup(t.Context(), b.UID); err == nil {

@@ -3,7 +3,7 @@ package proto_test
 import (
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
 func validManifest() proto.Manifest {
@@ -12,7 +12,7 @@ func validManifest() proto.Manifest {
 		Kind:       "Module",
 		Metadata:   proto.Metadata{Slug: "docker", Name: "Docker", Version: "1.4.2"},
 		Spec: proto.Spec{
-			Binary:       "hp-mod-docker",
+			Binary:       "np-mod-docker",
 			Capabilities: []string{"docker.container", "docker.compose"},
 			Arch:         []string{"amd64", "arm64"},
 		},
@@ -31,7 +31,7 @@ func TestValidManifestPasses(t *testing.T) {
 // way it could be malformed.
 func TestValidateRejectsMalformedManifests(t *testing.T) {
 	cases := map[string]func(*proto.Manifest){
-		"wrong api version": func(m *proto.Manifest) { m.APIVersion = "heropanel.io/v2" },
+		"wrong api version": func(m *proto.Manifest) { m.APIVersion = "nexpanel.io/v2" },
 		"wrong kind":        func(m *proto.Manifest) { m.Kind = "Pod" },
 		"empty slug":        func(m *proto.Manifest) { m.Metadata.Slug = "" },
 		"slug with slash":   func(m *proto.Manifest) { m.Metadata.Slug = "../etc" },
@@ -89,7 +89,7 @@ func TestCompatibleIsExactForV1(t *testing.T) {
 	if !proto.Compatible(proto.APIVersion) {
 		t.Error("the current API version is not compatible with itself")
 	}
-	if proto.Compatible("heropanel.io/v2") {
+	if proto.Compatible("nexpanel.io/v2") {
 		t.Error("a future API version reported compatible")
 	}
 	if proto.Compatible("") {

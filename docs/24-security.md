@@ -17,21 +17,21 @@ apply returns a token and a deadline; unless `firewall.confirm` is called with
 that token before the deadline, the change **reverts itself** to the snapshot.
 The operator who locked themselves out simply waits.
 
-The timer lives in unprivileged hpd, not the broker: hpd runs **on the box**,
-so the local hpd→broker socket is unaffected by a rule that cuts off *remote*
-access — hpd can always fire the revert. The deadline is persisted, so an hpd
+The timer lives in unprivileged npd, not the broker: npd runs **on the box**,
+so the local npd→broker socket is unaffected by a rule that cuts off *remote*
+access — npd can always fire the revert. The deadline is persisted, so an npd
 that restarted mid-window still honours it (a startup + ticker guard), and a
 stale confirm (from an already-reverted apply) is refused. The rendered ruleset
 is **default-drop** but always keeps established/related and loopback, so even a
 ruleset that forgets to allow anything leaves existing connections and local
 traffic alive while the timer counts down. The broker owns only three tiny
 verbs (snapshot+apply, discard, restore); rendering, the timer and the token
-live in hpd. Comments are operator metadata and are deliberately not rendered
+live in npd. Comments are operator metadata and are deliberately not rendered
 into the ruleset — one less injection surface.
 
 Deferred (honest): IPv6 source rules (`ip6 saddr`; the renderer is v4 today),
 port ranges and named sets, and an OS-level belt-and-suspenders timer
-(`systemd-run`) in addition to hpd's.
+(`systemd-run`) in addition to npd's.
 
 ## 2. Malware scanning + quarantine
 
@@ -39,10 +39,10 @@ port ranges and named sets, and an OS-level belt-and-suspenders timer
 returns each detection (path + signature). Scanning is read-only and can run
 anywhere confined; the dangerous verb is `malware.quarantine`, which **moves**
 a detected file out of its site tree into a root-only holding area
-(`/var/lib/heropanel/quarantine`, 0600 root) where it can neither be served nor
+(`/var/lib/nexpanel/quarantine`, 0600 root) where it can neither be served nor
 executed — an infected file that stays in place is still a live threat. The
 quarantine path is validated to lie within the named site, and derived from a
-ULID hpd supplies, so it cannot be aimed at an arbitrary file. Restore (a false
+ULID npd supplies, so it cannot be aimed at an arbitrary file. Restore (a false
 positive) returns the file to its original path and owner; delete removes it.
 `site_uid` and `original_user` are stored denormalised, so the quarantine
 history survives the deletion of the site the file came from.
@@ -71,7 +71,7 @@ guessed safely.
 ## 4. Panel IP-allowlist and Fail2Ban
 
 A **panel IP-allowlist** (`security.panel_ip_allowlist` /
-`HP_PANEL_IP_ALLOWLIST`) restricts the panel/API to a set of CIDRs at the
+`NP_PANEL_IP_ALLOWLIST`) restricts the panel/API to a set of CIDRs at the
 application layer, sitting right after RealIP so a disallowed address never
 reaches a handler or an audit entry — defence in depth alongside the host
 firewall, and it works even behind a managed load balancer where nftables is
@@ -108,8 +108,8 @@ tests, which drive a full register→passwordless-login through the service.
 
 ## SSH hardening
 
-A panel-owned sshd drop-in (`/etc/ssh/sshd_config.d/50-heropanel.conf`),
-rendered by hpd from a small **fixed, validated** field set — port, root-login
+A panel-owned sshd drop-in (`/etc/ssh/sshd_config.d/50-nexpanel.conf`),
+rendered by npd from a small **fixed, validated** field set — port, root-login
 policy (`no`/`prohibit-password`/`yes`), password auth (default off = key-only),
 public-key auth, an auth-try budget, an optional login allow-list — plus a
 block of **fixed hardening** that is never a knob (empty passwords off,
@@ -131,7 +131,7 @@ with a 400; `ssh.harden` and `ssh.status` are on the broker's audit chain.
 ## Automatic security updates
 
 On Debian/Ubuntu, a panel-owned `unattended-upgrades` apt drop-in
-(`/etc/apt/apt.conf.d/52heropanel-unattended`), rendered by hpd from validated
+(`/etc/apt/apt.conf.d/52nexpanel-unattended`), rendered by npd from validated
 options — enable, security-origin-only (default), automatic reboot + reboot
 time. The broker's **`updates.configure`** writes the one pinned path,
 **validates it with `apt-config dump`** (a malformed apt.conf is caught and
@@ -152,11 +152,11 @@ and both capabilities are on the broker's audit chain.
 A per-site toggle turns on **ModSecurity + the OWASP Core Rule Set** for a
 site's OpenLiteSpeed vhost. The state is a `waf_enabled` column on the site; the
 vhost render emits a `module mod_security` block referencing a pinned rules file
-(`/etc/heropanel/waf/main.conf`), and — because OLS only activates the module
+(`/etc/nexpanel/waf/main.conf`), and — because OLS only activates the module
 when it is declared at **server** level — a server-level `module mod_security {
 ls_enabled 1 }` is emitted whenever any site has the WAF on. Enabling a site's
 WAF first writes the rules file through the broker's **`waf.provision`**
-(hpd renders the content; the broker writes the one pinned path).
+(npd renders the content; the broker writes the one pinned path).
 
 The rules file is shaped for **libmodsecurity v3** (what OLS embeds), which is
 stricter than the v2 the distro's `owasp-crs.load` targets: it supports only
@@ -175,7 +175,7 @@ allows the attack through again. `waf.provision` is on the broker's audit chain.
 ## File-integrity monitoring + host audit scanners
 
 **FIM (AIDE):** a baseline of the panel's security-critical paths (configs,
-`/etc/ssh`, the `hpd`/`hp-broker`/`sshd` binaries) built by `fim.init`;
+`/etc/ssh`, the `npd`/`np-broker`/`sshd` binaries) built by `fim.init`;
 `fim.check` compares the filesystem against it and reports what was added,
 removed or changed. It shells out to real AIDE (fixed argv) and parses the
 summary — carefully ignoring AIDE's bare detail-section headers that repeat the
@@ -188,7 +188,7 @@ count, lynis's hardening index + warning/suggestion counts, plus the report.
 and would duplicate the malware module, whereas rkhunter and lynis add different
 signal (rootkit heuristics, a configuration audit). These scans take minutes, so
 their client-side broker timeout and the server write timeout
-(`HP_SERVER_WRITE_TIMEOUT`) are raised accordingly.
+(`NP_SERVER_WRITE_TIMEOUT`) are raised accordingly.
 
 Live proof (`run-fim.sh`): a FIM check without a baseline is refused (409);
 after init the check is **clean**; **tampering a watched file makes the next

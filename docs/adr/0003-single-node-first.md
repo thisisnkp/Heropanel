@@ -11,10 +11,10 @@ Design and ship for a **single node first**, while keeping every boundary networ
 ## Rationale
 - 95% of the target market is single-server; shipping fleet complexity first would delay the first useful release and inflate RAM.
 - The pieces that make fleets possible are already in the single-node design for other reasons:
-  - **broker + module comms are gRPC** (today over Unix sockets) → later over **mTLS TCP** to a per-node `hp-agent`, with no service-layer change.
+  - **broker + module comms are gRPC** (today over Unix sockets) → later over **mTLS TCP** to a per-node `np-agent`, with no service-layer change.
   - **State is centralized** in MariaDB/Redis.
   - **Realtime is Redis Pub/Sub**, which already fans out across processes/nodes.
 
 ## Consequences
-- v1 is lean and fast. Fleet/HA (multiple `hpd` behind an LB, Galera, Redis Sentinel, remote agents) is a later major, unobstructed by v1.
+- v1 is lean and fast. Fleet/HA (multiple `npd` behind an LB, Galera, Redis Sentinel, remote agents) is a later major, unobstructed by v1.
 - We commit to keeping the broker/module RPC **transport-agnostic** and avoiding local-only assumptions (e.g. no reliance on shared local filesystem for cross-component state).

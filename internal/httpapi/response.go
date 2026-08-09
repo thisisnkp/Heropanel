@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // meta is the standard response metadata (docs/04 §2).

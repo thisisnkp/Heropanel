@@ -4,16 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
 )
 
 func copyInput() map[string]any {
 	return map[string]any{
-		"src_root": "/srv/heropanel/sites/1",
-		"dst_root": "/srv/heropanel/sites/2",
-		"username": "hps2",
+		"src_root": "/srv/nexpanel/sites/1",
+		"dst_root": "/srv/nexpanel/sites/2",
+		"username": "nps2",
 	}
 }
 
@@ -43,7 +43,7 @@ func TestSiteCopyTreeCopiesThenReowns(t *testing.T) {
 	// -a preserves modes and does not follow symlinks: a link in the source
 	// pointing at /etc/shadow is copied as a link, not as the secret behind it.
 	// The trailing "/." copies the contents rather than nesting public/public.
-	want := []string{"-a", "--", "/srv/heropanel/sites/1/public/.", "/srv/heropanel/sites/2/public"}
+	want := []string{"-a", "--", "/srv/nexpanel/sites/1/public/.", "/srv/nexpanel/sites/2/public"}
 	if strings.Join(cp.Args, " ") != strings.Join(want, " ") {
 		t.Errorf("cp args = %v, want %v", cp.Args, want)
 	}
@@ -55,7 +55,7 @@ func TestSiteCopyTreeCopiesThenReowns(t *testing.T) {
 	if ch.Path != "/bin/chown" {
 		t.Errorf("path = %q", ch.Path)
 	}
-	wantCh := []string{"-R", "-h", "--", "hps2:hps2", "/srv/heropanel/sites/2/public"}
+	wantCh := []string{"-R", "-h", "--", "nps2:nps2", "/srv/nexpanel/sites/2/public"}
 	if strings.Join(ch.Args, " ") != strings.Join(wantCh, " ") {
 		t.Errorf("chown args = %v, want %v", ch.Args, wantCh)
 	}
@@ -65,7 +65,7 @@ func TestSiteCopyTreeCopiesThenReowns(t *testing.T) {
 }
 
 func TestSiteCopyTreeConfinesBothEnds(t *testing.T) {
-	bad := []string{"/etc", "/root", "/srv/heropanel/sites/../../etc", "relative"}
+	bad := []string{"/etc", "/root", "/srv/nexpanel/sites/../../etc", "relative"}
 	for _, p := range bad {
 		for _, field := range []string{"src_root", "dst_root"} {
 			fr := &exec.FakeRunner{}
@@ -84,7 +84,7 @@ func TestSiteCopyTreeConfinesBothEnds(t *testing.T) {
 func TestSiteCopyTreeRejectsCopyingASiteOntoItself(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	_, err := (capabilities.SiteCopyTree{}).Execute(sliceCtx(fr, fsys.NewFake()),
-		raw(t, mutateCopy(copyInput(), "dst_root", "/srv/heropanel/sites/1")))
+		raw(t, mutateCopy(copyInput(), "dst_root", "/srv/nexpanel/sites/1")))
 	if err == nil {
 		t.Fatal("accepted a copy from a site onto itself")
 	}
@@ -94,7 +94,7 @@ func TestSiteCopyTreeRejectsCopyingASiteOntoItself(t *testing.T) {
 }
 
 func TestSiteCopyTreeValidatesTheUsername(t *testing.T) {
-	for _, u := range []string{"", "root; rm -rf /", "../hps1", "hps2 hps3", "-rf"} {
+	for _, u := range []string{"", "root; rm -rf /", "../nps1", "nps2 nps3", "-rf"} {
 		fr := &exec.FakeRunner{}
 		_, err := (capabilities.SiteCopyTree{}).Execute(sliceCtx(fr, fsys.NewFake()),
 			raw(t, mutateCopy(copyInput(), "username", u)))

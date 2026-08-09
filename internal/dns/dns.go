@@ -1,5 +1,5 @@
-// Package dns implements authoritative DNS management: HeroPanel hosts zones and
-// records and serves them from BIND9. hpd renders the zone file and the zone
+// Package dns implements authoritative DNS management: NexPanel hosts zones and
+// records and serves them from BIND9. npd renders the zone file and the zone
 // declaration from DB state; the privileged broker writes them, validates with
 // named-checkzone, and reloads BIND (same render → broker → reload shape as the
 // web-server and php-fpm flows). See docs/13-dns.md.
@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
-// zonesDir is where BIND zone files live; both hpd (which renders the file path
+// zonesDir is where BIND zone files live; both npd (which renders the file path
 // into named.conf) and the broker (which writes them) use this constant.
 const zonesDir = "/etc/bind/zones"
 
@@ -294,11 +294,11 @@ func quoteTXT(s string) string {
 }
 
 // RenderNamedConf renders the declarative set of zone {} blocks for all active
-// zones (BIND's named.conf.heropanel include).
+// zones (BIND's named.conf.nexpanel include).
 //
 // A DNSSEC-enabled zone gets `dnssec-policy default` + `inline-signing yes` +
 // `key-directory`, which is the modern BIND way: named generates the keys,
-// signs the zone in memory (the plain zone file hpd writes is untouched, so
+// signs the zone in memory (the plain zone file npd writes is untouched, so
 // ordinary record edits keep working), and handles rollover on its own. The DS
 // for the registrar is read back separately (dns.dnssec_status).
 func RenderNamedConf(zones []ZoneRow) string {

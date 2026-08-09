@@ -1,4 +1,4 @@
-// Package errx defines HeroPanel's typed error model. Domain and service code
+// Package errx defines NexPanel's typed error model. Domain and service code
 // returns *Error values with a stable Kind and machine Code; the HTTP edge maps
 // Kind -> status and Code -> a stable API error code exactly once, centrally
 // (see docs/04-api-design.md). Wrapped causes carry internal detail that is
@@ -31,7 +31,7 @@ type Field struct {
 	Message string `json:"message"`
 }
 
-// Error is HeroPanel's structured error.
+// Error is NexPanel's structured error.
 type Error struct {
 	Kind    Kind    `json:"-"`
 	Code    string  `json:"code"`

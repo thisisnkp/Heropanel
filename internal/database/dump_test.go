@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // seed creates a database + user and returns their UIDs.
@@ -130,7 +130,7 @@ func TestExportProducesAUniqueFilePerCall(t *testing.T) {
 	ctx := context.Background()
 	dbUID, _ := seed(t, svc)
 	gw.results = map[string]map[string]any{
-		"db.export": {"path": "/var/lib/heropanel/dumps/x.sql.gz", "bytes": float64(4096)},
+		"db.export": {"path": "/var/lib/nexpanel/dumps/x.sql.gz", "bytes": float64(4096)},
 	}
 
 	first, err := svc.Export(ctx, dbUID)

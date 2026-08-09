@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
-// dumpRoot is where database exports and staged imports live. hpd streams files
+// dumpRoot is where database exports and staged imports live. npd streams files
 // to and from here, so the directory is owned by the panel user; the SQL itself
 // still only ever runs as root through this broker.
-const dumpRoot = "/var/lib/heropanel/dumps"
+const dumpRoot = "/var/lib/nexpanel/dumps"
 
 const (
 	mysqldumpPath = "/usr/bin/mysqldump"
@@ -99,7 +99,7 @@ func (DBSize) Execute(c capability.Context, raw json.RawMessage) (capability.Res
 // ── db.export ────────────────────────────────────────────────────────────────
 
 // DBExport dumps a database to a gzipped file under dumpRoot, owned by the panel
-// user so hpd can stream it to the client.
+// user so npd can stream it to the client.
 //
 // The dump goes straight to a file via --result-file and is compressed as a
 // separate step. Neither the dump nor the gzip ever passes through the broker's
@@ -128,7 +128,7 @@ func (DBExport) Execute(c capability.Context, raw json.RawMessage) (capability.R
 			"Pass the uncompressed name; the export is gzipped for you.")
 	}
 
-	// The directory belongs to the panel user, not root: hpd has to traverse it to
+	// The directory belongs to the panel user, not root: npd has to traverse it to
 	// stream the dump back out, and 0700 root would lock it out of its own export.
 	if err := ensureDumpRoot(c); err != nil {
 		return capability.Result{}, err
@@ -171,7 +171,7 @@ func (DBExport) Execute(c capability.Context, raw json.RawMessage) (capability.R
 		return capability.Result{}, errx.New(errx.KindUpstream, "export_failed", "Could not compress the dump.")
 	}
 
-	// Hand it to the panel user; hpd streams the file and then deletes it.
+	// Hand it to the panel user; npd streams the file and then deletes it.
 	if err := handToPanel(c, gzFile); err != nil {
 		return capability.Result{}, err
 	}
@@ -184,7 +184,7 @@ func (DBExport) Execute(c capability.Context, raw json.RawMessage) (capability.R
 
 // ── db.import ────────────────────────────────────────────────────────────────
 
-// DBImport loads a SQL file (plain or gzipped) that hpd staged under dumpRoot.
+// DBImport loads a SQL file (plain or gzipped) that npd staged under dumpRoot.
 //
 // The file is fed to the client with `SOURCE`, not piped through the broker, for
 // the same reason exports are not: an import is arbitrarily large. The path is

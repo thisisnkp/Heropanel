@@ -1,4 +1,4 @@
-// Package setup implements HeroPanel's first-run infrastructure wizard. The
+// Package setup implements NexPanel's first-run infrastructure wizard. The
 // panel runs itself on Go's net/http + Chi over a SQLite control-plane store, so
 // it is reachable the moment the installer finishes — before any hosting stack
 // exists. The wizard is what the operator sees next: it captures which webserver
@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Webserver identifies the webserver the panel provisions and manages for hosted

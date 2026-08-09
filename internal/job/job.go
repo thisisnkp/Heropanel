@@ -1,4 +1,4 @@
-// Package job is HeroPanel's asynchronous work system. Long or mutating
+// Package job is NexPanel's asynchronous work system. Long or mutating
 // operations (site provisioning, backups, deploys) are enqueued as jobs onto a
 // Redis Stream, executed by a bounded worker pool with a consumer group
 // (at-least-once), and their progress is persisted for polling (and published

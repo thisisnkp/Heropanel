@@ -16,9 +16,9 @@ import (
 // Rotating data keys — the envelope docs/05 §6 reserved room for.
 //
 // Instead of sealing every `*_enc` column directly under a key derived from the
-// master (the `hp1` format), a panel can hold a **keyring**: a set of random data
+// master (the `np1` format), a panel can hold a **keyring**: a set of random data
 // keys, each *wrapped* (sealed) by the master key and stored in the data_keys
-// table. One generation is active; new values seal under it as `hp2.<gen>.<blob>`
+// table. One generation is active; new values seal under it as `np2.<gen>.<blob>`
 // and record which generation they used, so any older generation's values still
 // open. This buys two rotations:
 //
@@ -29,13 +29,13 @@ import (
 //     it immediately, and old rows migrate lazily (any update reseals under the
 //     active key) or via a re-encrypt sweep.
 //
-// A panel that never rotates has no keyring and keeps producing `hp1` blobs —
+// A panel that never rotates has no keyring and keeps producing `np1` blobs —
 // fully backward compatible.
 
 const (
-	versionKeyed = "hp2"                  // hp2.<gen>.<base64> — sealed under data key <gen>
-	keyWrapInfo  = "heropanel/keywrap/v1" // HKDF info for the master's key-wrapping subkey
-	dataKeyLen   = 32                     // AES-256 data keys
+	versionKeyed = "np2"                 // np2.<gen>.<base64> — sealed under data key <gen>
+	keyWrapInfo  = "nexpanel/keywrap/v1" // HKDF info for the master's key-wrapping subkey
+	dataKeyLen   = 32                    // AES-256 data keys
 )
 
 // WrappedKey is a data key sealed under the master, as persisted in data_keys.
@@ -51,7 +51,7 @@ type dataKey struct {
 	aead cipher.AEAD
 }
 
-// keyWrapAEAD derives the master's key-wrapping AEAD (distinct from the hp1
+// keyWrapAEAD derives the master's key-wrapping AEAD (distinct from the np1
 // column-sealing key, so the two purposes never share key material).
 func keyWrapAEAD(master []byte) (cipher.AEAD, error) {
 	k, err := hkdf.Key(sha256.New, master, nil, keyWrapInfo, MasterKeyLen)
@@ -76,7 +76,7 @@ func newAEADFromKey(key []byte) (cipher.AEAD, error) {
 // LoadKeyring unwraps the given data keys with the master and installs them,
 // making the highest generation the active one for new seals. Called at startup
 // with the rows from the data_keys table. Passing no keys leaves the Cipher in
-// legacy (hp1) mode.
+// legacy (np1) mode.
 func (c *Cipher) LoadKeyring(wrapped []WrappedKey) error {
 	if !c.Configured() {
 		if len(wrapped) == 0 {
@@ -110,7 +110,7 @@ func (c *Cipher) LoadKeyring(wrapped []WrappedKey) error {
 
 // keyWrapAAD binds a wrapped data key to its generation, so a wrapped key lifted
 // to a different generation slot fails to unwrap.
-func keyWrapAAD(gen int) []byte { return []byte("heropanel/datakey/" + strconv.Itoa(gen)) }
+func keyWrapAAD(gen int) []byte { return []byte("nexpanel/datakey/" + strconv.Itoa(gen)) }
 
 func (c *Cipher) unwrapKey(wrapped string, gen int) ([]byte, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(wrapped)
@@ -189,7 +189,7 @@ func (c *Cipher) Rewrap(newMaster []byte) ([]WrappedKey, error) {
 	return out, nil
 }
 
-// ActiveGeneration reports the active data-key generation (0 => legacy hp1).
+// ActiveGeneration reports the active data-key generation (0 => legacy np1).
 func (c *Cipher) ActiveGeneration() int {
 	if c == nil {
 		return 0
@@ -199,7 +199,7 @@ func (c *Cipher) ActiveGeneration() int {
 
 // Reseal opens a blob and re-seals it under the active key, returning the new
 // blob and whether it changed. Used by a re-encrypt sweep to migrate old-
-// generation (or legacy hp1) blobs onto the current data key.
+// generation (or legacy np1) blobs onto the current data key.
 func (c *Cipher) Reseal(blob, aad string) (string, bool, error) {
 	pt, err := c.Open(blob, aad)
 	if err != nil {
@@ -217,7 +217,7 @@ func (c *Cipher) Reseal(blob, aad string) (string, bool, error) {
 }
 
 // blobGeneration returns the generation a stored blob was sealed under: 0 for the
-// legacy hp1 format, or the embedded generation for hp2.
+// legacy np1 format, or the embedded generation for np2.
 func blobGeneration(blob string) int {
 	if strings.HasPrefix(blob, versionKeyed+".") {
 		rest := blob[len(versionKeyed)+1:]

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/safe"
+	"github.com/thisisnkp/nexpanel/internal/safe"
 )
 
 func quietLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

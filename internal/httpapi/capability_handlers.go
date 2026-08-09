@@ -3,7 +3,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/thisisnkp/heropanel/internal/registry"
+	"github.com/thisisnkp/nexpanel/internal/registry"
 )
 
 // capabilitiesHandler returns the flat set of capabilities currently available.

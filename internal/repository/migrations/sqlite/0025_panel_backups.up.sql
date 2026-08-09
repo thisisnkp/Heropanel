@@ -1,6 +1,6 @@
 -- Panel self-backup (SQLite): a row per sealed snapshot of the panel's own
 -- database. Every snapshot is full and stands alone — no chains. Restore is
--- deliberately out-of-band (`hpd decrypt` + documented manual steps): a panel
+-- deliberately out-of-band (`npd decrypt` + documented manual steps): a panel
 -- that needs its database back cannot be trusted to serve that request.
 CREATE TABLE panel_backups (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

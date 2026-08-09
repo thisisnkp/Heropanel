@@ -1,4 +1,4 @@
-// Package repository is HeroPanel's data-access layer: it opens the
+// Package repository is NexPanel's data-access layer: it opens the
 // control-plane datastore, runs migrations, and provides repositories (per
 // bounded context) implemented with sqlx and explicit SQL (ADR-0006).
 //
@@ -18,7 +18,7 @@ import (
 	_ "github.com/go-sql-driver/mysql" // registers "mysql"
 	_ "modernc.org/sqlite"             // registers "sqlite" (pure Go, no cgo)
 
-	"github.com/thisisnkp/heropanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/config"
 )
 
 // Dialect identifies the SQL flavor in use, selecting the matching migrations
@@ -37,7 +37,7 @@ type DB struct {
 }
 
 // Configured reports whether a datastore should be opened for this config. We
-// open only when a DSN is provided, which keeps hpd bootable with no database
+// open only when a DSN is provided, which keeps npd bootable with no database
 // during early bring-up.
 func Configured(cfg config.Database) bool {
 	return strings.TrimSpace(cfg.DSN) != ""

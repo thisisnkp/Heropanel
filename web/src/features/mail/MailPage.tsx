@@ -498,7 +498,7 @@ function MailTLSCard() {
               <Badge>off</Badge>
             </div>
             <p className="mt-1 text-xs text-muted">
-              Set a mail hostname (<code>HP_MAIL_HOSTNAME</code>, e.g. <code>mail.example.com</code>) to serve
+              Set a mail hostname (<code>NP_MAIL_HOSTNAME</code>, e.g. <code>mail.example.com</code>) to serve
               authenticated submission (587), IMAPS (993) and SMTPS (465) with a real certificate.
             </p>
           </div>
@@ -554,7 +554,7 @@ function WebmailCard() {
           <Badge>off</Badge>
         </div>
         <p className="mt-1 text-xs text-muted">
-          Set a webmail hostname (<code>HP_WEBMAIL_HOSTNAME</code>, e.g. <code>webmail.example.com</code>) to serve
+          Set a webmail hostname (<code>NP_WEBMAIL_HOSTNAME</code>, e.g. <code>webmail.example.com</code>) to serve
           Roundcube against this host's mailboxes.
         </p>
       </Card>
@@ -621,7 +621,7 @@ function InboundPolicyCard() {
           </p>
         </div>
         <select
-          className="hp-select h-9 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg"
+          className="np-select h-9 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg"
           value={level}
           disabled={setInbound.isPending}
           onChange={(e) =>
@@ -666,7 +666,7 @@ function AuthVerifyCard() {
           </p>
         </div>
         <select
-          className="hp-select h-9 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg"
+          className="np-select h-9 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg"
           value={mode}
           disabled={setAV.isPending}
           onChange={(e) =>

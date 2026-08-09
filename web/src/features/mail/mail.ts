@@ -220,8 +220,8 @@ export function submitWebmailHandoff(ho: WebmailHandoff) {
   const form = document.createElement("form");
   form.method = "POST";
   form.action = `${ho.url}?_task=login&_action=login`;
-  form.target = win ? "hp_webmail" : "_blank";
-  if (win) win.name = "hp_webmail";
+  form.target = win ? "np_webmail" : "_blank";
+  if (win) win.name = "np_webmail";
   for (const [name, value] of [
     ["_user", ho.user],
     ["_pass", ho.pass],

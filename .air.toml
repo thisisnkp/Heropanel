@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/hpd.exe ./cmd/hpd"
-  bin = ".\\tmp\\hpd.exe"
+  cmd = "go build -o ./tmp/npd.exe ./cmd/npd"
+  bin = ".\\tmp\\npd.exe"
   include_ext = ["go", "tpl", "tmpl", "html"]
   include_dir = ["cmd", "internal", "pkg"]
   exclude_dir = []

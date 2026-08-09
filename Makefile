@@ -1,6 +1,6 @@
-# HeroPanel build pipeline.
+# NexPanel build pipeline.
 #
-# The React SPA is embedded into hpd (web/embed.go), so the frontend must be
+# The React SPA is embedded into npd (web/embed.go), so the frontend must be
 # built BEFORE `go build` for the real UI to be served. `go build` still works
 # without a frontend build (a placeholder page is served) thanks to the
 # web/dist/.gitkeep placeholder.
@@ -22,9 +22,9 @@ web:
 
 ## build: compile the Go binaries into ./bin
 build:
-	go build $(GOFLAGS) -o $(BIN)/hpd ./cmd/hpd
-	go build $(GOFLAGS) -o $(BIN)/hp-broker ./cmd/hp-broker
-	go build $(GOFLAGS) -o $(BIN)/hpctl ./cmd/hpctl 2>/dev/null || true
+	go build $(GOFLAGS) -o $(BIN)/npd ./cmd/npd
+	go build $(GOFLAGS) -o $(BIN)/np-broker ./cmd/np-broker
+	go build $(GOFLAGS) -o $(BIN)/npctl ./cmd/npctl 2>/dev/null || true
 
 ## test: run all Go tests
 test:
@@ -40,9 +40,9 @@ vet:
 fmt:
 	gofmt -w .
 
-## run: run hpd from source (dev)
+## run: run npd from source (dev)
 run:
-	go run ./cmd/hpd
+	go run ./cmd/npd
 
 ## tidy: tidy go modules
 tidy:

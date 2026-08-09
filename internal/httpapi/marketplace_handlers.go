@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
 )
 
 // Module marketplace edge. Browsing the catalog and the installed inventory is a
@@ -63,6 +63,28 @@ func installModuleHandler(d Deps) http.HandlerFunc {
 		audit.AddDetail(r.Context(), "version", rec.Version)
 		audit.AddDetail(r.Context(), "publisher_key", rec.PublisherKey)
 		writeJSON(w, r, http.StatusCreated, rec)
+	}
+}
+
+// updateModuleHandler moves an installed module to the version the catalog now
+// offers. Gated by "module.manage".
+//
+// The audit detail records the version it came *from* as well as the one it went
+// to: after the fact, "which version was running when this happened" is the
+// question, and the record alone would only answer the second half.
+func updateModuleHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		slug := chi.URLParam(r, "slug")
+		rec, from, err := d.Marketplace.Update(r.Context(), slug)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.SetResource(r.Context(), "modules", rec.Slug)
+		audit.AddDetail(r.Context(), "from_version", from)
+		audit.AddDetail(r.Context(), "version", rec.Version)
+		audit.AddDetail(r.Context(), "publisher_key", rec.PublisherKey)
+		writeJSON(w, r, http.StatusOK, rec)
 	}
 }
 

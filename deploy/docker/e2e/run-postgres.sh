@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real PostgreSQL engine: HeroPanel creates a database, a role, and a grant on a
+# Real PostgreSQL engine: NexPanel creates a database, a role, and a grant on a
 # live PostgreSQL server via the broker (which runs psql as the postgres OS user),
 # then proves a row round-trips through export → import. The panel's own store is
 # SQLite; only the *managed* engine under test is PostgreSQL.
@@ -20,16 +20,16 @@ fi
 for i in $(seq 1 30); do runuser -u postgres -- pg_isready >/dev/null 2>&1 && break; sleep 0.5; done
 runuser -u postgres -- pg_isready
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /var/lib/heropanel
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /var/lib/nexpanel
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -37,7 +37,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 uidof(){ printf '%s' "$1" | grep -o '"uid":"[^"]*"' | head -1 | cut -d'"' -f4; }
 
@@ -58,7 +58,7 @@ check "broker ran pg.grant"  "$(cat /tmp/broker.log)" '"capability":"pg.grant","
 
 sec "write a row, then EXPORT → drop → new db → IMPORT (row must survive)"
 pg -d shop -c "CREATE TABLE hello(msg text); INSERT INTO hello VALUES ('hi from postgres');" >/dev/null
-# Export via the broker (pg_dump), capture the produced file path from hpd's dump dir.
+# Export via the broker (pg_dump), capture the produced file path from npd's dump dir.
 api $base/api/v1/databases/$dbuid/export -o /tmp/shop.sql.gz -s
 ls -la /tmp/shop.sql.gz 2>/dev/null | awk '{print "export bytes:",$5}'
 check "export produced a gzip" "$(file /tmp/shop.sql.gz 2>/dev/null || head -c 2 /tmp/shop.sql.gz | xxd)" 'gzip'

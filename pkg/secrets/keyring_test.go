@@ -21,16 +21,16 @@ func TestKeyringSealsUnderActiveGenerationAndOpens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Before any rotation: legacy hp1 format, active generation 0.
+	// Before any rotation: legacy np1 format, active generation 0.
 	if c.ActiveGeneration() != 0 {
 		t.Fatalf("active = %d, want 0", c.ActiveGeneration())
 	}
 	legacy, _ := c.Seal([]byte("secret"), "t:1:c")
-	if !strings.HasPrefix(legacy, "hp1.") {
-		t.Fatalf("pre-rotation seal should be hp1, got %q", legacy)
+	if !strings.HasPrefix(legacy, "np1.") {
+		t.Fatalf("pre-rotation seal should be np1, got %q", legacy)
 	}
 
-	// Rotate: new seals become hp2.1.…, and the legacy blob still opens.
+	// Rotate: new seals become np2.1.…, and the legacy blob still opens.
 	wk, err := c.Rotate()
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +39,8 @@ func TestKeyringSealsUnderActiveGenerationAndOpens(t *testing.T) {
 		t.Fatalf("rotate gen = %d active = %d, want 1/1", wk.Generation, c.ActiveGeneration())
 	}
 	keyed, _ := c.Seal([]byte("secret2"), "t:2:c")
-	if !strings.HasPrefix(keyed, "hp2.1.") {
-		t.Fatalf("post-rotation seal should be hp2.1, got %q", keyed)
+	if !strings.HasPrefix(keyed, "np2.1.") {
+		t.Fatalf("post-rotation seal should be np2.1, got %q", keyed)
 	}
 	if pt, err := c.Open(legacy, "t:1:c"); err != nil || string(pt) != "secret" {
 		t.Fatalf("legacy blob must still open after rotation: %v / %q", err, pt)
@@ -118,7 +118,7 @@ func TestRewrapUnderNewMasterKeepsBlobsReadable(t *testing.T) {
 func TestResealMigratesToActiveGeneration(t *testing.T) {
 	m := newMaster(t)
 	c, _ := New(m)
-	legacy, _ := c.Seal([]byte("old"), "t:1:c") // hp1
+	legacy, _ := c.Seal([]byte("old"), "t:1:c") // np1
 	c.Rotate()                                  // active = 1
 
 	nb, changed, err := c.Reseal(legacy, "t:1:c")
@@ -142,10 +142,10 @@ func TestKeyedBlobFailsWithoutKeyring(t *testing.T) {
 	c, _ := New(m)
 	c.Rotate()
 	blob, _ := c.Seal([]byte("x"), "t:1:c")
-	// A fresh cipher without the keyring loaded cannot open an hp2 blob.
+	// A fresh cipher without the keyring loaded cannot open an np2 blob.
 	c2, _ := New(m)
 	if _, err := c2.Open(blob, "t:1:c"); err == nil {
-		t.Fatal("an hp2 blob must not open without its data key loaded")
+		t.Fatal("an np2 blob must not open without its data key loaded")
 	}
 }
 

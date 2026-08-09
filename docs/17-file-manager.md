@@ -11,7 +11,7 @@ atomic-swap deploy would corrupt exactly the guarantee those modes exist to
 provide. The gate lives in the service (`internal/files`, `resolveEditable`) and
 is proven closed in CI.
 
-Builds on Sites (per-site Linux user + home) and the `hp-broker` security spine
+Builds on Sites (per-site Linux user + home) and the `np-broker` security spine
 (capability model, path policy, hash-chained audit).
 
 ---
@@ -28,7 +28,7 @@ This is the real containment: a symlink under the site root pointing at
 `/etc/shadow` is only as reachable as the site user's own uid allows — i.e. not
 at all — and a write cannot escape the tree the site user owns. Root never holds
 the file handle. The e2e proves this directly: every file created through the API
-is owned by the site's uid (`hps1`), not `root`.
+is owned by the site's uid (`nps1`), not `root`.
 
 The single exception is `file.chown` (§3): changing a file's *owner* is root-only
 on Linux, so that operation cannot run as the site user by definition. It is
@@ -70,7 +70,7 @@ under the cap once base64 expansion (4/3) and the JSON envelope are accounted fo
   live e2e; the read test now asserts `count_bytes` never appears.)
 - **Write** takes an `append` flag. `append=false` truncates then writes (an
   editor save, or the first chunk of an upload); `append=true` appends (later
-  upload chunks). `hpd` streams a whole file by looping.
+  upload chunks). `npd` streams a whole file by looping.
 
 `internal/files` wraps this: `Download(w io.Writer)` loops `file.read` over
 advancing offsets until EOF; `Upload(r io.Reader)` streams the body into 512 KiB
@@ -92,7 +92,7 @@ one archive instead of hundreds of PUTs.
 this folder" possible at all — HTTP hands back one file, not a tree. Sources are
 each clamped, then required to share a single parent, and the tool runs *from
 that parent* with basenames. That is deliberate: an archive must contain
-`assets/logo.png`, not `srv/heropanel/sites/1/assets/logo.png`, or unpacking it
+`assets/logo.png`, not `srv/nexpanel/sites/1/assets/logo.png`, or unpacking it
 elsewhere would recreate the server's absolute tree. The e2e asserts exactly
 that.
 
@@ -122,7 +122,7 @@ cleanup runs on a context detached from the request. It exists because the only
 other route to "download this folder" is compress-then-download-then-remember-to-
 delete, and the third step never happens, so sites accumulate stale archives of
 themselves. It is **not** a zero-copy stream: `zip` needs seekable output and
-cannot be produced on a pipe, so a temporary `.hp-download-<random>.zip` really is
+cannot be produced on a pipe, so a temporary `.np-download-<random>.zip` really is
 written to disk. Its lifetime is one request, and the random name keeps two
 concurrent downloads of the same folder from colliding. Archiving the site root
 is a special case — the root has no parent inside the tree, and `file.compress`

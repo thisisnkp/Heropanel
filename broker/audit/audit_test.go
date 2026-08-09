@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/audit"
 )
 
 func appendN(t *testing.T, n int) []audit.Entry {

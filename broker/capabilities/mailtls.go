@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Mail TLS: the MTAs present ONE server certificate for the mail host's own
@@ -22,9 +22,9 @@ import (
 // a validated hostname, applied idempotently, so a re-run is a no-op.
 
 const (
-	// dovecotSSLDropin is HeroPanel's dovecot TLS drop-in. 96- sorts after the
+	// dovecotSSLDropin is NexPanel's dovecot TLS drop-in. 96- sorts after the
 	// 95- base drop-in, so its ssl_* settings win under dovecot's last-wins.
-	dovecotSSLDropin = "/etc/dovecot/conf.d/96-heropanel-ssl.conf"
+	dovecotSSLDropin = "/etc/dovecot/conf.d/96-nexpanel-ssl.conf"
 )
 
 // MailTLS wires a mail-host certificate into Postfix + Dovecot and opens the
@@ -127,7 +127,7 @@ func (MailTLS) Execute(c capability.Context, raw json.RawMessage) (capability.Re
 	// 4. Dovecot TLS drop-in: the same certificate, TLS required, and the
 	// postfix-private auth socket submission talks to. imaps/993 (and pop3s/995
 	// where dovecot-pop3d is present) come up automatically once ssl is set.
-	dropin := "# HeroPanel mail TLS (rendered; do not edit).\n" +
+	dropin := "# NexPanel mail TLS (rendered; do not edit).\n" +
 		"ssl = required\n" +
 		"ssl_cert = <" + certPath + "\n" +
 		"ssl_key = <" + keyPath + "\n" +

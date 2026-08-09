@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // newTestDB opens a fresh file-backed SQLite database and migrates it.
@@ -26,8 +26,8 @@ func newTestDB(t *testing.T) *repository.DB {
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if applied != 44 {
-		t.Fatalf("applied %d migrations, want 44", applied)
+	if applied != 45 {
+		t.Fatalf("applied %d migrations, want 45", applied)
 	}
 	return db
 }

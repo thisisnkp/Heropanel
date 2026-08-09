@@ -1,4 +1,4 @@
--- HeroPanel Phase-1 schema: sites, per-site Linux users, and domains (SQLite).
+-- NexPanel Phase-1 schema: sites, per-site Linux users, and domains (SQLite).
 
 CREATE TABLE sites (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,

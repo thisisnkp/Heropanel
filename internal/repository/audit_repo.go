@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // defaultAuditLimit bounds an unfiltered listing. The audit log is the one table
@@ -25,7 +25,7 @@ const defaultAuditLimit = 100
 // MySQL 8's native JSON type does not: it parses to a binary form and
 // re-serializes on read, reordering object keys and respacing the text — which
 // would change the hashed bytes and fail Verify on every row carrying a detail.
-// HeroPanel targets MariaDB (docs/02), so this is sound; porting the panel's own
+// NexPanel targets MariaDB (docs/02), so this is sound; porting the panel's own
 // store to MySQL would mean moving this column to TEXT first.
 type AuditRow struct {
 	ID           int64         `db:"id"`

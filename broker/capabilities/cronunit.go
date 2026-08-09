@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/unitharden"
 )
 
 // Scheduled jobs as real systemd timers.
@@ -28,7 +29,7 @@ import (
 // command's output is appended to a log file in the site's logs directory (by the
 // launcher itself), so logs work without depending on the journal.
 
-func cronBase(uid string) string        { return "heropanel-cron-" + uid }
+func cronBase(uid string) string        { return "nexpanel-cron-" + uid }
 func cronServiceName(uid string) string { return cronBase(uid) + ".service" }
 func cronTimerName(uid string) string   { return cronBase(uid) + ".timer" }
 func cronServicePath(uid string) string { return unitDir + "/" + cronServiceName(uid) }
@@ -92,7 +93,7 @@ func (CronApply) Execute(c capability.Context, raw json.RawMessage) (capability.
 
 	home := strings.TrimRight(in.Home, "/")
 	logFile := home + "/logs/cron-" + in.UID + ".log"
-	launcher := home + "/.hp-cron-" + in.UID
+	launcher := home + "/.np-cron-" + in.UID
 	// The launcher carries the command and redirects its output to the site's log
 	// dir, so `cron.logs` can read it without the systemd journal — and the shim
 	// harness, which is not systemd, captures output the same way.
@@ -129,7 +130,7 @@ func (CronApply) Execute(c capability.Context, raw json.RawMessage) (capability.
 func renderCronService(in cronApplyInput, home, launcher string) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
-	b.WriteString("Description=HeroPanel cron " + in.UID + "\n\n")
+	b.WriteString("Description=NexPanel cron " + in.UID + "\n\n")
 	b.WriteString("[Service]\n")
 	b.WriteString("Type=oneshot\n")
 	b.WriteString("User=" + in.Username + "\n")
@@ -137,12 +138,15 @@ func renderCronService(in cronApplyInput, home, launcher string) string {
 	b.WriteString("WorkingDirectory=" + home + "\n")
 	b.WriteString("ExecStart=" + launcher + "\n")
 	b.WriteString("Slice=" + SiteSliceName(in.Vhost) + "\n")
-	b.WriteString("NoNewPrivileges=true\n")
 	b.WriteString("PrivateTmp=true\n")
 	b.WriteString("ProtectSystem=strict\n")
 	b.WriteString("ProtectHome=true\n")
 	b.WriteString("ReadWritePaths=" + home + "\n")
 	b.WriteString("UMask=0027\n")
+	// A cron job is the same trust level as the app unit — the site user's own
+	// code — so it gets the same profile. Anything less would make the scheduler
+	// the soft way in.
+	b.WriteString(unitharden.SiteWorkload.Directives())
 	return b.String()
 }
 
@@ -151,7 +155,7 @@ func renderCronService(in cronApplyInput, home, launcher string) string {
 func renderCronTimer(in cronApplyInput) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
-	b.WriteString("Description=HeroPanel cron timer " + in.UID + "\n\n")
+	b.WriteString("Description=NexPanel cron timer " + in.UID + "\n\n")
 	b.WriteString("[Timer]\n")
 	b.WriteString("OnCalendar=" + in.Schedule + "\n")
 	b.WriteString("Persistent=true\n")

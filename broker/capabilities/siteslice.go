@@ -7,30 +7,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Per-site cgroup slices.
 //
-// A slice is the unit of resource accounting: everything HeroPanel supervises for
-// a site is placed inside `heropanel-site-<vhost>.slice`, so a runaway app is
+// A slice is the unit of resource accounting: everything NexPanel supervises for
+// a site is placed inside `nexpanel-site-<vhost>.slice`, so a runaway app is
 // bounded by CPUQuota/MemoryMax/TasksMax instead of taking the node down with it.
 // Placing the app in a slice is what makes "supervised in the site slice" true;
 // the limits are then just properties of that slice.
 
 // sliceParent is the top of the hierarchy. systemd creates implicit parents, so
-// `heropanel-site-hps1.slice` nests under `heropanel-site.slice` under
-// `heropanel.slice` with no extra unit files.
-const sliceParent = "heropanel-site"
+// `nexpanel-site-nps1.slice` nests under `nexpanel-site.slice` under
+// `nexpanel.slice` with no extra unit files.
+const sliceParent = "nexpanel-site"
 
 // SiteSliceName returns the slice unit name for a vhost.
 //
 // The `-` in a slice name is systemd's *hierarchy separator*, not a literal
 // character: `a-b-c.slice` means slice `c` inside `a-b` inside `a`. A vhost may
 // legally contain `-` (reVhost allows it), so an unescaped `my-site` would silently
-// nest as heropanel/site/my/site — a different cgroup tree than intended, and one
+// nest as nexpanel/site/my/site — a different cgroup tree than intended, and one
 // that would collide with a site actually named `my`. systemd's own escaping maps a
 // literal `-` to `\x2d`; we do the same.
 func SiteSliceName(vhost string) string {
@@ -126,7 +126,7 @@ func validateLimits(in siteSliceInput) error {
 func renderSiteSlice(in siteSliceInput) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
-	b.WriteString("Description=HeroPanel site slice " + in.Vhost + "\n")
+	b.WriteString("Description=NexPanel site slice " + in.Vhost + "\n")
 	b.WriteString("Before=slices.target\n\n")
 	b.WriteString("[Slice]\n")
 	// Accounting on regardless of limits: it is what makes per-site CPU/memory

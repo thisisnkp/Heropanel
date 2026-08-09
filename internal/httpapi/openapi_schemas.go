@@ -56,7 +56,7 @@ var openapiSchemas = map[string]any{
 	"AuthStatus": object(map[string]any{
 		"needs_bootstrap": prop("boolean", "True on a fresh install with no admin yet."),
 		"authenticated":   prop("boolean", ""),
-		"configured":      prop("boolean", "False when hpd has no datastore configured, so sign-in is impossible until one is set."),
+		"configured":      prop("boolean", "False when npd has no datastore configured, so sign-in is impossible until one is set."),
 	}),
 	"LoginResult": object(map[string]any{
 		"authenticated": prop("boolean", ""),
@@ -251,7 +251,7 @@ var openapiSchemas = map[string]any{
 	}),
 	"KeyringStatus": object(map[string]any{
 		"available":         prop("boolean", ""),
-		"active_generation": prop("integer", "0 => legacy single-key (hp1) mode."),
+		"active_generation": prop("integer", "0 => legacy single-key (np1) mode."),
 		"key_count":         prop("integer", ""),
 		"legacy_key_in_use": prop("boolean", ""),
 	}),
@@ -340,5 +340,29 @@ var openapiSchemas = map[string]any{
 	}),
 	"Health": object(map[string]any{
 		"status": prop("string", "\"ok\" when serving."),
+	}),
+	"UpdateStatus": object(map[string]any{
+		"current":   prop("string", "The version this process is running."),
+		"channel":   prop("string", "stable | beta | nightly."),
+		"available": prop("string", "A newer release on this channel, when there is one."),
+		"notes":     prop("string", "Short release note from the signed manifest."),
+		"up_to_date": prop("boolean", "False only when a strictly newer release exists. "+
+			"Running ahead of a channel counts as up to date — a downgrade is never offered as an update."),
+		"configured": prop("boolean", "Self-update needs both a release source and a pinned release key; "+
+			"with either missing this is false and `reason` says which."),
+		"reason":      prop("string", "Why no check could be made, when there is one."),
+		"last_state":  prop("string", "staged | applying | succeeded | failed | rolled_back."),
+		"last_target": prop("string", "The version the last attempt aimed at."),
+		"last_error":  prop("string", "Why the last attempt did not succeed."),
+	}),
+	"UpdateAttempt": object(map[string]any{
+		"UID":         prop("string", ""),
+		"FromVersion": prop("string", ""),
+		"ToVersion":   prop("string", ""),
+		"Channel":     prop("string", ""),
+		"State":       prop("string", "staged | applying | succeeded | failed | rolled_back."),
+		"Error":       prop("string", ""),
+		"StartedAt":   prop("string", ""),
+		"FinishedAt":  prop("string", "Empty while the attempt is still in flight."),
 	}),
 }

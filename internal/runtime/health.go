@@ -71,7 +71,7 @@ func (p *httpProber) Probe(ctx context.Context, url string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("User-Agent", "HeroPanel-HealthCheck/1")
+	req.Header.Set("User-Agent", "NexPanel-HealthCheck/1")
 	res, err := p.client.Do(req)
 	if err != nil {
 		return 0, err

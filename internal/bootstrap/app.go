@@ -1,4 +1,4 @@
-// Package bootstrap is hpd's composition root. It wires configuration, logging,
+// Package bootstrap is npd's composition root. It wires configuration, logging,
 // and the HTTP server together (dependency injection via explicit constructors,
 // docs/01 §2) and owns process lifecycle: start, serve, graceful shutdown.
 package bootstrap
@@ -12,50 +12,53 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/internal/apps"
-	"github.com/thisisnkp/heropanel/internal/audit"
-	"github.com/thisisnkp/heropanel/internal/auth"
-	"github.com/thisisnkp/heropanel/internal/auth/webauthn"
-	backuppkg "github.com/thisisnkp/heropanel/internal/backup"
-	brokerclient "github.com/thisisnkp/heropanel/internal/broker"
-	icache "github.com/thisisnkp/heropanel/internal/cache"
-	"github.com/thisisnkp/heropanel/internal/config"
-	"github.com/thisisnkp/heropanel/internal/cron"
-	"github.com/thisisnkp/heropanel/internal/database"
-	"github.com/thisisnkp/heropanel/internal/dns"
-	"github.com/thisisnkp/heropanel/internal/docker"
-	"github.com/thisisnkp/heropanel/internal/domain"
-	"github.com/thisisnkp/heropanel/internal/files"
-	"github.com/thisisnkp/heropanel/internal/git"
-	"github.com/thisisnkp/heropanel/internal/httpapi"
-	"github.com/thisisnkp/heropanel/internal/job"
-	"github.com/thisisnkp/heropanel/internal/keyring"
-	mailpkg "github.com/thisisnkp/heropanel/internal/mail"
-	"github.com/thisisnkp/heropanel/internal/marketplace"
-	"github.com/thisisnkp/heropanel/internal/monitor"
-	"github.com/thisisnkp/heropanel/internal/php"
-	"github.com/thisisnkp/heropanel/internal/registry"
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/internal/runtime"
-	"github.com/thisisnkp/heropanel/internal/safe"
-	"github.com/thisisnkp/heropanel/internal/security"
-	"github.com/thisisnkp/heropanel/internal/setup"
-	"github.com/thisisnkp/heropanel/internal/site"
-	"github.com/thisisnkp/heropanel/internal/ssl"
-	"github.com/thisisnkp/heropanel/internal/systemd"
-	"github.com/thisisnkp/heropanel/internal/tenancy"
-	"github.com/thisisnkp/heropanel/internal/terminal"
-	usermgmt "github.com/thisisnkp/heropanel/internal/users"
-	"github.com/thisisnkp/heropanel/internal/webhook"
-	"github.com/thisisnkp/heropanel/internal/webmail"
-	"github.com/thisisnkp/heropanel/internal/webserver"
-	"github.com/thisisnkp/heropanel/internal/ws"
-	pcache "github.com/thisisnkp/heropanel/pkg/cache"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
-	"github.com/thisisnkp/heropanel/pkg/secrets"
+	"github.com/thisisnkp/nexpanel/internal/apps"
+	"github.com/thisisnkp/nexpanel/internal/audit"
+	"github.com/thisisnkp/nexpanel/internal/auth"
+	"github.com/thisisnkp/nexpanel/internal/auth/webauthn"
+	backuppkg "github.com/thisisnkp/nexpanel/internal/backup"
+	brokerclient "github.com/thisisnkp/nexpanel/internal/broker"
+	icache "github.com/thisisnkp/nexpanel/internal/cache"
+	"github.com/thisisnkp/nexpanel/internal/config"
+	"github.com/thisisnkp/nexpanel/internal/cron"
+	"github.com/thisisnkp/nexpanel/internal/database"
+	"github.com/thisisnkp/nexpanel/internal/dns"
+	"github.com/thisisnkp/nexpanel/internal/docker"
+	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/internal/files"
+	"github.com/thisisnkp/nexpanel/internal/git"
+	"github.com/thisisnkp/nexpanel/internal/httpapi"
+	"github.com/thisisnkp/nexpanel/internal/job"
+	"github.com/thisisnkp/nexpanel/internal/keyring"
+	mailpkg "github.com/thisisnkp/nexpanel/internal/mail"
+	"github.com/thisisnkp/nexpanel/internal/marketplace"
+	"github.com/thisisnkp/nexpanel/internal/monitor"
+	"github.com/thisisnkp/nexpanel/internal/php"
+	"github.com/thisisnkp/nexpanel/internal/registry"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/internal/runtime"
+	"github.com/thisisnkp/nexpanel/internal/safe"
+	"github.com/thisisnkp/nexpanel/internal/security"
+	"github.com/thisisnkp/nexpanel/internal/setup"
+	"github.com/thisisnkp/nexpanel/internal/site"
+	"github.com/thisisnkp/nexpanel/internal/ssl"
+	"github.com/thisisnkp/nexpanel/internal/systemd"
+	"github.com/thisisnkp/nexpanel/internal/tenancy"
+	"github.com/thisisnkp/nexpanel/internal/terminal"
+	"github.com/thisisnkp/nexpanel/internal/update"
+	usermgmt "github.com/thisisnkp/nexpanel/internal/users"
+	"github.com/thisisnkp/nexpanel/internal/webhook"
+	"github.com/thisisnkp/nexpanel/internal/webmail"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/internal/ws"
+	pcache "github.com/thisisnkp/nexpanel/pkg/cache"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/secrets"
 )
 
 // App holds the wired application, its HTTP server, and owned resources.
@@ -95,8 +98,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		// say how to fix it — the alternative is an operator staring at a login
 		// screen that rejects every attempt.
 		log.Error("no datastore configured — the panel cannot sign anyone in",
-			"fix", "set database.dsn in the config file, or the HP_DATABASE_DSN environment variable, then restart",
-			"example_sqlite", "HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/var/lib/heropanel/hp.db")
+			"fix", "set database.dsn in the config file, or the NP_DATABASE_DSN environment variable, then restart",
+			"example_sqlite", "NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/var/lib/nexpanel/np.db")
 	}
 
 	// Two-tier cache: an always-present in-process L1, composed with Redis L2 +
@@ -126,7 +129,20 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	// broker is absent (services that need it fail with an "unavailable" error).
 	var gw brokerclient.Gateway
 	var brokerConn *brokerclient.Client
-	if cfg.Broker.Socket != "" {
+	if cfg.Broker.Remote.Enabled() {
+		// A remote broker replaces the socket rather than supplementing it: the
+		// panel drives one broker, and quietly falling back to a local one when
+		// the remote is misconfigured would run privileged operations on the
+		// wrong machine.
+		conn, err := remoteBrokerClient(cfg, log)
+		if err != nil {
+			return nil, err
+		}
+		brokerConn = conn
+		gw = brokerclient.NewResilient(brokerConn, log)
+		brokerHealth = brokerConn
+		log.Info("broker gateway configured (remote node)", "addr", cfg.Broker.Remote.Addr)
+	} else if cfg.Broker.Socket != "" {
 		brokerConn = brokerclient.NewClient(cfg.Broker.Socket, cfg.Broker.Token, log)
 		// Wrap the raw client in a bulkhead + circuit breaker so a hung or down
 		// broker cannot exhaust request goroutines or cost every call a full
@@ -139,7 +155,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 
 	// Docker. Unlike every other module this one needs no datastore — it manages
 	// containers on the host, not rows — but it is useless without the broker,
-	// because the daemon socket is root-equivalent and hpd must never hold it.
+	// because the daemon socket is root-equivalent and npd must never hold it.
 	// A nil gateway therefore switches the module off entirely rather than
 	// leaving a UI that offers containers it cannot reach.
 	dockerSvc := docker.New(gw)
@@ -176,8 +192,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	}
 
 	// Load the rotating data-key envelope: with a datastore + master key, any
-	// wrapped data keys are unwrapped so existing hp2 blobs open and new writes
-	// seal under the active generation. An empty table leaves legacy hp1 mode.
+	// wrapped data keys are unwrapped so existing np2 blobs open and new writes
+	// seal under the active generation. An empty table leaves legacy np1 mode.
 	var keyringSvc *keyring.Service
 	if db != nil && cipher.Configured() {
 		ks := repository.NewKeyringStore(db)
@@ -224,6 +240,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var dnsSvc *dns.Service
 	var domainSvc *domain.Service
 	var setupSvc *setup.Service
+	var updateSvc *update.Service
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -241,7 +258,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		if cfg.Security.WebAuthn.RPID != "" {
 			authSvc = authSvc.WithWebAuthn(repository.NewWebAuthnRepository(db), webauthn.New(webauthn.Config{
 				RPID:   cfg.Security.WebAuthn.RPID,
-				RPName: firstNonEmpty(cfg.Security.WebAuthn.RPName, "HeroPanel"),
+				RPName: firstNonEmpty(cfg.Security.WebAuthn.RPName, "NexPanel"),
 				Origin: cfg.Security.WebAuthn.Origin,
 			}))
 			log.Info("passkeys enabled", "rp_id", cfg.Security.WebAuthn.RPID)
@@ -284,7 +301,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		domainSvc = domain.NewService(repository.NewDomainStore(db), domainSiteAdapter{repo: siteStore})
 		// Parked-domain registry (park a domain with no site, prove ownership via
 		// DNS TXT, offer it as "free" at site creation). Reuses the mail module's
-		// resolver pin (cfg.Mail.Resolver / HP_MAIL_RESOLVER) rather than adding a
+		// resolver pin (cfg.Mail.Resolver / NP_MAIL_RESOLVER) rather than adding a
 		// second identical knob — both are the same "pin DNS for e2e" concern.
 		domainSvc.WithParked(repository.NewParkedDomainStore(db), cfg.Mail.Resolver)
 		phpSvc = php.NewService(repository.NewPHPPoolStore(db), gw)
@@ -398,7 +415,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			log.Info("backup sftp target configured", "host", cfg.Backup.SFTP.Host)
 		}
 		// rclone target: any of rclone's cloud backends (GDrive/Dropbox/OneDrive…)
-		// via an operator-configured remote — no OAuth code or provider SDK in hpd.
+		// via an operator-configured remote — no OAuth code or provider SDK in npd.
 		if t := backuppkg.NewRcloneTarget(backuppkg.RcloneConfig{
 			Bin: cfg.Backup.Rclone.Bin, Config: cfg.Backup.Rclone.Config, Remote: cfg.Backup.Rclone.Remote,
 		}); t != nil {
@@ -407,7 +424,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		// Panel self-backup: the panel's own database on the same pipeline,
 		// sealed with the same derived key. Restore is out-of-band by design
-		// (`hpd decrypt` + docs/22 §7).
+		// (`npd decrypt` + docs/22 §7).
 		if cfg.Backup.Panel.Enabled {
 			backupSvc = backupSvc.WithPanel(backupStore, panelSnapshotter(db, cfg.Database, gw), backuppkg.PanelPolicy{
 				Target: cfg.Backup.Panel.Target, IntervalHours: cfg.Backup.Panel.IntervalHours, Keep: cfg.Backup.Panel.Keep,
@@ -418,6 +435,21 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 					"interval_hours", cfg.Backup.Panel.IntervalHours, "target", cfg.Backup.Panel.Target)
 			}
 		}
+		// Panel self-update (docs/26). Wired after backups so it can take a
+		// database snapshot before applying — migrations are the one part of an
+		// update that copying the old binaries back cannot undo.
+		updateSvc = update.NewService(
+			repository.NewPanelUpdateStore(db), gw,
+			update.Config{Channel: cfg.Update.Channel, BaseURL: cfg.Update.BaseURL, PubKey: cfg.Update.PubKey},
+			version, updateDataDir(cfg), log,
+		).WithSnapshotter(panelBackupSnapshotter{svc: backupSvc})
+		// An update destroys the process that started it, so nobody is left to
+		// record how it went. Settle whatever was in flight from the installer's
+		// result file — or, failing that, from the version we came back as.
+		if err := updateSvc.Reconcile(ctx); err != nil {
+			log.Warn("self-update: could not reconcile the last attempt", "err", err)
+		}
+
 		if backupSvc.Available() {
 			safe.Go(ctx, log, "backup-scheduler", func(ctx context.Context) {
 				backupSvc.RunScheduler(ctx, func(ctx context.Context, id int64) (string, bool) {
@@ -448,7 +480,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 				repository.NewWebmailSSOStore(db))
 		}
 		// Firewall: nftables with a snapshot-and-revert safety net. The guard
-		// runs in-process (hpd is local to the box, so it can always fire the
+		// runs in-process (npd is local to the box, so it can always fire the
 		// revert even when the change locked out remote access) and recovers a
 		// pending change across a restart from the persisted deadline.
 		firewallSvc = security.NewFirewall(repository.NewFirewallStore(db), gw)
@@ -501,7 +533,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				log.Error("terminal session recording is DISABLED: the recordings directory could not be created",
 					"dir", dir, "err", err,
-					"fix", "create the directory and make it writable by the hpd user, or set terminal.recording.dir to \"\" to silence this")
+					"fix", "create the directory and make it writable by the npd user, or set terminal.recording.dir to \"\" to silence this")
 			} else {
 				recordings = terminal.NewRecordingStore(dir, repository.NewRecordingStore(db), retention)
 				log.Info("terminal session recording enabled",
@@ -561,7 +593,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 
 	// The module registry. In-core features register the capabilities they
 	// provide — but only the ones actually wired (their datastore is present) —
-	// so the set the UI gates on reflects what this hpd can really do, not what
+	// so the set the UI gates on reflects what this npd can really do, not what
 	// the binary was compiled with. Satellite modules (Phase 9/10) will Register
 	// here at enable time over the same interface.
 	reg := registry.New()
@@ -718,7 +750,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	}
 
 	// Node metrics. Needs no datastore or broker — /proc is world-readable — so
-	// the monitor exists whenever hpd does. Per-site and service metrics are wired
+	// the monitor exists whenever npd does. Per-site and service metrics are wired
 	// on top when the pieces they need are present; the live dashboard's sampler
 	// is started with the hub below.
 	monitorSvc := monitor.New()
@@ -739,9 +771,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			WithAlertAdmin(alertStore).
 			WithAlerts(monitor.NewEvaluator(alertStore, monitor.NewHTTPNotifier(log), log))
 		// The persist cadence is a minute in production; the e2e shortens it via
-		// HP_MONITOR_PERSIST_SEC so a firing can be proven without a real minute.
+		// NP_MONITOR_PERSIST_SEC so a firing can be proven without a real minute.
 		persistEvery := time.Duration(0)
-		if v := os.Getenv("HP_MONITOR_PERSIST_SEC"); v != "" {
+		if v := os.Getenv("NP_MONITOR_PERSIST_SEC"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil && n > 0 {
 				persistEvery = time.Duration(n) * time.Second
 			}
@@ -800,6 +832,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Webhooks:    webhookSvc,
 		Marketplace: marketplaceSvc,
 		Setup:       setupSvc,
+		Update:      updateSvc,
 		Keyring:     keyringSvc,
 		Sites:       siteSvc,
 		PHP:         phpSvc,
@@ -885,7 +918,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	// systemd integration (no-op when not run under systemd): report readiness
 	// for the Type=notify unit, then pet the watchdog on its interval so a hung
-	// hpd — not just a crashed one — is killed and restarted. The pinger is
+	// npd — not just a crashed one — is killed and restarted. The pinger is
 	// supervised so it can never itself crash the process.
 	sd := systemd.New()
 	defer func() { _ = sd.Close() }()
@@ -948,4 +981,36 @@ func ensureTempDomainWildcard(ctx context.Context, dnsSvc *dns.Service, sel setu
 		log.Info("setup: panel domain is not a zone hosted here — add this record at your DNS provider",
 			"record", wildcard, "type", "A", "value", sel.PanelIPv4)
 	}
+}
+
+// updateDataDir is where self-update stages releases and leaves its result
+// file. It is derived from the datastore path rather than configured
+// separately: npd's systemd unit grants ReadWritePaths on exactly that
+// directory, so anywhere else would need a policy change to write to, and a
+// second setting to keep in step with the first.
+func updateDataDir(cfg config.Config) string {
+	if dsn := strings.TrimSpace(cfg.Database.DSN); dsn != "" && cfg.Database.Driver == "sqlite" {
+		if dir := filepath.Dir(dsn); dir != "" && dir != "." {
+			return dir
+		}
+	}
+	return "/var/lib/nexpanel"
+}
+
+// panelBackupSnapshotter adapts the backup service to the narrow snapshotter
+// the updater needs. The updater declares its own two-method interface rather
+// than importing backup's types, so the two modules stay independent — this is
+// the seam where they meet.
+type panelBackupSnapshotter struct{ svc *backuppkg.Service }
+
+func (p panelBackupSnapshotter) PanelAvailable() bool {
+	return p.svc != nil && p.svc.PanelAvailable()
+}
+
+func (p panelBackupSnapshotter) CreatePanelBackup(ctx context.Context) (*update.BackupRef, error) {
+	b, err := p.svc.CreatePanelBackup(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &update.BackupRef{UID: b.UID}, nil
 }

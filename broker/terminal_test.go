@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // A terminal is the most powerful thing the broker hands out, so every one of
@@ -17,7 +17,7 @@ import (
 // which is why they run on any platform — actually spawning the shell is what
 // the Linux e2e (run-terminal.sh) proves.
 
-const termRoot = "/srv/heropanel/sites/1"
+const termRoot = "/srv/nexpanel/sites/1"
 
 func lastOutcome(entries *[]audit.Entry) audit.Outcome {
 	if len(*entries) == 0 {
@@ -32,7 +32,7 @@ func TestTerminalDeniedWhenPolicyDisabled(t *testing.T) {
 	b, entries := newTestBroker(t, pol, &exec.FakeRunner{})
 
 	_, err := b.OpenTerminal(context.Background(), broker.TerminalRequest{
-		Username: "hps1", Root: termRoot,
+		Username: "nps1", Root: termRoot,
 		Actor: capability.Actor{CorrelationID: "c1"},
 	})
 	if !errx.IsKind(err, errx.KindForbidden) {
@@ -73,7 +73,7 @@ func TestTerminalRejectsRootOutsidePolicy(t *testing.T) {
 	b, entries := newTestBroker(t, policy.Default(), &exec.FakeRunner{})
 
 	_, err := b.OpenTerminal(context.Background(), broker.TerminalRequest{
-		Username: "hps1", Root: "/etc",
+		Username: "nps1", Root: "/etc",
 	})
 	if !errx.IsKind(err, errx.KindForbidden) {
 		t.Fatalf("a home outside the policy roots must be forbidden, got %v", err)
@@ -91,7 +91,7 @@ func TestTerminalClampsWorkingDirectory(t *testing.T) {
 	b, entries := newTestBroker(t, policy.Default(), &exec.FakeRunner{})
 
 	_, err := b.OpenTerminal(context.Background(), broker.TerminalRequest{
-		Username: "hps1", Root: termRoot, Cwd: "../../../../etc",
+		Username: "nps1", Root: termRoot, Cwd: "../../../../etc",
 	})
 	// Authorization succeeded (the traversal was clamped under the root), so the
 	// only thing that can fail now is allocating the PTY itself — which is

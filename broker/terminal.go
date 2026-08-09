@@ -5,10 +5,10 @@ import (
 	"os"
 	"path"
 
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/pty"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/pty"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The interactive terminal is the one capability that cannot be a one-shot
@@ -60,7 +60,7 @@ func (b *Broker) OpenTerminal(_ context.Context, req TerminalRequest) (*pty.Sess
 		return nil, err
 	}
 	// Refusing root here is belt-and-braces: policy path roots already keep the
-	// session inside /srv/heropanel/sites, but a terminal is the one place where
+	// session inside /srv/nexpanel/sites, but a terminal is the one place where
 	// "which user" is the entire security question, so it is stated outright.
 	if req.Username == "root" {
 		b.record(audit.OutcomeDenied, ar, "root terminal refused")

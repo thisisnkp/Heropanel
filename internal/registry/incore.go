@@ -3,10 +3,10 @@ package registry
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/proto"
+	"github.com/thisisnkp/nexpanel/pkg/proto"
 )
 
-// InCoreProvider advertises the capabilities of a feature compiled into hpd.
+// InCoreProvider advertises the capabilities of a feature compiled into npd.
 //
 // docs/06 §1: in-core features are "Go packages behind interfaces,
 // feature-flagged" that still implement the same logical contract as satellite
@@ -31,7 +31,7 @@ func NewInCore(slug string, capabilities ...string) *InCoreProvider {
 }
 
 // Handshake reports the in-core feature's identity. It stamps the current API
-// version because an in-core feature is, by definition, built against this hpd.
+// version because an in-core feature is, by definition, built against this npd.
 func (p *InCoreProvider) Handshake(context.Context) proto.HandshakeResponse {
 	return proto.HandshakeResponse{
 		APIVersion:   proto.APIVersion,
@@ -41,7 +41,7 @@ func (p *InCoreProvider) Handshake(context.Context) proto.HandshakeResponse {
 	}
 }
 
-// Health is always Serving: an in-core feature lives or dies with hpd itself, so
+// Health is always Serving: an in-core feature lives or dies with npd itself, so
 // if this code is running to answer, the feature is up.
 func (p *InCoreProvider) Health(context.Context) proto.HealthResponse {
 	return proto.HealthResponse{State: proto.Serving}

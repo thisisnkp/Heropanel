@@ -2,17 +2,17 @@
 
 ## 1. Architectural Style
 
-HeroPanel is a **privilege-separated modular monolith with on-demand satellite processes**. It is *not* a microservice mesh (too much RAM/ops for a self-hosted panel) and *not* a single fat binary (cannot satisfy "install/restart modules independently" or the security boundary). It is the pragmatic middle: a small set of long-lived processes plus modules that spawn only when enabled.
+NexPanel is a **privilege-separated modular monolith with on-demand satellite processes**. It is *not* a microservice mesh (too much RAM/ops for a self-hosted panel) and *not* a single fat binary (cannot satisfy "install/restart modules independently" or the security boundary). It is the pragmatic middle: a small set of long-lived processes plus modules that spawn only when enabled.
 
 ```
                           ┌───────────────────────────────────────────────┐
                           │                    OPERATOR                    │
-                          │   Browser (React SPA)   •   hpctl CLI   •  API  │
+                          │   Browser (React SPA)   •   npctl CLI   •  API  │
                           └───────────────┬───────────────────────────────┘
                                           │ HTTPS / WSS (:8443)   Unix sock
                                           ▼
         ╔═════════════════════════════════════════════════════════════════════╗
-        ║                     hpd  —  CONTROL PLANE (non-root, user: heropanel) ║
+        ║                     npd  —  CONTROL PLANE (non-root, user: nexpanel) ║
         ║                                                                       ║
         ║   HTTP Edge (Chi)  ── Auth ── RBAC ── RateLimit ── Audit ── Validate  ║
         ║        │                                                              ║
@@ -25,15 +25,15 @@ HeroPanel is a **privilege-separated modular monolith with on-demand satellite p
              │              │              │                  │ gRPC / unix sockets
    ┌─────────▼───┐   ┌──────▼──────┐  ┌────▼────┐    ┌─────────▼───────────────────┐
    │  MariaDB    │   │   Redis     │  │ Workers │    │  MODULES (spawn when enabled) │
-   │  (state)    │   │ queue+cache │  │ (pool)  │    │  hp-mod-docker  hp-mod-mail   │
-   └─────────────┘   │ +pubsub     │  └─────────┘    │  hp-mod-dns     hp-mod-monitor│
-                     └─────────────┘                 │  hp-mod-backup  ...           │
+   │  (state)    │   │ queue+cache │  │ (pool)  │    │  np-mod-docker  np-mod-mail   │
+   └─────────────┘   │ +pubsub     │  └─────────┘    │  np-mod-dns     np-mod-monitor│
+                     └─────────────┘                 │  np-mod-backup  ...           │
                                                      └───────────────────────────────┘
                                           │
                                           │ privileged ops only (gRPC / unix sock, root)
                                           ▼
         ╔═════════════════════════════════════════════════════════════════════╗
-        ║              hp-broker  —  PRIVILEGE BROKER (root, tiny, audited)     ║
+        ║              np-broker  —  PRIVILEGE BROKER (root, tiny, audited)     ║
         ║   Capability allowlist • arg-array exec (no shell) • per-call audit   ║
         ╚═════════════════════════════════════════════════════════════════════╝
              │ useradd  systemctl  nft  certbot  file-ops  service configs …
@@ -48,14 +48,14 @@ HeroPanel is a **privilege-separated modular monolith with on-demand satellite p
 
 | Class | Process(es) | Runs as | Lifetime | Purpose |
 |-------|-------------|---------|----------|---------|
-| **Control plane** | `hpd` | `heropanel` (unpriv) | always | API, auth, orchestration, scheduler, realtime, module registry |
-| **Privilege broker** | `hp-broker` | `root` | always | Executes the *only* allowlisted privileged operations |
-| **Modules** | `hp-mod-*` | dedicated unpriv users (or root where unavoidable, e.g. docker) | on-demand | Heavy/optional capabilities isolated as separate supervised processes |
-| **Ephemeral workers** | goroutine pool inside `hpd` + spawned jobs | `heropanel` | per-job | Async work items pulled from Redis Streams |
+| **Control plane** | `npd` | `nexpanel` (unpriv) | always | API, auth, orchestration, scheduler, realtime, module registry |
+| **Privilege broker** | `np-broker` | `root` | always | Executes the *only* allowlisted privileged operations |
+| **Modules** | `np-mod-*` | dedicated unpriv users (or root where unavoidable, e.g. docker) | on-demand | Heavy/optional capabilities isolated as separate supervised processes |
+| **Ephemeral workers** | goroutine pool inside `npd` + spawned jobs | `nexpanel` | per-job | Async work items pulled from Redis Streams |
 
-**Why `hpd` and `hp-broker` are split** is the central security invariant: a compromise of the network-facing code (largest attack surface) does **not** grant root. The attacker can only ask the broker to perform a fixed set of validated operations. See [05 — Security](05-security-architecture.md).
+**Why `npd` and `np-broker` are split** is the central security invariant: a compromise of the network-facing code (largest attack surface) does **not** grant root. The attacker can only ask the broker to perform a fixed set of validated operations. See [05 — Security](05-security-architecture.md).
 
-## 2. Clean Architecture Layers (inside `hpd`)
+## 2. Clean Architecture Layers (inside `npd`)
 
 Dependencies point **inward only**. Outer layers depend on inner; inner never imports outer.
 
@@ -78,7 +78,7 @@ Dependencies point **inward only**. Outer layers depend on inner; inner never im
 - **Infrastructure** provides concrete implementations (sqlx/GORM repos, Redis client, broker gRPC client).
 - **Delivery** translates transport ↔ service DTOs. Chi handlers are thin: decode → validate → call service → encode.
 
-**Dependency Injection**: a composition root (`cmd/hpd/main.go` → `internal/bootstrap`) wires concrete infra into services. We use **explicit constructor injection** (no reflection-based container magic) with a small `Container` struct. Optional: `google/wire` for compile-time DI if wiring grows unwieldy — decided per ADR later.
+**Dependency Injection**: a composition root (`cmd/npd/main.go` → `internal/bootstrap`) wires concrete infra into services. We use **explicit constructor injection** (no reflection-based container magic) with a small `Container` struct. Optional: `google/wire` for compile-time DI if wiring grows unwieldy — decided per ADR later.
 
 ## 3. Component Responsibilities
 
@@ -107,8 +107,8 @@ Authz(RBAC scope check) → BodyLimit → Validate → Handler → Audit(mutatio
 ### 3.4 Caching Layer (two-tier: in-process L1 + Redis L2)
 Caching is deliberately **two-tier** so hot reads never touch the network and the RAM budget stays intact.
 
-- **L1 — in-process "normal" cache.** A local in-memory cache living inside each `hpd` (and reusable by modules via the SDK). Fast — no network hop, nanosecond reads — TTL + size-bounded **sharded LRU** (sharded to avoid lock contention). Holds hot, small, read-heavy data: resolved RBAC permission sets, session/JWT validation results, the module capability set, `settings`, per-site config, DNS/SSL lookups, and the fast path of rate-limit counters.
-- **L2 — Redis.** Shared/distributed cache across processes and (future) nodes; larger, survives an `hpd` restart, and is the coordination point for invalidation.
+- **L1 — in-process "normal" cache.** A local in-memory cache living inside each `npd` (and reusable by modules via the SDK). Fast — no network hop, nanosecond reads — TTL + size-bounded **sharded LRU** (sharded to avoid lock contention). Holds hot, small, read-heavy data: resolved RBAC permission sets, session/JWT validation results, the module capability set, `settings`, per-site config, DNS/SSL lookups, and the fast path of rate-limit counters.
+- **L2 — Redis.** Shared/distributed cache across processes and (future) nodes; larger, survives an `npd` restart, and is the coordination point for invalidation.
 - **Read path.** L1 → miss → L2 → miss → load from source (DB / broker / module) → populate L2, then L1. Short-TTL **negative caching** ("not found") blunts lookup storms.
 - **Coherence & invalidation.** Writes publish an invalidation message on a Redis Pub/Sub `cache:invalidate` channel; every process drops the affected L1 keys, so the in-process cache never serves stale data across the fleet. Each entry also carries a TTL as a backstop.
 - **Stampede protection.** `singleflight` around cold loads so a hot key is computed once per process; jittered TTLs avoid synchronized expiry.
@@ -124,13 +124,13 @@ Caching is deliberately **two-tier** so hot reads never touch the network and th
 - Retries with exponential backoff + jitter; poisoned jobs → dead-letter stream + operator alert.
 
 ### 3.6 Realtime Hub
-- Central WebSocket hub in `hpd`; subscribes to **Redis Pub/Sub** channels so events fan out even across future multi-node control planes.
+- Central WebSocket hub in `npd`; subscribes to **Redis Pub/Sub** channels so events fan out even across future multi-node control planes.
 - Channels are scoped and RBAC-filtered: a client only receives events for resources it may read (e.g. `site:42:*`, `job:*`, `metrics:node`).
 - Message envelope: `{ channel, type, resource, data, ts, seq }`. Client reconciles via React Query cache invalidation.
 - Backpressure: per-connection bounded send buffer; slow clients dropped and told to refetch (no unbounded memory growth).
 
 ### 3.7 Module Registry
-- Discovers modules from `/opt/heropanel/modules/*/module.yaml`.
+- Discovers modules from `/opt/nexpanel/modules/*/module.yaml`.
 - Maintains each module's state (`installed`, `enabled`, `running`, `version`, `health`).
 - Holds a **gRPC client** per running module (dial its Unix socket). Lazy-connects; reconnects with backoff.
 - Requests systemd start/stop of module units **via the broker** (start/stop is a privileged op).
@@ -145,7 +145,7 @@ Caching is deliberately **two-tier** so hot reads never touch the network and th
 | Concern | Approach |
 |---------|----------|
 | Startup time | Lazy module load; DB migrations gated; target cold start **< 1.5 s** |
-| Idle RAM | `hpd` + `hp-broker` **< 80 MB RSS** idle; modules add ~15–40 MB each *only when enabled* |
+| Idle RAM | `npd` + `np-broker` **< 80 MB RSS** idle; modules add ~15–40 MB each *only when enabled* |
 | CPU | No busy polling. Metrics via event/subscription; system stats sampled on an interval only while a client is subscribed |
 | Blocking OS calls | Never on the request goroutine — dispatched as jobs or to modules |
 | Connection reuse | Pooled MariaDB + Redis; persistent gRPC channels to modules & broker |
@@ -153,8 +153,8 @@ Caching is deliberately **two-tier** so hot reads never touch the network and th
 | Graceful shutdown | `context` cancellation → drain HTTP → finish/park in-flight jobs → close modules → flush audit |
 
 ## 5. Configuration Model
-- Layered: **defaults (compiled) → `/etc/heropanel/config.yaml` → env vars (`HP_*`) → runtime settings table (DB)**. Later layers override earlier.
-- Secrets (DB password, JWT signing key, broker token, encryption keys) live in `/etc/heropanel/secrets.env` (mode `0600`, owner `heropanel`) or an optional OS keyring / age-encrypted store — never in the world-readable config or the DB in plaintext.
+- Layered: **defaults (compiled) → `/etc/nexpanel/config.yaml` → env vars (`NP_*`) → runtime settings table (DB)**. Later layers override earlier.
+- Secrets (DB password, JWT signing key, broker token, encryption keys) live in `/etc/nexpanel/secrets.env` (mode `0600`, owner `nexpanel`) or an optional OS keyring / age-encrypted store — never in the world-readable config or the DB in plaintext.
 - Hot-reloadable settings (feature flags, rate limits, branding) live in the DB `settings` table and push a `settings.changed` realtime event; structural settings (ports, DB DSN) require restart.
 
 ## 6. Observability

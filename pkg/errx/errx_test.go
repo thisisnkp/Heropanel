@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestKindClassification(t *testing.T) {

@@ -8,16 +8,16 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/thisisnkp/heropanel/internal/repository"
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/internal/repository"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // apiKeyPrefix is the human-recognizable, non-secret key prefix; keyPrefixLen
 // characters are stored for O(1) lookup.
 const (
-	apiKeyPrefix = "hp_"
-	keyPrefixLen = 14 // "hp_" + 11 chars
+	apiKeyPrefix = "np_"
+	keyPrefixLen = 14 // "np_" + 11 chars
 )
 
 // APIKeyView is the API representation of a key (never includes the secret).

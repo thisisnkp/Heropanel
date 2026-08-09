@@ -5,7 +5,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Ownership tree (reseller tenancy). users.parent_user_id links a client to the
@@ -14,7 +14,7 @@ import (
 // membership test: a resource is visible iff its owner_id is in that set.
 //
 // The subtree is resolved with a recursive CTE, supported by both engines
-// HeroPanel targets (SQLite ≥3.8.3, MariaDB ≥10.2). Deleted users are excluded
+// NexPanel targets (SQLite ≥3.8.3, MariaDB ≥10.2). Deleted users are excluded
 // so an orphaned/removed account never carries visibility.
 
 // SetParent sets (or clears, when parentID is 0) a user's owning account.

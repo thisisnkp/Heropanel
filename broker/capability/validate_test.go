@@ -3,8 +3,8 @@ package capability_test
 import (
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestValidateUsername(t *testing.T) {

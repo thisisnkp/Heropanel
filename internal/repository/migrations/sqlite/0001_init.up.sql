@@ -1,4 +1,4 @@
--- HeroPanel Phase-0 schema (SQLite dialect).
+-- NexPanel Phase-0 schema (SQLite dialect).
 -- Identity, RBAC, sessions, API keys, audit, settings, jobs.
 
 CREATE TABLE users (

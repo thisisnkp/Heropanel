@@ -27,7 +27,7 @@ const (
 
 // Record is the input to Append (Seq, PrevHash and Hash are assigned by Chain).
 type Record struct {
-	Actor      string    // correlation: who requested (from hpd)
+	Actor      string    // correlation: who requested (from npd)
 	Capability string    // capability name
 	Outcome    Outcome   // intent/success/failure/denied
 	Detail     string    // sanitized detail (never secrets or raw stderr)

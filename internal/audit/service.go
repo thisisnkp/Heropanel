@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
-	"github.com/thisisnkp/heropanel/pkg/idgen"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
 // Repo persists audit entries. Append must not assign PrevHash/RowHash — the
@@ -32,8 +32,8 @@ type Filter struct {
 //
 // Appends are serialized by mu: the chain is a linked list, so two concurrent
 // writers reading the same head would produce two rows claiming the same
-// predecessor and permanently fork the chain. This is correct for one hpd
-// process, which is what HeroPanel runs today. A multi-node deployment (the
+// predecessor and permanently fork the chain. This is correct for one npd
+// process, which is what NexPanel runs today. A multi-node deployment (the
 // Phase 10 HA path) needs the head to be claimed in the database instead — a
 // SELECT ... FOR UPDATE on MariaDB — and this comment is the marker for that
 // work.
@@ -68,7 +68,7 @@ func (s *Service) Record(ctx context.Context, r Record) (Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Load the head once, lazily: hpd must boot even when the audit table is
+	// Load the head once, lazily: npd must boot even when the audit table is
 	// momentarily unreachable, and the first write is a natural retry point.
 	if !s.loaded {
 		head, err := s.repo.Head(ctx)

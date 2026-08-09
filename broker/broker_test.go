@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker"
-	"github.com/thisisnkp/heropanel/broker/audit"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/policy"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker"
+	"github.com/thisisnkp/nexpanel/broker/audit"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/policy"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func newTestBroker(t *testing.T, pol policy.Policy, runner exec.Runner) (*broker.Broker, *[]audit.Entry) {
@@ -140,13 +140,13 @@ func TestInvokeUserCreateSuccessBuildsExactArgs(t *testing.T) {
 
 	_, err := b.Invoke(context.Background(), broker.Request{
 		Capability: "system_user.create",
-		Input:      mustJSON(t, map[string]string{"username": "site1", "home": "/srv/heropanel/sites/1"}),
+		Input:      mustJSON(t, map[string]string{"username": "site1", "home": "/srv/nexpanel/sites/1"}),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	last, _ := fake.Last()
-	want := []string{"--create-home", "--home-dir", "/srv/heropanel/sites/1", "--shell", "/usr/sbin/nologin", "--user-group", "site1"}
+	want := []string{"--create-home", "--home-dir", "/srv/nexpanel/sites/1", "--shell", "/usr/sbin/nologin", "--user-group", "site1"}
 	if last.Path != "/usr/sbin/useradd" || !equalArgs(last.Args, want) {
 		t.Fatalf("command = %+v, want useradd %v", last, want)
 	}
@@ -158,7 +158,7 @@ func TestInvokeUserCreateRejectsBadUsername(t *testing.T) {
 
 	_, err := b.Invoke(context.Background(), broker.Request{
 		Capability: "system_user.create",
-		Input:      mustJSON(t, map[string]string{"username": "Bad Name", "home": "/srv/heropanel/sites/1"}),
+		Input:      mustJSON(t, map[string]string{"username": "Bad Name", "home": "/srv/nexpanel/sites/1"}),
 	})
 	if !errx.IsKind(err, errx.KindValidation) {
 		t.Fatalf("want validation error, got %v", err)

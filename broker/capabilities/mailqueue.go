@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The mail queue and per-mailbox quota, read and managed through postfix's and
@@ -23,7 +23,7 @@ const (
 // (base-52ish) formats both fall inside this charset, which is argv-safe.
 var reQueueID = regexp.MustCompile(`^[A-Za-z0-9]{5,32}$`)
 
-// maxQueueJSON bounds the queue listing handed back to hpd. postqueue -j is
+// maxQueueJSON bounds the queue listing handed back to npd. postqueue -j is
 // one JSON object per line; a megabyte is thousands of queued messages, which
 // is already a "the panel shows the top of it" situation.
 const maxQueueJSON = 1 << 20
@@ -34,7 +34,7 @@ const maxQueueDelete = 100
 // ── mail.queue.list ──────────────────────────────────────────────────────────
 
 // MailQueueList returns the raw `postqueue -j` output (JSON lines). Parsing
-// stays in hpd — the broker's job is running the pinned binary, not modeling
+// stays in npd — the broker's job is running the pinned binary, not modeling
 // postfix's schema.
 type MailQueueList struct{}
 
@@ -55,7 +55,7 @@ func (MailQueueList) Execute(c capability.Context, _ json.RawMessage) (capabilit
 	out := string(res.Stdout)
 	if len(out) > maxQueueJSON {
 		out = out[:maxQueueJSON]
-		// Cut at the last complete line so hpd never parses a torn object.
+		// Cut at the last complete line so npd never parses a torn object.
 		if i := strings.LastIndexByte(out, '\n'); i > 0 {
 			out = out[:i+1]
 		}
@@ -88,7 +88,7 @@ func (MailQueueFlush) Execute(c capability.Context, _ json.RawMessage) (capabili
 
 // MailQueueDelete removes specific messages by queue ID. Explicit IDs only —
 // there is deliberately no "delete ALL": destroying the whole queue is not a
-// button, and a compromised hpd must not be able to make mail disappear
+// button, and a compromised npd must not be able to make mail disappear
 // wholesale through this capability.
 type MailQueueDelete struct{}
 
@@ -147,7 +147,7 @@ func (MailQuota) Name() string { return "mail.quota" }
 const maxQuotaBatch = 200
 
 // reMailAddress bounds a full address for argv safety (local@fqdn, the
-// module's own charsets — hpd already validated semantics).
+// module's own charsets — npd already validated semantics).
 var reMailAddress = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]{0,63}@[a-z0-9.-]{1,253}$`)
 
 // Execute implements capability.Capability.

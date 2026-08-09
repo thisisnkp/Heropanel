@@ -1,4 +1,4 @@
-// Package cache provides HeroPanel's two-tier caching primitives.
+// Package cache provides NexPanel's two-tier caching primitives.
 //
 // The panel uses a two-tier cache (see docs/01-architecture.md §3.4):
 //
@@ -10,7 +10,7 @@
 //     L1 -> L2 -> loader and single-flight stampede protection.
 //
 // This package is intentionally dependency-light (standard library only) so it
-// can be reused by both the core (hpd) and satellite modules via the plugin SDK
+// can be reused by both the core (npd) and satellite modules via the plugin SDK
 // without pulling heavy transitive dependencies — protecting the RAM budget.
 //
 // Value semantics: implementations copy values on both Set and Get, so callers

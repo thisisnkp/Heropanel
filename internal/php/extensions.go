@@ -3,7 +3,7 @@ package php
 import (
 	"context"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // Extensions is the extension state for one PHP version.

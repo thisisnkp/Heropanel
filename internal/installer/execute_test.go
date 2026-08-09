@@ -23,10 +23,10 @@ type fakeRunner struct {
 
 func newFakeRunner() *fakeRunner {
 	// Default to a fresh host: the group/user existence probes fail (absent), so
-	// the user step actually creates them. The uid lookup ("id -u heropanel")
+	// the user step actually creates them. The uid lookup ("id -u nexpanel")
 	// goes through Output and still returns a value.
 	return &fakeRunner{
-		failOn:  map[string]bool{"getent group heropanel": true, "id heropanel": true},
+		failOn:  map[string]bool{"getent group nexpanel": true, "id nexpanel": true},
 		outputs: map[string]string{},
 	}
 }
@@ -125,22 +125,22 @@ func TestExecuteFullRunSQLite(t *testing.T) {
 	// Artifacts landed on disk.
 	mustExist(t, filepath.Join(ex.Layout.ConfigDir, configFn))
 	mustExist(t, filepath.Join(ex.Layout.ConfigDir, secretsFn))
-	mustExist(t, filepath.Join(ex.Layout.BinDir, "hpd"))
-	mustExist(t, filepath.Join(ex.Layout.BinDir, "hp-broker"))
+	mustExist(t, filepath.Join(ex.Layout.BinDir, "npd"))
+	mustExist(t, filepath.Join(ex.Layout.BinDir, "np-broker"))
 	mustExist(t, filepath.Join(ex.Layout.SystemdDir, brokerSvc))
-	mustExist(t, filepath.Join(ex.Layout.SystemdDir, hpdSvc))
+	mustExist(t, filepath.Join(ex.Layout.SystemdDir, npdSvc))
 
 	// The config is a SQLite config pointing at the data dir.
 	cfg := readFile(t, filepath.Join(ex.Layout.ConfigDir, configFn))
 	if !strings.Contains(cfg, "driver: sqlite") {
 		t.Errorf("config missing sqlite driver:\n%s", cfg)
 	}
-	if !strings.Contains(cfg, "heropanel.db") {
+	if !strings.Contains(cfg, "nexpanel.db") {
 		t.Error("config should reference the sqlite db file")
 	}
 
 	// Privileged operations went through the runner.
-	for _, want := range []string{"useradd", "chown", "runuser -u heropanel", "apt-get install"} {
+	for _, want := range []string{"useradd", "chown", "runuser -u nexpanel", "apt-get install"} {
 		if !r.ran(want) {
 			t.Errorf("expected a %q call; calls: %v", want, r.calls)
 		}
@@ -167,7 +167,7 @@ func TestExecuteMariaDBProvisionsAndStarts(t *testing.T) {
 	if !r.ran("mysql -e CREATE DATABASE") {
 		t.Errorf("mariadb install should provision the database; calls: %v", r.calls)
 	}
-	if !r.ran("systemctl daemon-reload") || !r.ran("systemctl enable --now hp-broker.service") || !r.ran("systemctl enable --now hpd.service") {
+	if !r.ran("systemctl daemon-reload") || !r.ran("systemctl enable --now np-broker.service") || !r.ran("systemctl enable --now npd.service") {
 		t.Errorf("systemd install should reload+enable both units; calls: %v", r.calls)
 	}
 	cfg := readFile(t, filepath.Join(ex.Layout.ConfigDir, configFn))
@@ -181,7 +181,7 @@ func TestExecuteResumesSkippingDoneSteps(t *testing.T) {
 	ex := tempExecutor(t, Options{DB: "sqlite", Port: 9443}, r)
 
 	// First run fails at db.migrate.
-	r.failOn["runuser -u heropanel"] = true
+	r.failOn["runuser -u nexpanel"] = true
 	if err := ex.Execute(context.Background()); err == nil {
 		t.Fatal("expected the first run to fail at db.migrate")
 	}
@@ -212,7 +212,7 @@ func TestExecuteResumesSkippingDoneSteps(t *testing.T) {
 		t.Error("resume re-ran the completed user step")
 	}
 	// db.migrate (the failed step) must be retried on resume.
-	if !r2.ran("runuser -u heropanel") {
+	if !r2.ran("runuser -u nexpanel") {
 		t.Error("resume did not retry the failed db.migrate step")
 	}
 	j2, _ := ex2.loadJournal()
@@ -239,7 +239,7 @@ func TestRollbackReversesInReverseOrder(t *testing.T) {
 	}
 
 	// The reversible effects are undone.
-	for _, want := range []string{"systemctl disable --now", "userdel heropanel", "groupdel heropanel", "mysql -e DROP DATABASE"} {
+	for _, want := range []string{"systemctl disable --now", "userdel nexpanel", "groupdel nexpanel", "mysql -e DROP DATABASE"} {
 		if !r2.ran(want) {
 			t.Errorf("rollback should have run %q; calls: %v", want, r2.calls)
 		}
@@ -248,11 +248,11 @@ func TestRollbackReversesInReverseOrder(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ex.Layout.ConfigDir, configFn)); !os.IsNotExist(err) {
 		t.Error("config.yaml should be removed on rollback")
 	}
-	if _, err := os.Stat(filepath.Join(ex.Layout.SystemdDir, hpdSvc)); !os.IsNotExist(err) {
-		t.Error("hpd unit should be removed on rollback")
+	if _, err := os.Stat(filepath.Join(ex.Layout.SystemdDir, npdSvc)); !os.IsNotExist(err) {
+		t.Error("npd unit should be removed on rollback")
 	}
-	if _, err := os.Stat(filepath.Join(ex.Layout.BinDir, "hpd")); !os.IsNotExist(err) {
-		t.Error("installed hpd binary should be removed on rollback")
+	if _, err := os.Stat(filepath.Join(ex.Layout.BinDir, "npd")); !os.IsNotExist(err) {
+		t.Error("installed npd binary should be removed on rollback")
 	}
 
 	// Ordering: services reverted before the user is deleted.
@@ -276,7 +276,7 @@ func TestSecretsPersistAcrossProcesses(t *testing.T) {
 	if err := ex.applySecrets(context.Background()); err != nil {
 		t.Fatalf("applySecrets: %v", err)
 	}
-	token := ex.secrets["HP_BROKER_TOKEN"]
+	token := ex.secrets["NP_BROKER_TOKEN"]
 	if len(token) != 64 {
 		t.Fatalf("broker token length = %d, want 64 hex chars", len(token))
 	}
@@ -285,10 +285,10 @@ func TestSecretsPersistAcrossProcesses(t *testing.T) {
 	fresh := tempExecutor(t, Options{DB: "mariadb", Port: 8443}, newFakeRunner())
 	fresh.Layout = ex.Layout
 	fresh.loadSecrets()
-	if fresh.secrets["HP_BROKER_TOKEN"] != token {
+	if fresh.secrets["NP_BROKER_TOKEN"] != token {
 		t.Error("secrets did not round-trip through secrets.env")
 	}
-	if fresh.secrets["HP_DB_PASSWORD"] == "" {
+	if fresh.secrets["NP_DB_PASSWORD"] == "" {
 		t.Error("mariadb install should persist a db password")
 	}
 }
@@ -301,7 +301,7 @@ func TestBinariesVerifyAgainstManifest(t *testing.T) {
 	if err := ex.Execute(context.Background()); err != nil {
 		t.Fatalf("execute with a valid manifest: %v", err)
 	}
-	mustExist(t, filepath.Join(ex.Layout.BinDir, "hpd"))
+	mustExist(t, filepath.Join(ex.Layout.BinDir, "npd"))
 }
 
 func TestBinariesRejectTamperedManifest(t *testing.T) {
@@ -309,7 +309,7 @@ func TestBinariesRejectTamperedManifest(t *testing.T) {
 	// install at the binaries step — a tampered artifact never lands.
 	r := newFakeRunner()
 	ex := tempExecutor(t, Options{DB: "sqlite", Port: 9443}, r)
-	writeManifest(t, ex.Layout.SourceDir, true) // tamper hpd's hash
+	writeManifest(t, ex.Layout.SourceDir, true) // tamper npd's hash
 	err := ex.Execute(context.Background())
 	if err == nil {
 		t.Fatal("expected the install to fail on a checksum mismatch")
@@ -317,8 +317,8 @@ func TestBinariesRejectTamperedManifest(t *testing.T) {
 	if !strings.Contains(err.Error(), "integrity check failed") {
 		t.Fatalf("want an integrity error, got %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(ex.Layout.BinDir, "hpd")); !os.IsNotExist(statErr) {
-		t.Error("hpd must not be installed when its checksum does not match")
+	if _, statErr := os.Stat(filepath.Join(ex.Layout.BinDir, "npd")); !os.IsNotExist(statErr) {
+		t.Error("npd must not be installed when its checksum does not match")
 	}
 	j, _ := ex.loadJournal()
 	for _, s := range j.Steps {
@@ -329,7 +329,7 @@ func TestBinariesRejectTamperedManifest(t *testing.T) {
 }
 
 // writeManifest writes a SHA256SUMS for the staged binaries; if tamper is set,
-// hpd's recorded hash is corrupted.
+// npd's recorded hash is corrupted.
 func writeManifest(t *testing.T, dir string, tamper bool) {
 	t.Helper()
 	var b strings.Builder
@@ -340,7 +340,7 @@ func writeManifest(t *testing.T, dir string, tamper bool) {
 		}
 		sum := sha256.Sum256(data)
 		hexsum := hex.EncodeToString(sum[:])
-		if tamper && name == "hpd" {
+		if tamper && name == "npd" {
 			hexsum = strings.Repeat("0", 64)
 		}
 		b.WriteString(hexsum + "  " + name + "\n")

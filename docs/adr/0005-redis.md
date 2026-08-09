@@ -15,7 +15,7 @@ Use **Redis** for all three: **cache** (key/value + rate-limit buckets), **queue
 - Jobs are also mirrored to a `jobs` table for queryable history and UI; Redis is the transport, MariaDB is the record of truth for history.
 
 ## Note — caching is two-tier
-Redis is the **L2** (shared/distributed) cache. In front of it sits an **L1 in-process "normal" cache** inside each `hpd` (sharded LRU + TTL) for nanosecond hot reads with no network hop. Coherence is maintained by publishing invalidations on a Redis Pub/Sub `cache:invalidate` channel so every process drops stale L1 entries. Both tiers sit behind one `cache.Cache` interface (`TieredCache{L1,L2}`); minimal/SQLite installs can run **L1-only** without Redis. See [01 §3.4](../01-architecture.md).
+Redis is the **L2** (shared/distributed) cache. In front of it sits an **L1 in-process "normal" cache** inside each `npd` (sharded LRU + TTL) for nanosecond hot reads with no network hop. Coherence is maintained by publishing invalidations on a Redis Pub/Sub `cache:invalidate` channel so every process drops stale L1 entries. Both tiers sit behind one `cache.Cache` interface (`TieredCache{L1,L2}`); minimal/SQLite installs can run **L1-only** without Redis. See [01 §3.4](../01-architecture.md).
 
 ## Consequences
 - Redis is a required service for the queue/bus (installer provisions it). Caching can degrade to L1-only if Redis is absent (minimal mode); the queue/realtime bus still assume Redis in v1.

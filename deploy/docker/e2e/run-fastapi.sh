@@ -16,7 +16,7 @@
 set -u
 sec(){ echo; echo "======== $* ========"; }
 base=http://127.0.0.1:18443
-site=/srv/heropanel/sites/1
+site=/srv/nexpanel/sites/1
 
 sec "start OpenLiteSpeed"
 /usr/local/lsws/bin/lswsctrl start >/dev/null 2>&1
@@ -27,7 +27,7 @@ mkdir -p /srv/git /home/git/.ssh
 git init --bare -q /srv/git/app.git
 work=$(mktemp -d)
 git init -q "$work"
-git -C "$work" config user.email ci@heropanel.test
+git -C "$work" config user.email ci@nexpanel.test
 git -C "$work" config user.name CI
 
 cat > "$work/requirements.txt" <<'EOF'
@@ -60,7 +60,7 @@ git -C "$work" push -q origin main
 chown -R git:git /srv/git /home/git
 chmod 700 /home/git/.ssh
 # The bare repo now belongs to `git`, but this script pushes to it as root, and
-# git refuses to touch a repo owned by someone else. Harness-only: HeroPanel's
+# git refuses to touch a repo owned by someone else. Harness-only: NexPanel's
 # own clones go over SSH as the git user.
 git config --global --add safe.directory /srv/git/app.git
 ssh-keygen -A >/dev/null 2>&1
@@ -68,18 +68,18 @@ ssh-keygen -A >/dev/null 2>&1
 for i in $(seq 1 40); do (echo > /dev/tcp/127.0.0.1/22) >/dev/null 2>&1 && break; sleep 0.2; done
 echo "python: $(python3 --version), requirements: $(tr '\n' ' ' < "$work/requirements.txt")"
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel /srv/heropanel/sites
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel /srv/nexpanel/sites
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
 SECRET_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18443 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp.db \
-  HP_SECRET_KEY="$SECRET_KEY" \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd.log 2>&1 &
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18443 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np.db \
+  NP_SECRET_KEY="$SECRET_KEY" \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -87,7 +87,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/c.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/c.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/c.txt)
 api(){ curl -s -b /tmp/c.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "CREATE PROXY SITE"
@@ -97,15 +97,15 @@ uid=$(api $base/api/v1/sites | grep -oE '"uid":"[^"]+"' | head -1 | cut -d'"' -f
 echo "site uid=$uid"
 
 sec "*** THE SITE GOT ITS CGROUP SLICE AT PROVISIONING ***"
-echo "--- /etc/systemd/system/heropanel-site-hps1.slice ---"
-cat /etc/systemd/system/heropanel-site-hps1.slice 2>&1
+echo "--- /etc/systemd/system/nexpanel-site-nps1.slice ---"
+cat /etc/systemd/system/nexpanel-site-nps1.slice 2>&1
 grep -q 'site.apply_slice' /tmp/broker.log && echo "site.apply_slice invoked: OK"
 
 sec "SET LIMITS (CPU 50%, 512 MiB, 100 tasks)"
 api -X PUT $base/api/v1/sites/$uid/limits -H 'Content-Type: application/json' \
   -d '{"cpu_quota_pct":50,"mem_limit_bytes":536870912,"pids_max":100}'; echo
 echo "--- slice after limits ---"
-cat /etc/systemd/system/heropanel-site-hps1.slice 2>&1
+cat /etc/systemd/system/nexpanel-site-nps1.slice 2>&1
 
 sec "SET GIT SOURCE (deploy key) + build a venv from requirements.txt"
 cat >/tmp/src.json <<'EOF'
@@ -138,7 +138,7 @@ api -X PUT $base/api/v1/sites/$uid/runtime -H 'Content-Type: application/json' -
   | grep -oE '"(runtime|status|health_path)":"[^"]*"'
 
 sec "*** THE APP UNIT IS INSIDE THE SITE SLICE ***"
-grep -E '^(Slice|User|WorkingDirectory|ExecStart)=' /etc/systemd/system/heropanel-app-hps1.service 2>&1
+grep -E '^(Slice|User|WorkingDirectory|ExecStart)=' /etc/systemd/system/nexpanel-app-nps1.service 2>&1
 
 sec "health"
 api $base/api/v1/sites/$uid/runtime/health; echo
@@ -192,4 +192,4 @@ sec "broker audit"
 grep -oE '"capability":"(site\.apply_slice|git\.deploy|app\.unit_[a-z]+)","outcome":"[^"]+"' /tmp/broker.log | sort | uniq -c
 
 sec "app log tail"
-tail -5 /tmp/app-heropanel-app-hps1.log 2>&1
+tail -5 /tmp/app-nexpanel-app-nps1.log 2>&1

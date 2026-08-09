@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/thisisnkp/nexpanel/pkg/unitharden"
 )
 
 // This file implements the installer's execute phase: it walks the plan, runs
@@ -71,14 +73,14 @@ func (e execRunner) Output(ctx context.Context, env []string, name string, args 
 // Layout is the set of filesystem locations the installer writes to. It is a
 // field of Executor so tests can redirect every path into a temp dir.
 type Layout struct {
-	Prefix     string // /opt/heropanel
-	BinDir     string // /opt/heropanel/bin
-	ConfigDir  string // /etc/heropanel
-	DataDir    string // /var/lib/heropanel
-	RunDir     string // /run/heropanel
-	LogDir     string // /var/log/heropanel
+	Prefix     string // /opt/nexpanel
+	BinDir     string // /opt/nexpanel/bin
+	ConfigDir  string // /etc/nexpanel
+	DataDir    string // /var/lib/nexpanel
+	RunDir     string // /run/nexpanel
+	LogDir     string // /var/log/nexpanel
 	SystemdDir string // /etc/systemd/system
-	SourceDir  string // where freshly-built hpd/hp-broker are staged
+	SourceDir  string // where freshly-built npd/np-broker are staged
 	Journal    string // path to the install journal
 }
 
@@ -91,23 +93,23 @@ func DefaultLayout() Layout {
 		src = filepath.Dir(exe)
 	}
 	return Layout{
-		Prefix:     "/opt/heropanel",
-		BinDir:     "/opt/heropanel/bin",
-		ConfigDir:  "/etc/heropanel",
-		DataDir:    "/var/lib/heropanel",
-		RunDir:     "/run/heropanel",
-		LogDir:     "/var/log/heropanel",
+		Prefix:     "/opt/nexpanel",
+		BinDir:     "/opt/nexpanel/bin",
+		ConfigDir:  "/etc/nexpanel",
+		DataDir:    "/var/lib/nexpanel",
+		RunDir:     "/run/nexpanel",
+		LogDir:     "/var/log/nexpanel",
 		SystemdDir: "/etc/systemd/system",
 		SourceDir:  src,
-		Journal:    "/var/lib/heropanel/install-journal.json",
+		Journal:    "/var/lib/nexpanel/install-journal.json",
 	}
 }
 
 const (
-	svcUser   = "heropanel"
-	svcGroup  = "heropanel"
-	brokerSvc = "hp-broker.service"
-	hpdSvc    = "hpd.service"
+	svcUser   = "nexpanel"
+	svcGroup  = "nexpanel"
+	brokerSvc = "np-broker.service"
+	npdSvc    = "npd.service"
 	secretsFn = "secrets.env"
 	configFn  = "config.yaml"
 )
@@ -127,6 +129,11 @@ type Executor struct {
 	// probe checks panel health during verify; nil uses the real HTTP probe.
 	// Overridable so tests exercise the systemd start path without a live panel.
 	probe func(ctx context.Context, url string) error
+	// versionProbe reports the version the running panel claims. Injected for
+	// the same reason as probe: the update path's health gate is "the *new*
+	// version is answering", and proving that logic must not need a real
+	// systemd, two real restarts and a real panel.
+	versionProbe func(ctx context.Context) (string, error)
 }
 
 // NewExecutor wires an executor with sensible defaults. Runner and Log fall back
@@ -381,7 +388,10 @@ func (e *Executor) revertDirs(context.Context) error {
 
 // ── binaries ─────────────────────────────────────────────────────────────────
 
-var installBinaries = []string{"hpd", "hp-broker"}
+// np-installer is installed alongside the two services because self-update
+// needs it on the box: the broker starts it as a transient unit to perform the
+// swap (docs/26), so a host without it can be installed but never updated.
+var installBinaries = []string{"npd", "np-broker", "np-installer"}
 
 func (e *Executor) applyBinaries(ctx context.Context) error {
 	if err := os.MkdirAll(e.Layout.BinDir, 0o755); err != nil {
@@ -399,7 +409,7 @@ func (e *Executor) applyBinaries(ctx context.Context) error {
 	// signature must verify before any hash in it is trusted. This is the trust
 	// root: without it, checksums prove only internal consistency, not origin.
 	if e.Options.ReleasePubKey != "" {
-		pub, err := parsePublicKey(e.Options.ReleasePubKey)
+		pub, err := ParsePublicKey(e.Options.ReleasePubKey)
 		if err != nil {
 			return fmt.Errorf("release public key: %w", err)
 		}
@@ -414,7 +424,7 @@ func (e *Executor) applyBinaries(ctx context.Context) error {
 			return fmt.Errorf("staged binary %q not found in %s (use --source)", name, e.Layout.SourceDir)
 		}
 		if sums != nil {
-			if err := verifyChecksum(src, sums[name]); err != nil {
+			if err := VerifyChecksum(src, sums[name]); err != nil {
 				return fmt.Errorf("integrity check failed for %s: %w", name, err)
 			}
 		}
@@ -435,7 +445,13 @@ func (e *Executor) applyBinaries(ctx context.Context) error {
 // the source dir. A missing manifest returns (nil, nil) so a dev flow without one
 // still installs — with a warning; a malformed manifest is a hard error.
 func (e *Executor) loadChecksums() (map[string]string, error) {
-	b, err := os.ReadFile(filepath.Join(e.Layout.SourceDir, "SHA256SUMS"))
+	return loadChecksumsFrom(e.Layout.SourceDir)
+}
+
+// loadChecksumsFrom is the directory-parameterised form, so the update path can
+// read the manifest out of a staging directory rather than the install source.
+func loadChecksumsFrom(dir string) (map[string]string, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -458,8 +474,10 @@ func (e *Executor) loadChecksums() (map[string]string, error) {
 	return sums, nil
 }
 
-// verifyChecksum computes path's SHA-256 and compares it to the expected hex.
-func verifyChecksum(path, want string) error {
+// VerifyChecksum computes path's SHA-256 and compares it to the expected hex.
+// Exported because self-update (internal/update) checks a downloaded artifact
+// against the very same manifest this reads at install time.
+func VerifyChecksum(path, want string) error {
 	if want == "" {
 		return fmt.Errorf("no checksum listed in SHA256SUMS for this file")
 	}
@@ -494,14 +512,14 @@ func (e *Executor) applySecrets(context.Context) error {
 	if e.secrets == nil {
 		e.secrets = map[string]string{}
 	}
-	e.secrets["HP_BROKER_TOKEN"] = randHex(32)
-	e.secrets["HP_MASTER_KEY"] = randHex(32)
+	e.secrets["NP_BROKER_TOKEN"] = randHex(32)
+	e.secrets["NP_MASTER_KEY"] = randHex(32)
 	if e.Options.DB == "mariadb" {
-		e.secrets["HP_DB_PASSWORD"] = randHex(18)
+		e.secrets["NP_DB_PASSWORD"] = randHex(18)
 	}
 	var b strings.Builder
-	b.WriteString("# HeroPanel secrets — generated by hp-installer. Do not commit.\n")
-	for _, k := range []string{"HP_BROKER_TOKEN", "HP_MASTER_KEY", "HP_DB_PASSWORD"} {
+	b.WriteString("# NexPanel secrets — generated by np-installer. Do not commit.\n")
+	for _, k := range []string{"NP_BROKER_TOKEN", "NP_MASTER_KEY", "NP_DB_PASSWORD"} {
 		if v := e.secrets[k]; v != "" {
 			fmt.Fprintf(&b, "%s=%s\n", k, v)
 		}
@@ -556,23 +574,23 @@ func (e *Executor) renderConfig() string {
 	dbDriver := e.Options.DB
 	var dsn string
 	if dbDriver == "sqlite" {
-		dsn = filepath.Join(e.Layout.DataDir, "heropanel.db")
+		dsn = filepath.Join(e.Layout.DataDir, "nexpanel.db")
 	} else {
-		dsn = fmt.Sprintf("heropanel:%s@tcp(127.0.0.1:3306)/heropanel?parseTime=true&loc=UTC",
-			e.secrets["HP_DB_PASSWORD"])
+		dsn = fmt.Sprintf("nexpanel:%s@tcp(127.0.0.1:3306)/nexpanel?parseTime=true&loc=UTC",
+			e.secrets["NP_DB_PASSWORD"])
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# HeroPanel configuration — generated by hp-installer %s\n", e.Version)
+	fmt.Fprintf(&b, "# NexPanel configuration — generated by np-installer %s\n", e.Version)
 	fmt.Fprintf(&b, "server:\n  host: 0.0.0.0\n  port: %d\n  tls:\n    enabled: false\n", e.Options.Port)
 	fmt.Fprintf(&b, "database:\n  driver: %s\n  dsn: %q\n", dbDriver, dsn)
-	// Redis is opt-in: hpd refuses to start if it is configured but unreachable,
+	// Redis is opt-in: npd refuses to start if it is configured but unreachable,
 	// and the minimal profile has no managed Redis to point at. Omitting the
 	// address makes the cache run L1-only (docs/09), which is exactly right for
 	// the low-RAM preset.
 	if !e.Options.Minimal {
 		fmt.Fprintf(&b, "redis:\n  addr: 127.0.0.1:6379\n  db: 0\n")
 	}
-	fmt.Fprintf(&b, "broker:\n  socket: %s\n  token: %q\n", filepath.Join(e.Layout.RunDir, "broker.sock"), e.secrets["HP_BROKER_TOKEN"])
+	fmt.Fprintf(&b, "broker:\n  socket: %s\n  token: %q\n", filepath.Join(e.Layout.RunDir, "broker.sock"), e.secrets["NP_BROKER_TOKEN"])
 	fmt.Fprintf(&b, "log:\n  level: info\n  format: json\n")
 	fmt.Fprintf(&b, "security:\n  csrf:\n    enabled: false\n")
 	return b.String()
@@ -581,25 +599,25 @@ func (e *Executor) renderConfig() string {
 // ── database ─────────────────────────────────────────────────────────────────
 
 func (e *Executor) applyDBProvision(ctx context.Context) error {
-	pw := e.secrets["HP_DB_PASSWORD"]
+	pw := e.secrets["NP_DB_PASSWORD"]
 	stmt := fmt.Sprintf(
-		"CREATE DATABASE IF NOT EXISTS heropanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
-			"CREATE USER IF NOT EXISTS 'heropanel'@'127.0.0.1' IDENTIFIED BY '%s'; "+
-			"GRANT ALL PRIVILEGES ON heropanel.* TO 'heropanel'@'127.0.0.1'; FLUSH PRIVILEGES;", pw)
+		"CREATE DATABASE IF NOT EXISTS nexpanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
+			"CREATE USER IF NOT EXISTS 'nexpanel'@'127.0.0.1' IDENTIFIED BY '%s'; "+
+			"GRANT ALL PRIVILEGES ON nexpanel.* TO 'nexpanel'@'127.0.0.1'; FLUSH PRIVILEGES;", pw)
 	return e.Runner.Run(ctx, nil, "mysql", "-e", stmt)
 }
 
 func (e *Executor) revertDBProvision(ctx context.Context) error {
 	return e.Runner.Run(ctx, nil, "mysql", "-e",
-		"DROP DATABASE IF EXISTS heropanel; DROP USER IF EXISTS 'heropanel'@'127.0.0.1'; FLUSH PRIVILEGES;")
+		"DROP DATABASE IF EXISTS nexpanel; DROP USER IF EXISTS 'nexpanel'@'127.0.0.1'; FLUSH PRIVILEGES;")
 }
 
 func (e *Executor) applyMigrate(ctx context.Context) error {
-	hpd := filepath.Join(e.Layout.BinDir, "hpd")
+	npd := filepath.Join(e.Layout.BinDir, "npd")
 	cfg := filepath.Join(e.Layout.ConfigDir, configFn)
-	// Run as the service user so a SQLite file is created owned by heropanel,
+	// Run as the service user so a SQLite file is created owned by nexpanel,
 	// not root — otherwise the daemon could not open it.
-	return e.Runner.Run(ctx, nil, "runuser", "-u", svcUser, "--", hpd, "--config", cfg, "--migrate")
+	return e.Runner.Run(ctx, nil, "runuser", "-u", svcUser, "--", npd, "--config", cfg, "--migrate")
 }
 
 // ── services (systemd units) ─────────────────────────────────────────────────
@@ -608,7 +626,7 @@ func (e *Executor) applyServices(ctx context.Context) error {
 	uid := e.serviceUID(ctx)
 	units := map[string]string{
 		brokerSvc: e.renderBrokerUnit(uid),
-		hpdSvc:    e.renderHpdUnit(),
+		npdSvc:    e.renderNpdUnit(),
 	}
 	for name, body := range units {
 		if err := os.WriteFile(filepath.Join(e.Layout.SystemdDir, name), []byte(body), 0o644); err != nil {
@@ -623,7 +641,7 @@ func (e *Executor) applyServices(ctx context.Context) error {
 	if err := e.Runner.Run(ctx, nil, "systemctl", "daemon-reload"); err != nil {
 		return err
 	}
-	for _, u := range []string{brokerSvc, hpdSvc} {
+	for _, u := range []string{brokerSvc, npdSvc} {
 		if err := e.Runner.Run(ctx, nil, "systemctl", "enable", "--now", u); err != nil {
 			return fmt.Errorf("start %s: %w", u, err)
 		}
@@ -633,12 +651,12 @@ func (e *Executor) applyServices(ctx context.Context) error {
 
 func (e *Executor) revertServices(ctx context.Context) error {
 	if e.ServiceManager == "systemd" {
-		for _, u := range []string{hpdSvc, brokerSvc} {
+		for _, u := range []string{npdSvc, brokerSvc} {
 			_ = e.Runner.Run(ctx, nil, "systemctl", "disable", "--now", u)
 		}
 		_ = e.Runner.Run(ctx, nil, "systemctl", "daemon-reload")
 	}
-	for _, u := range []string{brokerSvc, hpdSvc} {
+	for _, u := range []string{brokerSvc, npdSvc} {
 		_ = os.Remove(filepath.Join(e.Layout.SystemdDir, u))
 	}
 	return nil
@@ -657,7 +675,7 @@ func (e *Executor) serviceUID(ctx context.Context) string {
 
 func (e *Executor) renderBrokerUnit(uid string) string {
 	return "[Unit]\n" +
-		"Description=HeroPanel privileged broker\n" +
+		"Description=NexPanel privileged broker\n" +
 		"After=network.target\n" +
 		// Self-healing: allow rapid auto-restart, and don't give up until many
 		// failures in a short window (StartLimit) — a crashed broker must come
@@ -668,58 +686,63 @@ func (e *Executor) renderBrokerUnit(uid string) string {
 		"Type=simple\n" +
 		"User=root\n" +
 		"EnvironmentFile=" + filepath.Join(e.Layout.ConfigDir, secretsFn) + "\n" +
-		"Environment=HP_BROKER_ALLOWED_UID=" + uid + "\n" +
-		"Environment=HP_BROKER_PANEL_USER=" + svcUser + "\n" +
-		"ExecStart=" + filepath.Join(e.Layout.BinDir, "hp-broker") + " --serve --socket " + filepath.Join(e.Layout.RunDir, "broker.sock") + "\n" +
+		"Environment=NP_BROKER_ALLOWED_UID=" + uid + "\n" +
+		"Environment=NP_BROKER_PANEL_USER=" + svcUser + "\n" +
+		"ExecStart=" + filepath.Join(e.Layout.BinDir, "np-broker") + " --serve --socket " + filepath.Join(e.Layout.RunDir, "broker.sock") + "\n" +
 		"Restart=on-failure\n" +
 		"RestartSec=2s\n" +
-		"RuntimeDirectory=heropanel\n" +
-		"NoNewPrivileges=false\n\n" +
-		"[Install]\n" +
+		"RuntimeDirectory=nexpanel\n" +
+		// Stays false: the broker's whole function is performing privileged work
+		// on behalf of a process that cannot. See unitharden.RootBroker for what
+		// a root broker can and cannot be confined by.
+		"NoNewPrivileges=false\n" +
+		unitharden.RootBroker.Directives() +
+		"\n[Install]\n" +
 		"WantedBy=multi-user.target\n"
 }
 
-func (e *Executor) renderHpdUnit() string {
+func (e *Executor) renderNpdUnit() string {
 	return "[Unit]\n" +
-		"Description=HeroPanel control-plane daemon\n" +
+		"Description=NexPanel control-plane daemon\n" +
 		"After=network.target " + brokerSvc + "\n" +
 		"Requires=" + brokerSvc + "\n" +
 		"StartLimitIntervalSec=60\n" +
 		"StartLimitBurst=5\n\n" +
 		"[Service]\n" +
-		// Type=notify + WatchdogSec: hpd reports readiness and pets the watchdog
-		// (internal/systemd). A hung hpd that stops petting is killed and
+		// Type=notify + WatchdogSec: npd reports readiness and pets the watchdog
+		// (internal/systemd). A hung npd that stops petting is killed and
 		// restarted by systemd, so a wedged control plane self-heals — not just a
 		// crashed one. Restart/RestartSec bring it back fast on any exit.
 		"Type=notify\n" +
 		"User=" + svcUser + "\n" +
 		"Group=" + svcGroup + "\n" +
 		"EnvironmentFile=" + filepath.Join(e.Layout.ConfigDir, secretsFn) + "\n" +
-		"ExecStart=" + filepath.Join(e.Layout.BinDir, "hpd") + " --config " + filepath.Join(e.Layout.ConfigDir, configFn) + "\n" +
+		"ExecStart=" + filepath.Join(e.Layout.BinDir, "npd") + " --config " + filepath.Join(e.Layout.ConfigDir, configFn) + "\n" +
 		"Restart=on-failure\n" +
 		"RestartSec=2s\n" +
 		"WatchdogSec=30s\n" +
-		"NoNewPrivileges=true\n" +
 		"ProtectSystem=strict\n" +
 		"ProtectHome=true\n" +
 		"PrivateTmp=true\n" +
-		"ReadWritePaths=" + e.Layout.DataDir + " " + e.Layout.RunDir + " " + e.Layout.LogDir + "\n\n" +
-		"[Install]\n" +
+		"UMask=0027\n" +
+		"ReadWritePaths=" + e.Layout.DataDir + " " + e.Layout.RunDir + " " + e.Layout.LogDir + "\n" +
+		unitharden.Daemon.Directives() +
+		"\n[Install]\n" +
 		"WantedBy=multi-user.target\n"
 }
 
 // ── webserver (panel vhost) ──────────────────────────────────────────────────
 
 func (e *Executor) applyWebserver(context.Context) error {
-	// Minimal marker config: the panel is served by hpd directly in this MVP;
+	// Minimal marker config: the panel is served by npd directly in this MVP;
 	// the OLS reverse-proxy vhost is written for the operator to include. Kept
 	// deliberately small and reversible.
 	dir := filepath.Join(e.Layout.ConfigDir, "webserver")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	vhost := fmt.Sprintf("# HeroPanel panel vhost (proxy to hpd on 127.0.0.1:%d)\n"+
-		"extProcessor hpd {\n  type proxy\n  address 127.0.0.1:%d\n}\n", e.Options.Port, e.Options.Port)
+	vhost := fmt.Sprintf("# NexPanel panel vhost (proxy to npd on 127.0.0.1:%d)\n"+
+		"extProcessor npd {\n  type proxy\n  address 127.0.0.1:%d\n}\n", e.Options.Port, e.Options.Port)
 	return os.WriteFile(filepath.Join(dir, "panel.conf"), []byte(vhost), 0o644)
 }
 
@@ -766,7 +789,7 @@ func hasCmd(name string) bool {
 
 func (e *Executor) applyVerify(ctx context.Context) error {
 	if e.ServiceManager != "systemd" {
-		// Without a service manager the installer never started hpd, so there is
+		// Without a service manager the installer never started npd, so there is
 		// nothing to probe — the units are written for the operator (or a
 		// container harness) to start. Probing here would just burn the timeout.
 		e.Log.Warn("verify: no service manager to start the panel; units are written — " +

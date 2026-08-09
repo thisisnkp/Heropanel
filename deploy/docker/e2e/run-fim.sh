@@ -16,20 +16,20 @@ sec "AIDE present"
 # Give the watcher a file it owns so a change is unambiguous, and make sure at
 # least one watched tree exists.
 ssh-keygen -A >/dev/null 2>&1
-mkdir -p /etc/heropanel
-echo "baseline content v1" > /etc/heropanel/fim-watched.conf
+mkdir -p /etc/nexpanel
+echo "baseline content v1" > /etc/nexpanel/fim-watched.conf
 
-sec "start hp-broker + hpd"
-install -m0755 /hp/hpd /hp/hp-broker /usr/local/bin/
-mkdir -p /run/heropanel
-export HP_BROKER_TOKEN=tok
-HP_LOG_FORMAT=text HP_BROKER_ALLOWED_UID=0 HP_BROKER_PANEL_USER=root \
-  hp-broker --serve --socket /run/heropanel/broker.sock >/tmp/broker-fim.log 2>&1 &
-for i in $(seq 1 40); do [ -S /run/heropanel/broker.sock ] && break; sleep 0.2; done
-HP_SERVER_HOST=127.0.0.1 HP_SERVER_PORT=18455 HP_LOG_FORMAT=text \
-  HP_DATABASE_DRIVER=sqlite HP_DATABASE_DSN=/tmp/hp-fim.db \
-  HP_SERVER_WRITE_TIMEOUT=600s \
-  HP_BROKER_SOCKET=/run/heropanel/broker.sock hpd >/tmp/hpd-fim.log 2>&1 &
+sec "start np-broker + npd"
+install -m0755 /np/npd /np/np-broker /usr/local/bin/
+mkdir -p /run/nexpanel
+export NP_BROKER_TOKEN=tok
+NP_LOG_FORMAT=text NP_BROKER_ALLOWED_UID=0 NP_BROKER_PANEL_USER=root \
+  np-broker --serve --socket /run/nexpanel/broker.sock >/tmp/broker-fim.log 2>&1 &
+for i in $(seq 1 40); do [ -S /run/nexpanel/broker.sock ] && break; sleep 0.2; done
+NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=18455 NP_LOG_FORMAT=text \
+  NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-fim.db \
+  NP_SERVER_WRITE_TIMEOUT=600s \
+  NP_BROKER_SOCKET=/run/nexpanel/broker.sock npd >/tmp/npd-fim.log 2>&1 &
 for i in $(seq 1 60); do curl -sf $base/healthz >/dev/null 2>&1 && break; sleep 0.25; done
 
 sec "auth"
@@ -37,7 +37,7 @@ curl -s -X POST $base/api/v1/auth/bootstrap -H 'Content-Type: application/json' 
   -d '{"email":"a@h.io","username":"admin","password":"supersecret1"}' >/dev/null
 curl -s -c /tmp/cf.txt -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"a@h.io","password":"supersecret1"}' >/dev/null
-CSRF=$(awk '/hp_csrf/{print $7}' /tmp/cf.txt)
+CSRF=$(awk '/np_csrf/{print $7}' /tmp/cf.txt)
 api(){ curl -s -b /tmp/cf.txt -H "X-CSRF-Token: $CSRF" "$@"; }
 
 sec "no baseline yet"
@@ -59,7 +59,7 @@ echo "$chk" | grep -q '"changed":false' && pass "the check is CLEAN immediately 
   || fail "the check reported changes on a clean tree: $chk"
 
 sec "*** TAMPER a watched file, then check MUST DETECT it ***"
-echo "tampered content v2 — extra line" >> /etc/heropanel/fim-watched.conf
+echo "tampered content v2 — extra line" >> /etc/nexpanel/fim-watched.conf
 chk=$(api -X POST $base/api/v1/security/fim/check -H 'Content-Type: application/json')
 echo "$chk" | python3 -m json.tool 2>/dev/null | head -8
 echo "$chk" | grep -q '"changed":true' \
@@ -69,7 +69,7 @@ ch=$(echo "$chk" | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; 
 
 sec "*** HOST-WIDE SCOPE: baseline the wider host, then detect an /etc change ***"
 # host scope extends the watch to all of /etc (and the binary/library trees).
-echo "host canary v1" > /etc/hp-host-canary.conf
+echo "host canary v1" > /etc/np-host-canary.conf
 hinit=$(api -X POST $base/api/v1/security/fim/init -H 'Content-Type: application/json' -d '{"scope":"host"}')
 echo "$hinit" | grep -q '"scope":"host"' && pass "a host-wide baseline was built (scope=host)" || fail "host init failed: $hinit"
 api $base/api/v1/security/fim | grep -q '"scope":"host"' && pass "status reports the host-wide scope" || fail "scope not recorded"
@@ -77,7 +77,7 @@ hchk=$(api -X POST $base/api/v1/security/fim/check -H 'Content-Type: application
 echo "$hchk" | grep -q '"changed":false' && pass "the host-wide check is CLEAN right after its baseline" \
   || fail "host check dirty on a fresh baseline: $(echo "$hchk" | head -c 200)"
 echo "$hchk" | grep -q '"scope":"host"' && pass "the check ran at the host scope it was built with" || fail "check scope mismatch"
-echo "host canary v2 — tampered" >> /etc/hp-host-canary.conf
+echo "host canary v2 — tampered" >> /etc/np-host-canary.conf
 hchk=$(api -X POST $base/api/v1/security/fim/check -H 'Content-Type: application/json')
 echo "$hchk" | grep -q '"changed":true' \
   && pass "THE HOST-WIDE CHECK DETECTED A CHANGE UNDER /etc (changed=true)" || fail "host FIM missed an /etc change: $(echo "$hchk" | head -c 200)"
@@ -106,7 +106,7 @@ for cap in fim.init fim.check fim.status audit.scan; do
 done
 
 sec "cleanup"
-pkill -f 'hpd' 2>/dev/null; pkill -f 'hp-broker' 2>/dev/null; true
+pkill -f 'npd' 2>/dev/null; pkill -f 'np-broker' 2>/dev/null; true
 
 if [ "$FAILED" = "0" ]; then echo "run-fim.sh : PASS"; else echo "run-fim.sh : FAIL"; fi
 exit "$FAILED"

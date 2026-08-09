@@ -15,7 +15,7 @@
 -- because they deleted and want to recreate the site.
 --
 -- challenge_token is the secret half of the TXT challenge
--- (`_heropanel-challenge.<fqdn>` = `heropanel-verify=<challenge_token>`);
+-- (`_nexpanel-challenge.<fqdn>` = `nexpanel-verify=<challenge_token>`);
 -- verification re-reads live DNS (internal/domain's VerifyParked, mirroring
 -- internal/mail's DKIM CheckDNS) rather than trusting anything stored here.
 CREATE TABLE parked_domains (

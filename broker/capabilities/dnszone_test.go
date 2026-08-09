@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/broker/fsys"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/broker/fsys"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 func TestDNSWriteZoneWritesAndReloads(t *testing.T) {
@@ -27,7 +27,7 @@ func TestDNSWriteZoneWritesAndReloads(t *testing.T) {
 	if zf, ok := ff.Written("/etc/bind/zones/db.example.test"); !ok || zf == "" {
 		t.Fatal("zone file not written")
 	}
-	if _, ok := ff.Written("/etc/bind/named.conf.heropanel"); !ok {
+	if _, ok := ff.Written("/etc/bind/named.conf.nexpanel"); !ok {
 		t.Fatal("named.conf include not written")
 	}
 	// named-checkzone was run against the written file, then rndc reload.

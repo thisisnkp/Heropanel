@@ -1,4 +1,4 @@
--- HeroPanel Phase-1 schema: sites, per-site Linux users, and domains (MariaDB).
+-- NexPanel Phase-1 schema: sites, per-site Linux users, and domains (MariaDB).
 
 CREATE TABLE sites (
     id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

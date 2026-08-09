@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 const sampleCompose = `services:
@@ -16,8 +16,8 @@ const sampleCompose = `services:
     ports: ["2368:2368"]
 `
 
-// The compose file must never reach docker as a path hpd supplied — it is
-// written to a directory the *broker* chooses, so hpd cannot point the broker at
+// The compose file must never reach docker as a path npd supplied — it is
+// written to a directory the *broker* chooses, so npd cannot point the broker at
 // /etc/anything. The operator's YAML must also never appear in argv, where /proc
 // would expose any secret in it.
 func TestComposeFileGoesToABrokerChosenPathNotArgv(t *testing.T) {
@@ -38,7 +38,7 @@ func TestComposeFileGoesToABrokerChosenPathNotArgv(t *testing.T) {
 		t.Fatal("no compose up command was run")
 	}
 	// The file is passed by path (compose has no stdin for a two-file merge), but
-	// both paths sit under the OS temp dir — the broker's, not one hpd named.
+	// both paths sit under the OS temp dir — the broker's, not one npd named.
 	tmp := os.TempDir()
 	files := 0
 	for i, a := range up.Args {

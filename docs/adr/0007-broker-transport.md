@@ -3,7 +3,7 @@
 **Status:** Accepted · **Date:** 2026-07-11
 
 ## Context
-`hpd` (unprivileged) must call `hp-broker` (root) to perform privileged
+`npd` (unprivileged) must call `np-broker` (root) to perform privileged
 operations. [ADR-0002](0002-module-isolation-hybrid.md) and doc 06 originally
 named gRPC for both the broker and modules. When implementing the broker
 transport, two properties dominate:
@@ -16,18 +16,18 @@ transport, two properties dominate:
 
 ## Decision
 Use a **minimal length-prefixed JSON framing over a Unix domain socket** for the
-`hpd` ↔ `hp-broker` transport:
+`npd` ↔ `np-broker` transport:
 
 - 4-byte big-endian length prefix + JSON payload, capped at 1 MiB per frame.
 - Per-connection handshake: client sends a shared secret **token**; the server
   verifies it (constant-time) **and** the peer's OS credentials.
 - Request/response frames after the handshake.
 
-Authentication is **defense in depth**: (a) socket file mode `0660 root:heropanel`
-so only the `heropanel` group can connect, (b) `SO_PEERCRED` check that the peer
+Authentication is **defense in depth**: (a) socket file mode `0660 root:nexpanel`
+so only the `nexpanel` group can connect, (b) `SO_PEERCRED` check that the peer
 uid matches the configured caller (Linux), and (c) the token.
 
-gRPC remains the intended transport for **modules** (`hp-mod-*`), which have
+gRPC remains the intended transport for **modules** (`np-mod-*`), which have
 richer, streaming interfaces and run unprivileged.
 
 ## Rationale

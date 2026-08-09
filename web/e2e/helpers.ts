@@ -2,12 +2,12 @@ import { expect, type Page } from "@playwright/test";
 
 // Shared setup for the browser suite.
 //
-// Bootstrapping is a one-time act per datastore, and the specs share one hpd, so
+// Bootstrapping is a one-time act per datastore, and the specs share one npd, so
 // it has to be idempotent: the first spec that runs creates the admin, the rest
 // sign in as them.
 
 export const ADMIN = {
-  email: "e2e-admin@heropanel.test",
+  email: "e2e-admin@nexpanel.test",
   username: "e2eadmin",
   password: "playwright-e2e-password-1",
 };

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // The mail queue, as postfix reports it (`postqueue -j`, one JSON object per

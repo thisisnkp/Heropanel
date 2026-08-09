@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/internal/webserver"
+	"github.com/thisisnkp/nexpanel/internal/webserver"
 )
 
 func staticSite() webserver.Site {
 	return webserver.Site{
-		VhostName: "hps1", PrimaryDomain: "acme.example.com",
-		Domains: []string{"acme.example.com"}, DocumentRoot: "/srv/heropanel/sites/1/public",
-		Home: "/srv/heropanel/sites/1", LogDir: "/srv/heropanel/sites/1/logs",
+		VhostName: "nps1", PrimaryDomain: "acme.example.com",
+		Domains: []string{"acme.example.com"}, DocumentRoot: "/srv/nexpanel/sites/1/public",
+		Home: "/srv/nexpanel/sites/1", LogDir: "/srv/nexpanel/sites/1/logs",
 	}
 }
 
@@ -21,10 +21,10 @@ func TestRenderConfigStatic(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	for _, want := range []string{
-		"virtualhost hps1 {",
-		"docRoot                 /srv/heropanel/sites/1/public",
-		"listener HeroPanelHTTP {",
-		"map                     hps1 acme.example.com",
+		"virtualhost nps1 {",
+		"docRoot                 /srv/nexpanel/sites/1/public",
+		"listener NexPanelHTTP {",
+		"map                     nps1 acme.example.com",
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Fatalf("static config missing %q:\n%s", want, cfg)
@@ -40,11 +40,11 @@ func TestRenderConfigStatic(t *testing.T) {
 
 func TestRenderConfigPHP(t *testing.T) {
 	s := staticSite()
-	s.VhostName = "hps2"
+	s.VhostName = "nps2"
 	s.PrimaryDomain = "php.example.com"
 	s.Domains = []string{"php.example.com"}
 	s.IsPHP = true
-	s.FpmSocket = "/run/heropanel/fpm/hps2.sock"
+	s.FpmSocket = "/run/nexpanel/fpm/nps2.sock"
 	s.PhpBin = "/usr/sbin/php-fpm8.3"
 
 	cfg, err := webserver.RenderConfig([]webserver.Site{s})
@@ -52,27 +52,27 @@ func TestRenderConfigPHP(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	for _, want := range []string{
-		"extProcessor hps_hps2 {",      // server-level handler
+		"extProcessor nps_nps2 {",      // server-level handler
 		"type                    fcgi", // FastCGI to php-fpm
-		"uds:///run/heropanel/fpm/hps2.sock",
+		"uds:///run/nexpanel/fpm/nps2.sock",
 		"path                    /usr/sbin/php-fpm8.3", // OLS requires a path
 		"autoStart               0",                    // external pool (php-fpm)
 		"index.html, index.htm, index.php",
-		"add                   fcgi:hps_hps2 php", // per-vhost scriptHandler
+		"add                   fcgi:nps_nps2 php", // per-vhost scriptHandler
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Fatalf("php config missing %q:\n%s", want, cfg)
 		}
 	}
 	// The extProcessor must be declared before the vhost that references it.
-	if strings.Index(cfg, "extProcessor hps_hps2") > strings.Index(cfg, "virtualhost hps2") {
+	if strings.Index(cfg, "extProcessor nps_nps2") > strings.Index(cfg, "virtualhost nps2") {
 		t.Fatal("extProcessor must precede its virtualhost")
 	}
 }
 
 func TestRenderConfigProxy(t *testing.T) {
 	s := staticSite()
-	s.VhostName = "hps3"
+	s.VhostName = "nps3"
 	s.PrimaryDomain = "app.example.com"
 	s.Domains = []string{"app.example.com"}
 	s.ProxyTarget = "127.0.0.1:3000"
@@ -82,18 +82,18 @@ func TestRenderConfigProxy(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	for _, want := range []string{
-		"extProcessor proxy_hps3 {", // server-level proxy external app
+		"extProcessor proxy_nps3 {", // server-level proxy external app
 		"type                    proxy",
 		"address                 127.0.0.1:3000",
 		"context / {", // vhost proxy context
-		"handler               proxy_hps3",
+		"handler               proxy_nps3",
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Fatalf("proxy config missing %q:\n%s", want, cfg)
 		}
 	}
 	// The proxy external app must be declared before the vhost that references it.
-	if strings.Index(cfg, "extProcessor proxy_hps3") > strings.Index(cfg, "virtualhost hps3") {
+	if strings.Index(cfg, "extProcessor proxy_nps3") > strings.Index(cfg, "virtualhost nps3") {
 		t.Fatal("proxy extProcessor must precede its virtualhost")
 	}
 	// A proxy site is not a PHP site.
@@ -114,7 +114,7 @@ func TestRenderConfigDomainsAndRewrites(t *testing.T) {
 	}
 	for _, want := range []string{
 		// Every domain (aliases and redirect hosts alike) maps to the vhost.
-		"map                     hps1 acme.example.com, www.acme.example.com, old.example.com",
+		"map                     nps1 acme.example.com, www.acme.example.com, old.example.com",
 		"rewrite  {",
 		"rules                 <<<END_rules",
 		// The redirect host is regex-escaped and answered before force-HTTPS.
@@ -149,7 +149,7 @@ func TestRenderConfigNoRewriteBlockWhenNotNeeded(t *testing.T) {
 func TestRenderConfigMultiSite(t *testing.T) {
 	a := staticSite()
 	b := staticSite()
-	b.VhostName = "hps2"
+	b.VhostName = "nps2"
 	b.PrimaryDomain = "beta.example.com"
 	b.Domains = []string{"beta.example.com"}
 
@@ -157,8 +157,8 @@ func TestRenderConfigMultiSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	for _, want := range []string{"virtualhost hps1 {", "virtualhost hps2 {",
-		"map                     hps1 acme.example.com", "map                     hps2 beta.example.com"} {
+	for _, want := range []string{"virtualhost nps1 {", "virtualhost nps2 {",
+		"map                     nps1 acme.example.com", "map                     nps2 beta.example.com"} {
 		if !strings.Contains(cfg, want) {
 			t.Fatalf("multi-site config missing %q:\n%s", want, cfg)
 		}
@@ -177,10 +177,10 @@ func TestRenderConfigSuspendedKeepsTheDomainMapping(t *testing.T) {
 	// The mapping is the whole point. OpenLiteSpeed answers an unrecognized Host
 	// with its first vhost, so an unmapped suspended domain would be served by
 	// somebody else's site.
-	if !strings.Contains(cfg, "map                     hps1 acme.example.com") {
+	if !strings.Contains(cfg, "map                     nps1 acme.example.com") {
 		t.Fatalf("suspended site lost its domain mapping:\n%s", cfg)
 	}
-	if !strings.Contains(cfg, "virtualhost hps1 {") {
+	if !strings.Contains(cfg, "virtualhost nps1 {") {
 		t.Fatalf("suspended site lost its vhost:\n%s", cfg)
 	}
 	if !strings.Contains(cfg, "RewriteRule ^(.*)$ - [R=503,L]") {
@@ -191,7 +191,7 @@ func TestRenderConfigSuspendedKeepsTheDomainMapping(t *testing.T) {
 func TestRenderConfigSuspendedPHPSiteCannotExecute(t *testing.T) {
 	s := staticSite()
 	s.IsPHP = true
-	s.FpmSocket = "/run/heropanel/php/hps1.sock"
+	s.FpmSocket = "/run/nexpanel/php/nps1.sock"
 	s.PhpBin = "/usr/lib/php/8.3/php-fpm"
 	s.Suspended = true
 
@@ -204,7 +204,7 @@ func TestRenderConfigSuspendedPHPSiteCannotExecute(t *testing.T) {
 	if strings.Contains(cfg, "scriptHandler") {
 		t.Fatalf("suspended PHP site still has a script handler:\n%s", cfg)
 	}
-	if strings.Contains(cfg, "extProcessor hps_hps1") {
+	if strings.Contains(cfg, "extProcessor nps_nps1") {
 		t.Fatalf("suspended PHP site still wires its FPM pool:\n%s", cfg)
 	}
 }
@@ -218,7 +218,7 @@ func TestRenderConfigSuspendedProxySiteIsNotProxied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if strings.Contains(cfg, "proxy_hps1") {
+	if strings.Contains(cfg, "proxy_nps1") {
 		t.Fatalf("suspended proxy site still forwards to its app:\n%s", cfg)
 	}
 }

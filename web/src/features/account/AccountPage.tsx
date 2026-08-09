@@ -262,8 +262,8 @@ function SecretModal({ url, secret, onClose }: { url: string; secret: string; on
         </Alert>
         <div className="break-all rounded-md border border-border/60 bg-surface p-3 font-mono text-xs text-fg">{secret}</div>
         <p className="text-xs text-muted">
-          Verify a delivery: <span className="font-mono">X-HeroPanel-Signature</span> = "sha256=" + HMAC-SHA256(secret,{" "}
-          <span className="font-mono">X-HeroPanel-Timestamp</span> + "." + body).
+          Verify a delivery: <span className="font-mono">X-NexPanel-Signature</span> = "sha256=" + HMAC-SHA256(secret,{" "}
+          <span className="font-mono">X-NexPanel-Timestamp</span> + "." + body).
         </p>
         <div className="flex justify-end gap-2">
           <Button

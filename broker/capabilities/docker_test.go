@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnkp/heropanel/broker/capabilities"
-	"github.com/thisisnkp/heropanel/broker/capability"
-	"github.com/thisisnkp/heropanel/broker/exec"
-	"github.com/thisisnkp/heropanel/pkg/errx"
+	"github.com/thisisnkp/nexpanel/broker/capabilities"
+	"github.com/thisisnkp/nexpanel/broker/capability"
+	"github.com/thisisnkp/nexpanel/broker/exec"
+	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
 // managedRunner answers the ownership inspect with `managed`, and everything
@@ -65,7 +65,7 @@ func TestLifecycleRefusesAContainerThePanelDoesNotManage(t *testing.T) {
 func TestLifecycleActsOnAManagedContainer(t *testing.T) {
 	fr := managedRunner(true)
 	if _, err := (capabilities.ContainerStop{}).Execute(dockerCtx(fr),
-		raw(t, map[string]any{"container": "hp-site1-web"})); err != nil {
+		raw(t, map[string]any{"container": "np-site1-web"})); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 	if len(fr.Calls) != 2 {
@@ -75,7 +75,7 @@ func TestLifecycleActsOnAManagedContainer(t *testing.T) {
 	if last.Path != "/usr/bin/docker" {
 		t.Errorf("path = %q, want the docker CLI", last.Path)
 	}
-	if last.Args[0] != "stop" || last.Args[len(last.Args)-1] != "hp-site1-web" {
+	if last.Args[0] != "stop" || last.Args[len(last.Args)-1] != "np-site1-web" {
 		t.Errorf("args = %v, want a stop of the named container", last.Args)
 	}
 }
@@ -191,7 +191,7 @@ func TestLogTailIsClampedRegardlessOfWhatIsAsked(t *testing.T) {
 	for _, ask := range []int{0, -5, 1_000_000} {
 		fr := &exec.FakeRunner{}
 		if _, err := (capabilities.ContainerLogs{}).Execute(dockerCtx(fr),
-			raw(t, map[string]any{"container": "hp-site1-web", "tail": ask})); err != nil {
+			raw(t, map[string]any{"container": "np-site1-web", "tail": ask})); err != nil {
 			t.Fatalf("logs: %v", err)
 		}
 		last, _ := fr.Last()
@@ -219,7 +219,7 @@ func TestStatsNeverStreams(t *testing.T) {
 func TestRemoveNeverDeletesVolumes(t *testing.T) {
 	fr := managedRunner(true)
 	if _, err := (capabilities.ContainerRemove{}).Execute(dockerCtx(fr),
-		raw(t, map[string]any{"container": "hp-site1-web", "force": true})); err != nil {
+		raw(t, map[string]any{"container": "np-site1-web", "force": true})); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 	last, _ := fr.Last()
