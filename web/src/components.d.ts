@@ -15,6 +15,7 @@ declare module 'vue' {
     AppSidebar: typeof import('./components/nav/AppSidebar.vue')['default']
     AppTopbar: typeof import('./components/nav/AppTopbar.vue')['default']
     CreateSiteWizard: typeof import('./components/sites/CreateSiteWizard.vue')['default']
+    FileEditor: typeof import('./components/files/FileEditor.vue')['default']
     MobileHeader: typeof import('./components/nav/MobileHeader.vue')['default']
     MobileNavSheet: typeof import('./components/nav/MobileNavSheet.vue')['default']
     MobileTabBar: typeof import('./components/nav/MobileTabBar.vue')['default']
@@ -45,6 +46,7 @@ declare module 'vue' {
     SiteDrawer: typeof import('./components/nav/SiteDrawer.vue')['default']
     SiteHeader: typeof import('./components/site/SiteHeader.vue')['default']
     SiteSpecScreen: typeof import('./components/site/SiteSpecScreen.vue')['default']
+    SpecScreen: typeof import('./components/common/SpecScreen.vue')['default']
     ToastStack: typeof import('./components/ui/ToastStack.vue')['default']
   }
 }

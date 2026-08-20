@@ -1,94 +1,5 @@
-/**
- * The site-screen spec.
- *
- * Twenty-two of the site screens are the same layout with different content:
- * a stat row, an optional choice group, a toggle panel beside a side panel,
- * one or two tables, and an optional log tail. The design expressed that as a
- * single template fed by a spec object, and that is worth keeping — the
- * alternative is twenty-two files that drift apart the first time the table
- * header padding changes.
- *
- * A screen that genuinely differs (the overview, the file manager, PHP
- * settings) is a component of its own rather than a spec with escape hatches.
- */
-import type { FlagKey } from "@/stores/flags";
 import type { Site } from "@/stores/sites";
-
-export interface SpecStat {
-  readonly label: string;
-  readonly value: string;
-  readonly sub: string;
-}
-
-export interface SpecToggle {
-  readonly label: string;
-  readonly sub: string;
-  readonly flag: FlagKey;
-  /** Marks the switch as a paid add-on rather than a plain setting. */
-  readonly paid?: boolean;
-  /** Shows a "Risky" badge while the switch is on. */
-  readonly warn?: boolean;
-}
-
-export interface SpecChoice {
-  readonly label: string;
-  readonly sub: string;
-}
-
-export interface SpecField {
-  readonly label: string;
-  readonly value: string;
-}
-
-export interface SpecAction {
-  readonly label: string;
-  readonly primary?: boolean;
-}
-
-export interface SpecRow {
-  readonly a: string;
-  readonly b: string;
-  readonly c: string;
-  readonly action?: string;
-  /** Second, destructive action. */
-  readonly danger?: string;
-}
-
-export interface SpecTable {
-  readonly title: string;
-  readonly action: string;
-  readonly columns: readonly [string, string, string];
-  readonly rows: readonly SpecRow[];
-}
-
-export interface SpecLogLine {
-  readonly time: string;
-  readonly text: string;
-  readonly tone?: "default" | "success" | "warning" | "danger";
-}
-
-export interface SiteSpec {
-  readonly kicker: string;
-  readonly title: string;
-  readonly sub: string;
-  readonly stats?: readonly SpecStat[];
-  readonly choiceTitle?: string;
-  readonly choices?: readonly SpecChoice[];
-  /** Which choice is selected by default. */
-  readonly choiceDefault?: string;
-  readonly toggleTitle?: string;
-  readonly toggles?: readonly SpecToggle[];
-  readonly sideTitle?: string;
-  readonly sideNote?: string;
-  readonly fields?: readonly SpecField[];
-  readonly sideActions?: readonly SpecAction[];
-  readonly table1?: SpecTable;
-  readonly table2?: SpecTable;
-  readonly logs?: readonly SpecLogLine[];
-  readonly logName?: string;
-}
-
-const row = (a: string, b: string, c: string, action?: string, danger?: string): SpecRow => ({ a, b, c, action, danger });
+import { row, type Spec } from "@/data/spec";
 
 /** The database name the panel derives from a domain. */
 function dbName(domain: string) {
@@ -124,7 +35,7 @@ export type SpecKey =
  * "your site" where the design said "novaretail.in" is a downgrade, not a
  * simplification.
  */
-export function buildSiteSpec(key: SpecKey, s: Site): SiteSpec {
+export function buildSiteSpec(key: SpecKey, s: Site): Spec {
   const lang = LANG_FOR_STACK[s.stackKey] ?? "Runtime";
   const versions = LANG_VERSIONS[lang] ?? ["1.0"];
   const db = dbName(s.domain);

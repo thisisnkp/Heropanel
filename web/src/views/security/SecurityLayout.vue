@@ -1,6 +1,10 @@
 <script setup lang="ts">
 // Server-wide security. Site-scoped scanning lives under the site drawer, so
 // nothing here is per-site and the two never have to be told apart at a glance.
+//
+// The layout supplies the tab strip only: each section writes its own heading,
+// so the page has one <h1> that names where you actually are rather than a
+// generic "Security" above a more specific one.
 import type { NxTab } from "@/components/ui/NxTabs.vue";
 
 const tabs: NxTab[] = [
@@ -18,7 +22,6 @@ const tabs: NxTab[] = [
 
 <template>
   <div>
-    <NxPageHeader title="Security" subtitle="Server-wide protection, and what it is currently blocking." />
     <NxTabs :tabs="tabs" />
     <RouterView />
   </div>

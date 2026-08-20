@@ -21,7 +21,7 @@ const spec = computed(() => (sites.current ? buildSiteSpec(props.specKey, sites.
 <template>
   <div v-if="spec">
     <SiteHeader :kicker="spec.kicker" :title="spec.title" :sub="spec.sub" />
-    <SiteSpecScreen :spec="spec" />
+    <SpecScreen :spec="spec" />
   </div>
   <NxSkeleton v-else height="200px" />
 </template>

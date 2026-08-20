@@ -36,7 +36,7 @@ function clearCache() {
 
 <template>
   <header class="shead">
-    <div class="nx-row__grow">
+    <div class="shead__titles">
       <p class="shead__kicker">{{ kicker }}</p>
       <a :href="url" target="_blank" rel="noopener" class="shead__link" title="Open in a new tab">
         <h1 class="shead__domain nx-truncate">{{ site?.domain ?? "…" }}</h1>
@@ -71,6 +71,11 @@ function clearCache() {
   padding-bottom: 24px;
   flex-wrap: wrap;
 }
+/* Basis rather than a bare `flex: 1`: below ~460px the two action buttons alone
+ * are wider than the row, and without a basis the title block shrinks past zero
+ * and its own text spills out of it. With one, the actions wrap to their own
+ * line instead. */
+.shead__titles { flex: 1 1 280px; min-width: 0; }
 .shead__kicker {
   margin: 0;
   font-size: var(--nx-text-xs);
