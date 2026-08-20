@@ -43,6 +43,8 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SiteDrawer: typeof import('./components/nav/SiteDrawer.vue')['default']
+    SiteHeader: typeof import('./components/site/SiteHeader.vue')['default']
+    SiteSpecScreen: typeof import('./components/site/SiteSpecScreen.vue')['default']
     ToastStack: typeof import('./components/ui/ToastStack.vue')['default']
   }
 }

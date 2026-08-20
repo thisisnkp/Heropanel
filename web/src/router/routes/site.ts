@@ -1,4 +1,5 @@
 import type { RouteRecordRaw } from "vue-router";
+import type { SpecKey } from "@/data/siteSpec";
 
 /**
  * Everything under a single site.
@@ -7,6 +8,18 @@ import type { RouteRecordRaw } from "vue-router";
  * state: a deep link to one site's cron jobs has to survive a reload, and the
  * shell needs to know which site the drawer is for before any component mounts.
  */
+
+const SiteSpecView = () => import("@/views/site/SiteSpecView.vue");
+
+/**
+ * A screen that renders through the shared spec component. Twenty-two of the
+ * site screens are the same layout with different content, so they are declared
+ * as data here instead of as twenty-two near-identical component files.
+ */
+function spec(path: string, name: string, specKey: SpecKey, title: string): RouteRecordRaw {
+  return { path, name, component: SiteSpecView, props: { specKey }, meta: { title } };
+}
+
 export const siteRoutes: RouteRecordRaw[] = [
   {
     path: "/sites/:id",
@@ -17,36 +30,36 @@ export const siteRoutes: RouteRecordRaw[] = [
       { path: "overview", name: "site-overview", component: () => import("@/views/site/SiteOverviewView.vue"), meta: { title: "Overview" } },
 
       // Performance
-      { path: "ai-troubleshooter", name: "site-ai-troubleshooter", component: () => import("@/views/site/performance/AiTroubleshooterView.vue"), meta: { title: "AI troubleshooter" } },
-      { path: "pagespeed", name: "site-pagespeed", component: () => import("@/views/site/performance/PageSpeedView.vue"), meta: { title: "PageSpeed" } },
-      { path: "cdn", name: "site-cdn", component: () => import("@/views/site/performance/CdnView.vue"), meta: { title: "Cloudflare CDN" } },
+      spec("ai-troubleshooter", "site-ai-troubleshooter", "aitrouble", "AI troubleshooter"),
+      spec("pagespeed", "site-pagespeed", "pagespeed", "PageSpeed"),
+      spec("cdn", "site-cdn", "cdn", "Cloudflare CDN"),
 
-      { path: "analytics", name: "site-analytics", component: () => import("@/views/site/AnalyticsView.vue"), meta: { title: "Analytics" } },
+      spec("analytics", "site-analytics", "analytics", "Analytics"),
 
       // Security
-      { path: "malware", name: "site-malware", component: () => import("@/views/site/security/SiteMalwareView.vue"), meta: { title: "Malware scanner" } },
-      { path: "ssl", name: "site-ssl", component: () => import("@/views/site/security/SiteSslView.vue"), meta: { title: "SSL" } },
+      spec("malware", "site-malware", "malware", "Malware scanner"),
+      spec("ssl", "site-ssl", "ssl", "SSL"),
 
       // Domains
-      { path: "subdomains", name: "site-subdomains", component: () => import("@/views/site/domains/SubdomainsView.vue"), meta: { title: "Subdomains" } },
-      { path: "parked", name: "site-parked", component: () => import("@/views/site/domains/ParkedDomainsView.vue"), meta: { title: "Parked domains" } },
-      { path: "redirects", name: "site-redirects", component: () => import("@/views/site/domains/RedirectsView.vue"), meta: { title: "Redirections" } },
+      spec("subdomains", "site-subdomains", "subdomains", "Subdomains"),
+      spec("parked", "site-parked", "parked", "Parked domains"),
+      spec("redirects", "site-redirects", "redirects", "Redirections"),
 
       // WordPress manager
-      { path: "wp/install", name: "site-wp-install", component: () => import("@/views/site/wordpress/WpInstallView.vue"), meta: { title: "Install" } },
-      { path: "wp/migrate", name: "site-wp-migrate", component: () => import("@/views/site/wordpress/WpMigrateView.vue"), meta: { title: "Migrate website" } },
-      { path: "wp/staging", name: "site-wp-staging", component: () => import("@/views/site/wordpress/WpStagingView.vue"), meta: { title: "Create staging" } },
+      spec("wp/install", "site-wp-install", "wpinstall", "Install"),
+      spec("wp/migrate", "site-wp-migrate", "wpmigrate", "Migrate website"),
+      spec("wp/staging", "site-wp-staging", "wpstaging", "Create staging"),
       { path: "wp/plugins", name: "site-wp-plugins", component: () => import("@/views/site/wordpress/WpPluginsView.vue"), meta: { title: "Plugins and updates" } },
 
       // Files
       { path: "files", name: "site-files", component: () => import("@/views/site/files/FileManagerView.vue"), meta: { title: "File manager", fullBleed: true } },
-      { path: "ftp", name: "site-ftp", component: () => import("@/views/site/files/FtpView.vue"), meta: { title: "FTP" } },
-      { path: "ssh", name: "site-ssh", component: () => import("@/views/site/files/SiteSshView.vue"), meta: { title: "SSH" } },
+      spec("ftp", "site-ftp", "ftp", "FTP"),
+      spec("ssh", "site-ssh", "sshsite", "SSH"),
 
       // Databases
       { path: "databases", name: "site-db", component: () => import("@/views/site/databases/SiteDatabasesView.vue"), meta: { title: "Databases" } },
-      { path: "phpmyadmin", name: "site-phpmyadmin", component: () => import("@/views/site/databases/PhpMyAdminView.vue"), meta: { title: "phpMyAdmin" } },
-      { path: "remote-db", name: "site-remote-db", component: () => import("@/views/site/databases/RemoteDbView.vue"), meta: { title: "Remote DB" } },
+      spec("phpmyadmin", "site-phpmyadmin", "phpmyadmin", "phpMyAdmin"),
+      spec("remote-db", "site-remote-db", "remotedb", "Remote DB"),
 
       { path: "runtime", name: "site-runtime", component: () => import("@/views/site/RuntimeView.vue"), meta: { title: "Runtime" } },
       { path: "environment", name: "site-env", component: () => import("@/views/site/EnvironmentView.vue"), meta: { title: "Environment" } },
@@ -55,14 +68,14 @@ export const siteRoutes: RouteRecordRaw[] = [
       // Advanced
       { path: "php", name: "site-php", component: () => import("@/views/site/advanced/PhpSettingsView.vue"), meta: { title: "PHP settings" } },
       { path: "logs", name: "site-logs", component: () => import("@/views/site/advanced/SiteLogsView.vue"), meta: { title: "Logs" } },
-      { path: "version", name: "site-lang-version", component: () => import("@/views/site/advanced/LangVersionView.vue"), meta: { title: "Version" } },
-      { path: "cron", name: "site-cron", component: () => import("@/views/site/advanced/CronView.vue"), meta: { title: "Cron jobs" } },
+      spec("version", "site-lang-version", "lang", "Version"),
+      spec("cron", "site-cron", "cron", "Cron jobs"),
       { path: "git/deployments", name: "site-git-deployments", component: () => import("@/views/site/advanced/GitDeploymentsView.vue"), meta: { title: "Git deployments" } },
-      { path: "git/setup", name: "site-git-setup", component: () => import("@/views/site/advanced/GitSetupView.vue"), meta: { title: "Setup Git" } },
-      { path: "ip-manage", name: "site-ip-manage", component: () => import("@/views/site/advanced/IpManageView.vue"), meta: { title: "IP manage" } },
-      { path: "hotlink", name: "site-hotlink", component: () => import("@/views/site/advanced/HotlinkView.vue"), meta: { title: "Hotlink protection" } },
-      { path: "cache", name: "site-cache", component: () => import("@/views/site/advanced/CacheManagerView.vue"), meta: { title: "Cache manager" } },
-      { path: "activity", name: "site-activity", component: () => import("@/views/site/advanced/ActivityLogView.vue"), meta: { title: "Activity logs" } },
+      spec("git/setup", "site-git-setup", "git", "Setup Git"),
+      spec("ip-manage", "site-ip-manage", "ipmanage", "IP manage"),
+      spec("hotlink", "site-hotlink", "hotlink", "Hotlink protection"),
+      spec("cache", "site-cache", "cachemgr", "Cache manager"),
+      spec("activity", "site-activity", "activity", "Activity logs"),
 
       { path: "danger", name: "site-danger", component: () => import("@/views/site/DangerZoneView.vue"), meta: { title: "Danger zone" } },
     ],
