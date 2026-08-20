@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import type { StackKey } from "@/config/stacks";
+import { SEED_SITES } from "@/data/sites";
 
 export interface Site {
   readonly id: number;
@@ -27,6 +28,7 @@ export const useSitesStore = defineStore("sites", () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const currentId = ref<number | null>(null);
+  const loaded = ref(false);
 
   const current = computed(() => sites.value.find((s) => s.id === currentId.value) ?? null);
   const count = computed(() => sites.value.length);
@@ -43,6 +45,29 @@ export const useSitesStore = defineStore("sites", () => {
   /** Replaces the list wholesale — used by the loader and by tests. */
   function hydrate(next: Site[]) {
     sites.value = next;
+    loaded.value = true;
+  }
+
+  /**
+   * Loads the list once per session.
+   *
+   * Idempotent because the shell, the site layout and the list screen all need
+   * the sites and any of the three can mount first — without the guard, opening
+   * a deep link would fetch the same list three times. The fixture import is the
+   * seam the real `GET /api/v1/sites` replaces; nothing outside this function
+   * knows where the data came from.
+   */
+  async function ensureLoaded() {
+    if (loaded.value || loading.value) return;
+    loading.value = true;
+    error.value = null;
+    try {
+      hydrate([...SEED_SITES]);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Could not load your websites.";
+    } finally {
+      loading.value = false;
+    }
   }
 
   function remove(id: number) {
@@ -50,5 +75,5 @@ export const useSitesStore = defineStore("sites", () => {
     if (currentId.value === id) currentId.value = null;
   }
 
-  return { sites, loading, error, currentId, current, count, building, setCurrent, byId, hydrate, remove };
+  return { sites, loading, error, loaded, currentId, current, count, building, setCurrent, byId, hydrate, ensureLoaded, remove };
 });
