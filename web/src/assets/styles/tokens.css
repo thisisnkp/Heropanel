@@ -1,0 +1,69 @@
+/* NexPanel design tokens.
+ * Lifted verbatim from panel_ui_ref/NexPanel.dc.html so the running panel and
+ * the design file can be diffed line for line. Change a value here only when
+ * the design changes — never to patch a single screen.
+ */
+  :root {
+    /* BRAND — violet ramp, sampled from the logo crest */
+    --nx-violet-950:#1d013b; --nx-violet-900:#240545; --nx-violet-800:#2b0a52;
+    --nx-violet-700:#35105f; --nx-violet-600:#4a1a7d; --nx-violet-500:#6b2ba6;
+    --nx-violet-400:#7c3fbf; --nx-violet-300:#a97fdc;
+    --nx-violet-200:#e7dbf9; --nx-violet-100:#f3ecfd;
+
+    /* BRAND — gold ramp, sampled from the logo N. Premium + license moments only. */
+    --nx-gold-400:#f6cd5e; --nx-gold-500:#e0b263; --nx-gold-700:#b8860b;
+    --nx-gold-text:#8a5d14; --nx-gold-soft:#fbf2e0;
+
+    /* SEMANTIC brand roles */
+    --nx-primary:var(--nx-violet-500); --nx-primary-hover:#5a2496;
+    --nx-primary-active:var(--nx-violet-600); --nx-primary-on:#ffffff;
+    --nx-primary-soft:var(--nx-violet-100); --nx-primary-border:var(--nx-violet-200);
+    --nx-primary-text:var(--nx-violet-600);
+
+    /* SURFACES */
+    --nx-bg:#f6f6f4; --nx-surface:#ffffff; --nx-surface-2:#fbfbfa;
+    --nx-hover:#f2f1ee; --nx-active:#eeede9;
+    --nx-border:#e5e4e0; --nx-border-strong:#d4d3ce;
+
+    /* TEXT — all pass WCAG AA on --nx-bg */
+    --nx-text:#1b1b19; --nx-text-2:#3d3c38; --nx-text-3:#5c5b56;
+    --nx-text-muted:#6f6e69; --nx-text-placeholder:#78776f;
+    --nx-text-on-violet:#ffffff; --nx-text-on-violet-2:#cfc3e8;
+
+    /* DARK surfaces — log viewers, code panels */
+    --nx-dark:#1b1b19; --nx-dark-2:#0d0d0c; --nx-dark-border:#2f2e2b;
+    --nx-dark-border-2:#3a3936; --nx-text-on-dark:#c9c8c2;
+    --nx-success-on-dark:#8fd3ae; --nx-warning-on-dark:#e6c079;
+
+    /* STATUS */
+    --nx-success:#157f5e; --nx-success-soft:#e6f4ef;
+    --nx-danger:#b4402f;  --nx-danger-soft:#fbeceb;  --nx-danger-border:#f0cfc9;
+    --nx-warning:#8a5d14; --nx-warning-soft:#fdf0e6; --nx-warning-border:#ecdcb8;
+    --nx-info:#2b5d86;    --nx-info-soft:#eaf0fd;
+
+    /* STACK badges — neutral family, never a brand, status or gold hue */
+    --nx-stack-php:#4a5578;    --nx-stack-php-soft:#eceef5;
+    --nx-stack-node:#2c7a45;   --nx-stack-node-soft:#e8f3ea;
+    --nx-stack-python:#2b5d86; --nx-stack-python-soft:#e9f0f7;
+    --nx-stack-wp:#2b5d86;     --nx-stack-wp-soft:#eaf0fd;
+    --nx-stack-static:#5c5b56; --nx-stack-static-soft:#f0f0ed;
+
+    /* THIRD-PARTY brand — permitted exception */
+    --nx-cloudflare:#f38020;
+
+    --nx-focus-ring:var(--nx-violet-500);
+
+    /* TYPE — seven sizes */
+    --nx-text-xs:11px; --nx-text-sm:12px; --nx-text-base:13px; --nx-text-md:15px;
+    --nx-text-lg:18px; --nx-text-xl:22px; --nx-text-2xl:28px;
+
+    /* ICON sizes — deliberately outside the type scale */
+    --nx-icon-sm:16px; --nx-icon-md:18px; --nx-icon-lg:21px; --nx-icon-xl:24px;
+
+    /* LETTER-SPACING — three */
+    --nx-ls-tight:-0.2px; --nx-ls-normal:0; --nx-ls-caps:0.8px;
+
+    /* RADIUS — four, plus circles */
+    --nx-radius-sm:6px; --nx-radius-md:10px; --nx-radius-lg:14px;
+    --nx-radius-pill:999px; --nx-radius-full:50%;
+  }

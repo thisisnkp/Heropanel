@@ -1,12 +1,33 @@
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+import vue from "@vitejs/plugin-vue";
+import Icons from "unplugin-icons/vite";
+import IconsResolver from "unplugin-icons/resolver";
+import Components from "unplugin-vue-components/vite";
 import { fileURLToPath, URL } from "node:url";
 
 // The panel serves the built SPA embedded in npd (same origin). During `vite
 // dev`, API/health calls are proxied to the local npd instance so cookies stay
 // same-origin.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    vue(),
+
+    // Icons are resolved by name at build time and inlined as SVG, so a screen
+    // that uses six glyphs ships six paths rather than a ~200KB icon font. The
+    // design was drawn with Material Symbols Outlined; `simple-icons` covers the
+    // third-party marks (Cloudflare, WordPress, Docker) that have no Material
+    // equivalent.
+    Components({
+      dts: "src/components.d.ts",
+      resolvers: [IconsResolver({ prefix: "Icon", enabledCollections: ["material-symbols", "simple-icons"] })],
+      // Auto-import our own components too, so a view does not carry ten import
+      // lines for the primitives every view uses.
+      dirs: ["src/components"],
+      extensions: ["vue"],
+      deep: true,
+    }),
+    Icons({ compiler: "vue3", scale: 1, defaultClass: "nx-ico" }),
+  ],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -26,9 +47,6 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
   },
-  // Unit tests cover the pure logic that has no server to catch its mistakes —
-  // the gitignore matcher, the diff, and the path helpers. Rendering tests would
-  // need jsdom; the e2e suite exercises the UI against a real panel instead.
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],

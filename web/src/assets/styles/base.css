@@ -1,0 +1,33 @@
+/* Global base: reset, typography, focus, motion and the utility classes the
+ * design relies on (.nx-skel shimmer, .nxhide/.nxscroll scrollbars).
+ *
+ * Taken verbatim from panel_ui_ref/NexPanel.dc.html, minus the `.nxi` rule:
+ * the design used the Material Symbols *font*, this build renders the same
+ * glyphs as inlined SVG through unplugin-icons, so the font is dead weight and
+ * one less render-blocking request.
+ */
+  html, body { margin:0; padding:0; background:var(--nx-bg); font-family:'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+  * { box-sizing:border-box; }
+  a { color:var(--nx-primary); text-decoration:none; }
+  a:hover { color:var(--nx-primary-hover); }
+  input, button, select { font-family:inherit; }
+  ::placeholder { color:var(--nx-text-placeholder); }
+  @keyframes nxView { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes nxSidebar { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes nxDrop { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes nxSlideIn { from { transform:translateX(100%); } to { transform:translateX(0); } }
+  @keyframes nxFade { from { opacity:0; } to { opacity:1; } }
+  @keyframes nxPop { from { opacity:0; transform:translateY(8px) scale(0.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+  @keyframes nxRow { from { opacity:0; transform:translateY(-3px); } to { opacity:1; transform:translateY(0); } }
+  :focus-visible { outline:2px solid var(--nx-focus-ring); outline-offset:2px; border-radius:inherit; }
+  .nx-on-violet :focus-visible { outline-color:var(--nx-gold-400); }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.01ms !important; } }
+  .nx-skip { position:absolute; left:-9999px; top:8px; z-index:200; background:var(--nx-surface); color:var(--nx-primary-text); border:1px solid var(--nx-primary-border); border-radius:var(--nx-radius-md); padding:8px 16px; font-size:var(--nx-text-base); font-weight:500; }
+  .nx-skip:focus { left:8px; }
+  @keyframes nxShimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+  .nx-skel { background:linear-gradient(90deg, var(--nx-hover) 25%, var(--nx-active) 37%, var(--nx-hover) 63%); background-size:200% 100%; animation:nxShimmer 1.4s ease-in-out infinite; border-radius:var(--nx-radius-sm); }
+  @keyframes nxToast { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .nxhide { scrollbar-width:none; -ms-overflow-style:none; }
+  .nxhide::-webkit-scrollbar { width:0; height:0; display:none; }
+  .nxscroll::-webkit-scrollbar { width:10px; }
+  .nxscroll::-webkit-scrollbar-thumb { background:var(--nx-border-strong); border-radius:var(--nx-radius-sm); border:3px solid var(--nx-bg); }
