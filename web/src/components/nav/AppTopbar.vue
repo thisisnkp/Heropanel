@@ -42,6 +42,11 @@ const emit = defineEmits<{ (e: "ask-ai"): void; (e: "search"): void }>();
       <kbd class="nx-topbar__kbd">{{ shortcut }}</kbd>
     </button>
 
+    <RouterLink :to="{ name: 'notifications' }" class="nx-topbar__bell" aria-label="Notifications">
+      <NxIcon name="notifications" size="md" />
+      <span class="nx-topbar__dot" aria-hidden="true" />
+    </RouterLink>
+
     <NxButton variant="default" size="lg">Help</NxButton>
 
     <button type="button" class="nx-topbar__ai" @click="emit('ask-ai')">
@@ -108,6 +113,27 @@ const emit = defineEmits<{ (e: "ask-ai"): void; (e: "search"): void }>();
   border-radius: var(--nx-radius-sm);
   padding: 0 6px;
   white-space: nowrap;
+}
+.nx-topbar__bell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: var(--nx-radius-md);
+  color: var(--nx-text-2);
+}
+.nx-topbar__bell:hover { background: var(--nx-hover); color: var(--nx-text); }
+.nx-topbar__dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--nx-radius-full);
+  background: var(--nx-danger);
 }
 .nx-topbar__ai {
   display: flex;

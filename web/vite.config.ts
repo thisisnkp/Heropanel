@@ -36,8 +36,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Anchored regex, not the bare "/api" prefix: Vite matches a string key
+      // as a prefix, which also swallowed UI routes such as /api-tokens and
+      // served them from the backend instead of the SPA.
       // ws:true so the realtime WebSocket upgrade (/api/v1/ws) is proxied too.
-      "/api": { target: "http://127.0.0.1:8443", changeOrigin: false, ws: true },
+      "^/api/": { target: "http://127.0.0.1:8443", changeOrigin: false, ws: true },
       "/healthz": { target: "http://127.0.0.1:8443", changeOrigin: false },
       "/readyz": { target: "http://127.0.0.1:8443", changeOrigin: false },
     },

@@ -29,7 +29,15 @@ const title = computed(() => {
     </button>
     <div v-else class="nx-mheader__mark" aria-hidden="true">N</div>
 
-    <h1 class="nx-mheader__title">{{ title }}</h1>
+    <!-- A <p>, not an <h1>: the screen below writes the page heading, and two
+         level-one headings on one page leaves a screen reader user with no
+         single answer to "where am I". This line is chrome that repeats it. -->
+    <p class="nx-mheader__title">{{ title }}</p>
+
+    <RouterLink :to="{ name: 'notifications' }" class="nx-mheader__icon" aria-label="Notifications">
+      <NxIcon name="notifications" size="lg" />
+      <span class="nx-mheader__dot" aria-hidden="true" />
+    </RouterLink>
 
     <button type="button" class="nx-mheader__icon" aria-label="Search">
       <NxIcon name="search" size="lg" />
@@ -63,7 +71,17 @@ const title = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.nx-mheader__dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--nx-radius-full);
+  background: var(--nx-danger);
+}
 .nx-mheader__icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;

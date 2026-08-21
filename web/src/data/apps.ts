@@ -39,7 +39,7 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
       app("Nginx", "dns", "Fast reverse proxy and static file server. Panel default.", "Installed"),
       app("OpenLiteSpeed", "bolt", "Built-in cache, excellent for WordPress.", "Free"),
       app("Apache", "lan", "Widest .htaccess compatibility for legacy PHP apps.", "Free"),
-      app("Caddy", "https", "Automatic HTTPS with the simplest config.", "Free"),
+      app("Caddy", "enhanced-encryption", "Automatic HTTPS with the simplest config.", "Free"),
     ],
   },
   {

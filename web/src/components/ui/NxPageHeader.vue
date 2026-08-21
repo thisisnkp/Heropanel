@@ -19,8 +19,12 @@ defineProps<{ title: string; subtitle?: string }>();
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
 }
-.nx-page-head__titles { flex: 1; min-width: 0; }
+/* Basis rather than a bare `flex: 1`: on a narrow screen two action buttons are
+ * wider than the row, and without a basis the title block shrinks past zero and
+ * its own heading spills out. With one, the actions wrap to their own line. */
+.nx-page-head__titles { flex: 1 1 280px; min-width: 0; }
 .nx-page-head__title {
   margin: 0;
   font-size: var(--nx-text-xl);

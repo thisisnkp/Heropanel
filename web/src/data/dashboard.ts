@@ -108,3 +108,32 @@ export const AUTOMATION_TILES = [
   { name: "OpenClaw", tag: "OC", tone: "info" as const, sub: "4 agents · 128 runs today", to: "openclaw" },
   { name: "n8n", tag: "N8", tone: "danger" as const, sub: "11 workflows · 2,430 executions", to: "n8n" },
 ];
+
+// ---- notifications ---------------------------------------------------------
+
+/**
+ * The alerts worth interrupting someone for, from the mobile design.
+ *
+ * Deliberately a different list from `ACTIVITY`: activity is everything that
+ * happened, notifications are the subset that needs a decision. Merging them
+ * would mean either burying the backup failure among routine deploys, or
+ * pinging someone every time a cron job succeeds.
+ */
+export interface Notification {
+  readonly icon: string;
+  readonly label: string;
+  readonly sub: string;
+  readonly when: string;
+  readonly severity: "critical" | "warning";
+}
+
+export const NOTIFICATIONS: readonly Notification[] = [
+  { icon: "error", label: "Backup failed", sub: "billing-portal.co · destination full", when: "4 hours ago", severity: "critical" },
+  { icon: "bug-report", label: "Malware detected", sub: "2 files on novaretail.in quarantined", when: "6 days ago", severity: "critical" },
+  { icon: "gpp-maybe", label: "Security vulnerability", sub: "openssl 3.0.13 · patch available", when: "today 04:10", severity: "warning" },
+  { icon: "cloud-sync", label: "Deployment failed", sub: "novaretail.in · build error in theme", when: "5 days ago", severity: "critical" },
+  { icon: "memory", label: "CPU high", sub: "nexp-mum-01 hit 94% for 6 minutes", when: "yesterday", severity: "warning" },
+];
+
+export const NOTIFY_ABOUT =
+  "Server or site down, SSL expiring, failed backups, malware, security vulnerabilities, failed deployments, disk nearly full, and critical CPU or memory. Routine events stay in Activity.";

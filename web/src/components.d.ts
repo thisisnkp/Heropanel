@@ -32,7 +32,6 @@ declare module 'vue' {
     NxMeter: typeof import('./components/ui/NxMeter.vue')['default']
     NxModal: typeof import('./components/ui/NxModal.vue')['default']
     NxPageHeader: typeof import('./components/ui/NxPageHeader.vue')['default']
-    NxScreenPending: typeof import('./components/ui/NxScreenPending.vue')['default']
     NxSelect: typeof import('./components/ui/NxSelect.vue')['default']
     NxSkeleton: typeof import('./components/ui/NxSkeleton.vue')['default']
     NxSparkBars: typeof import('./components/ui/NxSparkBars.vue')['default']
@@ -45,7 +44,6 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SiteDrawer: typeof import('./components/nav/SiteDrawer.vue')['default']
     SiteHeader: typeof import('./components/site/SiteHeader.vue')['default']
-    SiteSpecScreen: typeof import('./components/site/SiteSpecScreen.vue')['default']
     SpecScreen: typeof import('./components/common/SpecScreen.vue')['default']
     ToastStack: typeof import('./components/ui/ToastStack.vue')['default']
   }

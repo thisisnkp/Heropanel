@@ -437,7 +437,10 @@ function restore(name: string) {
   display: flex;
   min-height: 0;
   height: calc(100vh - 230px);
-  min-height: 460px;
+  /* Low enough that the shell still fits a short laptop viewport. A larger
+   * floor pushed the bottom of the file list past the fold, so the page scrolled
+   * as well as the list and rows moved under the pointer mid-interaction. */
+  min-height: 320px;
   background: var(--nx-surface);
   border: 1px solid var(--nx-border);
   border-radius: var(--nx-radius-lg);
@@ -546,7 +549,16 @@ function restore(name: string) {
 }
 .fm__count { font-size: var(--nx-text-sm); color: var(--nx-text-muted); white-space: nowrap; }
 
-.fm__list { flex: 1; min-height: 0; overflow-y: auto; }
+.fm__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Never let a row sit flush against the clipping edge: a half-cut row is
+   * awkward to hit deliberately, and scrolling it into view mid-gesture moves
+   * every other row with it. */
+  padding-bottom: 44px;
+  scroll-padding-bottom: 44px;
+}
 .fm__trash-note { margin: 16px; }
 .fm__table { width: 100%; }
 .fm__head,
@@ -630,11 +642,15 @@ function restore(name: string) {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Fixed height so the strip occupies the same space whether or not anything
+   * is selected — see the note on the element. */
+  height: 57px;
   border-top: 1px solid var(--nx-border);
-  padding: 12px 16px;
+  padding: 0 16px;
   background: var(--nx-surface);
 }
 .fm__sel-label { font-size: var(--nx-text-base); color: var(--nx-text-2); }
+.fm__sel-hint { font-size: var(--nx-text-sm); color: var(--nx-text-placeholder); }
 
 .fm__perms { display: flex; gap: 24px; flex-wrap: wrap; }
 .fm__perm-group { border: 0; margin: 0; padding: 0; }

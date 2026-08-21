@@ -62,9 +62,12 @@ import IDescription from "~icons/material-symbols/description";
 import IDesktopWindows from "~icons/material-symbols/desktop-windows";
 import IDeveloperBoard from "~icons/material-symbols/developer-board";
 import IDns from "~icons/material-symbols/dns";
+import IDocs from "~icons/material-symbols/docs";
 import IDownload from "~icons/material-symbols/download";
+import IDraft from "~icons/material-symbols/draft";
 import IDriveFileMove from "~icons/material-symbols/drive-file-move";
 import IDriveFileRenameOutline from "~icons/material-symbols/drive-file-rename-outline";
+import IEnhancedEncryption from "~icons/material-symbols/enhanced-encryption";
 import IError from "~icons/material-symbols/error";
 import IExpandLess from "~icons/material-symbols/expand-less";
 import IExpandMore from "~icons/material-symbols/expand-more";
@@ -106,6 +109,7 @@ import INotifications from "~icons/material-symbols/notifications";
 import INotificationsActive from "~icons/material-symbols/notifications-active";
 import IOpenInNew from "~icons/material-symbols/open-in-new";
 import IOverview from "~icons/material-symbols/overview";
+import IPerson from "~icons/material-symbols/person";
 import IPhonelinkLock from "~icons/material-symbols/phonelink-lock";
 import IPhp from "~icons/material-symbols/php";
 import IPlayCircle from "~icons/material-symbols/play-circle";
@@ -150,6 +154,7 @@ import IViewTimeline from "~icons/material-symbols/view-timeline";
 import IVisibility from "~icons/material-symbols/visibility";
 import IVpnKey from "~icons/material-symbols/vpn-key";
 import IWarning from "~icons/material-symbols/warning";
+import IWebhook from "~icons/material-symbols/webhook";
 import IWidgets from "~icons/material-symbols/widgets";
 
 export const ICONS: Readonly<Record<string, Component>> = {
@@ -200,9 +205,12 @@ export const ICONS: Readonly<Record<string, Component>> = {
   "desktop-windows": IDesktopWindows,
   "developer-board": IDeveloperBoard,
   "dns": IDns,
+  "docs": IDocs,
   "download": IDownload,
+  "draft": IDraft,
   "drive-file-move": IDriveFileMove,
   "drive-file-rename-outline": IDriveFileRenameOutline,
+  "enhanced-encryption": IEnhancedEncryption,
   "error": IError,
   "expand-less": IExpandLess,
   "expand-more": IExpandMore,
@@ -244,6 +252,7 @@ export const ICONS: Readonly<Record<string, Component>> = {
   "notifications-active": INotificationsActive,
   "open-in-new": IOpenInNew,
   "overview": IOverview,
+  "person": IPerson,
   "phonelink-lock": IPhonelinkLock,
   "php": IPhp,
   "play-circle": IPlayCircle,
@@ -288,6 +297,7 @@ export const ICONS: Readonly<Record<string, Component>> = {
   "visibility": IVisibility,
   "vpn-key": IVpnKey,
   "warning": IWarning,
+  "webhook": IWebhook,
   "widgets": IWidgets,
 };
 
