@@ -1,15 +1,45 @@
 <script setup lang="ts">
-/** Databases — create one, and the MySQL databases already attached to this site. */
+/**
+ * Databases — create one, and manage the MySQL databases on this site.
+ *
+ * The list is this site's databases plus every database on the server that no
+ * site owns. Orphans are real — made in phpMyAdmin, over SSH, or left behind by
+ * a deleted site — and a panel that lists only linked databases hides them
+ * forever while they keep their disk and their grants. They appear here with
+ * nothing but an Assign control, which is what makes them recoverable.
+ */
 import { computed, ref } from "vue";
-import { databases, dbPrefix } from "@/data/siteDetail";
+import { useRouter } from "vue-router";
+import { dbPrefix } from "@/data/siteDetail";
+import { useDatabasesStore, PRIVILEGES, type Database, type Privilege } from "@/stores/databases";
+import { useJobsStore } from "@/stores/jobs";
 import { useSitesStore } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
 
+const router = useRouter();
 const sites = useSitesStore();
+const dbs = useDatabasesStore();
+const jobs = useJobsStore();
 const ui = useUiStore();
 
 const site = computed(() => sites.current);
-const rows = computed(() => (site.value ? databases(site.value) : []));
+const rows = computed(() => (site.value ? dbs.forSite(site.value.id) : []));
+
+function siteName(id: number | null) {
+  return sites.sites.find((s) => s.id === id)?.domain ?? "";
+}
+
+/** "14 Mar 2026" — an ISO date is stored, a readable one is shown. */
+function created(iso: string) {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+// ---- create ----------------------------------------------------------------
 
 /**
  * Every database and user on this site is prefixed with the site's own
@@ -49,12 +79,14 @@ const revealed = ref(false);
  */
 const ALPHABET = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789-_";
 
-function generate() {
+function newPassword() {
   const bytes = new Uint32Array(20);
   crypto.getRandomValues(bytes);
-  // Rejection-free because the alphabet length divides evenly enough that the
-  // modulo bias over 2^32 is far below anything that matters at 20 characters.
-  password.value = Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
+  return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
+}
+
+function generate() {
+  password.value = newPassword();
   revealed.value = true;
 }
 
@@ -77,7 +109,14 @@ function check(value: string, max: number, what: string): string {
   return "";
 }
 
-const dbError = computed(() => check(dbName.value, DB_MAX, "database"));
+const dbError = computed(() => {
+  const base = check(dbName.value, DB_MAX, "database");
+  if (base) return base;
+  // Names are server-wide, so the clash can be with another site's database —
+  // one this screen does not even list.
+  if (dbName.value && dbs.exists(prefix.value + dbName.value)) return "That database already exists.";
+  return "";
+});
 const userError = computed(() => check(userName.value, USER_MAX, "user"));
 
 const complete = computed(
@@ -85,11 +124,83 @@ const complete = computed(
 );
 
 function create() {
-  if (!complete.value) return;
-  ui.toast(
-    `Creating ${prefix.value}${dbName.value} is not wired up yet.`,
-    "info",
-  );
+  if (!complete.value || !site.value) return;
+  dbs.add(prefix.value + dbName.value, prefix.value + userName.value, site.value.id);
+  ui.toast(`Created ${prefix.value}${dbName.value}.`, "success");
+  dbName.value = "";
+  userName.value = "";
+  password.value = "";
+  revealed.value = false;
+}
+
+// ---- row actions -----------------------------------------------------------
+
+const openMenu = ref<string | null>(null);
+
+function assign(db: Database) {
+  if (!site.value) return;
+  dbs.assign(db.name, site.value.id);
+  ui.toast(`${db.name} is now linked to ${site.value.domain}.`, "success");
+}
+
+/** Repair is a long-running table scan, so it reports in the job tray. */
+function repair(db: Database) {
+  jobs.start("Repair " + db.name, siteName(db.siteId) || "unassigned", "Checking tables");
+}
+
+const pwFor = ref<Database | null>(null);
+const pwValue = ref("");
+const pwRevealed = ref(false);
+
+function openPassword(db: Database) {
+  pwFor.value = db;
+  pwValue.value = "";
+  pwRevealed.value = false;
+}
+
+function savePassword() {
+  if (!pwFor.value || !pwValue.value) return;
+  ui.toast(`Password changed for ${pwFor.value.user}.`, "success");
+  pwFor.value = null;
+}
+
+const permsFor = ref<Database | null>(null);
+const perms = ref<Privilege[]>([]);
+
+function openPerms(db: Database) {
+  permsFor.value = db;
+  // Everything except DROP: the common grant, and the one destructive privilege
+  // is the one worth making someone tick deliberately.
+  perms.value = PRIVILEGES.filter((p) => p !== "DROP");
+}
+
+function togglePriv(p: Privilege) {
+  perms.value = perms.value.includes(p) ? perms.value.filter((x) => x !== p) : [...perms.value, p];
+}
+
+function savePerms() {
+  if (!permsFor.value) return;
+  ui.toast(`${perms.value.length} privileges set on ${permsFor.value.name}.`, "success");
+  permsFor.value = null;
+}
+
+const deleteFor = ref<Database | null>(null);
+const typedName = ref("");
+const canDelete = computed(() => typedName.value.trim() === deleteFor.value?.name);
+
+function openDelete(db: Database) {
+  deleteFor.value = db;
+  typedName.value = "";
+}
+
+function confirmDelete() {
+  const db = deleteFor.value;
+  if (!db || !canDelete.value) return;
+  dbs.remove(db.name);
+  deleteFor.value = null;
+  // Dropping a database is not reversible from here, so the toast says where the
+  // copy is rather than offering an Undo it cannot honour.
+  ui.toast(`${db.name} dropped. The last nightly backup still has it.`, "danger");
 }
 </script>
 
@@ -176,9 +287,7 @@ function create() {
             <!-- The name it will actually get, spelled out. The prefix is inside
                  the field, so the finished string is the one thing you cannot
                  read off the form in one piece. -->
-            <p v-if="dbName && !dbError" class="db__preview nx-mono">
-              {{ prefix }}{{ dbName }}
-            </p>
+            <p v-if="dbName && !dbError" class="db__preview nx-mono">{{ prefix }}{{ dbName }}</p>
             <span class="nx-row__grow" />
             <NxButton type="submit" variant="primary" size="lg" :disabled="!complete">
               Create database
@@ -188,31 +297,185 @@ function create() {
       </NxCard>
 
       <NxCard title="MySQL databases" flush class="db__list">
-        <template #action>
-          <NxButton @click="$router.push({ name: 'site-phpmyadmin' })">Open phpMyAdmin</NxButton>
-        </template>
-
         <NxTable
           :columns="[
-            { key: 'name', label: 'Database', width: '1.4fr' },
-            { key: 'user', label: 'User', width: '1fr' },
-            { key: 'size', label: 'Size', width: '0.7fr' },
-            { key: 'actions', label: '', width: '90px', align: 'end' },
+            { key: 'name', label: 'MySQL Database', width: '1.3fr' },
+            { key: 'user', label: 'MySQL User', width: '1fr' },
+            { key: 'created', label: 'Created at', width: '0.9fr' },
+            { key: 'website', label: 'Website', width: '1.1fr' },
+            { key: 'actions', label: 'Actions', width: '230px', align: 'end' },
           ]"
           :rows="rows"
           :row-key="(d) => d.name"
         >
           <template #default="{ row }">
             <div class="db__name nx-mono nx-truncate">{{ row.name }}</div>
-            <div class="db__muted nx-mono">{{ row.user }}</div>
-            <div class="db__muted">{{ row.size }}</div>
-            <div class="db__actions">
-              <NxButton @click="ui.toast('Export is not wired up yet.', 'info')">Export</NxButton>
+            <div class="db__muted nx-mono nx-truncate">{{ row.user }}</div>
+            <div class="db__muted">{{ created(row.createdAt) }}</div>
+
+            <div class="db__site">
+              <!-- Owned by this site, or owned by nobody. There is no third case
+                   here: another site's databases are not in this list. -->
+              <span v-if="!dbs.isOrphan(row)" class="db__linked nx-mono nx-truncate">
+                {{ siteName(row.siteId) }}
+              </span>
+              <NxButton v-else size="sm" @click="assign(row)">
+                <NxIcon name="add-link" size="sm" />
+                Assign
+              </NxButton>
+            </div>
+
+            <div class="db__row-actions">
+              <NxButton size="sm" @click="router.push({ name: 'site-phpmyadmin' })">
+                Enter phpMyAdmin
+              </NxButton>
+
+              <NxMenu
+                :open="openMenu === row.name"
+                width="220px"
+                @update:open="(v) => (openMenu = v ? row.name : null)"
+              >
+                <template #trigger="{ toggle }">
+                  <button
+                    type="button"
+                    class="db__dots"
+                    :aria-label="'More actions for ' + row.name"
+                    :aria-expanded="openMenu === row.name"
+                    @click="toggle"
+                  >
+                    <NxIcon name="more-vert" size="md" />
+                  </button>
+                </template>
+
+                <button type="button" class="db__menu-item" role="menuitem" @click="repair(row)">
+                  <NxIcon name="build" size="sm" />Repair
+                </button>
+                <button type="button" class="db__menu-item" role="menuitem" @click="openPassword(row)">
+                  <NxIcon name="key" size="sm" />Change Password
+                </button>
+                <button type="button" class="db__menu-item" role="menuitem" @click="openPerms(row)">
+                  <NxIcon name="admin-panel-settings" size="sm" />Change Permissions
+                </button>
+                <button
+                  type="button"
+                  class="db__menu-item is-danger"
+                  role="menuitem"
+                  @click="openDelete(row)"
+                >
+                  <NxIcon name="delete" size="sm" />Delete
+                </button>
+              </NxMenu>
             </div>
           </template>
         </NxTable>
       </NxCard>
     </div>
+
+    <!-- Change password -->
+    <NxModal
+      :open="pwFor !== null"
+      title="Change password"
+      :description="pwFor ? 'For the MySQL user ' + pwFor.user + '.' : ''"
+      @update:open="(v) => { if (!v) pwFor = null; }"
+    >
+      <NxField label="New password">
+        <template #default="{ id }">
+          <NxInput
+            :id="id"
+            v-model="pwValue"
+            :type="pwRevealed ? 'text' : 'password'"
+            :mono="pwRevealed"
+            placeholder="Password"
+            autocomplete="new-password"
+            spellcheck="false"
+          >
+            <template #suffix>
+              <button
+                type="button"
+                class="db__icon"
+                aria-label="Generate a strong password"
+                title="Generate a strong password"
+                @click="pwValue = newPassword(); pwRevealed = true"
+              >
+                <NxIcon name="autorenew" size="md" />
+              </button>
+              <button
+                type="button"
+                class="db__icon"
+                :aria-label="pwRevealed ? 'Hide password' : 'Show password'"
+                :aria-pressed="pwRevealed"
+                @click="pwRevealed = !pwRevealed"
+              >
+                <NxIcon :name="pwRevealed ? 'visibility-off' : 'visibility'" size="md" />
+              </button>
+            </template>
+          </NxInput>
+        </template>
+      </NxField>
+      <NxCallout tone="warning" class="db__note">
+        Anything connecting with the old password stops working the moment this is
+        saved — update your site's config in the same sitting.
+      </NxCallout>
+
+      <template #footer>
+        <NxButton @click="pwFor = null">Cancel</NxButton>
+        <NxButton variant="primary" :disabled="!pwValue" @click="savePassword">Change password</NxButton>
+      </template>
+    </NxModal>
+
+    <!-- Change permissions -->
+    <NxModal
+      :open="permsFor !== null"
+      title="Change permissions"
+      :description="permsFor ? permsFor.user + ' on ' + permsFor.name : ''"
+      @update:open="(v) => { if (!v) permsFor = null; }"
+    >
+      <ul class="db__privs">
+        <li v-for="p in PRIVILEGES" :key="p">
+          <label class="db__priv">
+            <input type="checkbox" :checked="perms.includes(p)" @change="togglePriv(p)" />
+            <span class="nx-mono">{{ p }}</span>
+            <!-- Named, because DROP is the one on this list that loses data. -->
+            <span v-if="p === 'DROP'" class="db__priv-warn">destroys tables</span>
+          </label>
+        </li>
+      </ul>
+
+      <template #footer>
+        <NxButton @click="permsFor = null">Cancel</NxButton>
+        <NxButton variant="primary" @click="savePerms">Save permissions</NxButton>
+      </template>
+    </NxModal>
+
+    <!-- Delete -->
+    <NxModal
+      :open="deleteFor !== null"
+      title="Drop this database?"
+      description="Every table in it goes. The last nightly backup still has a copy."
+      :dismissible="false"
+      @update:open="(v) => { if (!v) deleteFor = null; }"
+    >
+      <NxField
+        label="Type the database name to confirm"
+        :hint="'Enter ' + (deleteFor?.name ?? '') + ' exactly.'"
+      >
+        <template #default="{ id, describedBy }">
+          <NxInput
+            :id="id"
+            v-model="typedName"
+            mono
+            :placeholder="deleteFor?.name"
+            :aria-describedby="describedBy"
+            autocomplete="off"
+          />
+        </template>
+      </NxField>
+
+      <template #footer>
+        <NxButton @click="deleteFor = null">Cancel</NxButton>
+        <NxButton variant="danger" :disabled="!canDelete" @click="confirmDelete">Drop database</NxButton>
+      </template>
+    </NxModal>
   </div>
   <NxSkeleton v-else height="200px" />
 </template>
@@ -220,11 +483,7 @@ function create() {
 <style scoped>
 .db__form { display: flex; flex-direction: column; gap: 16px; }
 /* One field per row, each spanning the card. */
-.db__grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+.db__grid { display: flex; flex-direction: column; gap: 14px; }
 .db__icon {
   flex: 0 0 auto;
   display: flex;
@@ -251,8 +510,49 @@ function create() {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
 .db__list { margin-top: 12px; }
 .db__name { font-weight: 500; }
 .db__muted { color: var(--nx-text-muted); }
-.db__actions { display: flex; justify-content: flex-end; }
+.db__site { display: flex; align-items: center; min-width: 0; }
+.db__linked { color: var(--nx-text-muted); }
+.db__row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.db__dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 1px solid var(--nx-border);
+  background: var(--nx-surface);
+  border-radius: var(--nx-radius-md);
+  cursor: pointer;
+  color: var(--nx-text-2);
+  padding: 0;
+}
+.db__dots:hover { background: var(--nx-hover); }
+.db__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: var(--nx-radius-md);
+  padding: 9px 10px;
+  font-size: var(--nx-text-base);
+  font-family: inherit;
+  color: var(--nx-text-2);
+  cursor: pointer;
+}
+.db__menu-item:hover { background: var(--nx-hover); color: var(--nx-text); }
+.db__menu-item.is-danger { color: var(--nx-danger); }
+.db__menu-item.is-danger:hover { background: var(--nx-danger-soft); }
+
+.db__privs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.db__priv { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: var(--nx-text-base); }
+.db__priv-warn { font-size: var(--nx-text-xs); color: var(--nx-danger); }
+.db__note { margin-top: 12px; }
 </style>

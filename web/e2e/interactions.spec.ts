@@ -246,6 +246,124 @@ test.describe("creating a database", () => {
   });
 });
 
+test.describe("the database list", () => {
+  test("shows this site's databases and every unowned one, and nobody else's", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    const names = await page.locator(".db__name").allInnerTexts();
+
+    // Site 1's own.
+    expect(names).toContain("nexp_novaretail");
+    expect(names).toContain("nexp_novaretail_stg");
+    // Orphans, because this is the only screen that can claim them.
+    expect(names).toContain("legacy_wp_import");
+    // Another site's database is not this site's business.
+    expect(names).not.toContain("nexp_api");
+    expect(names).not.toContain("nexp_billing_portal");
+
+    await page.goto("/sites/2/databases");
+    const other = await page.locator(".db__name").allInnerTexts();
+    expect(other).toContain("nexp_api");
+    expect(other).not.toContain("nexp_novaretail");
+    // The orphans follow, because they belong to no site at all.
+    expect(other).toContain("legacy_wp_import");
+  });
+
+  test("assigning an orphan links it to the site you are in", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+
+    const orphan = page.locator(".nx-table__row").filter({ hasText: "legacy_wp_import" });
+    await expect(orphan.getByRole("button", { name: "Assign" })).toBeVisible();
+
+    await orphan.getByRole("button", { name: "Assign" }).click();
+
+    // The row now names the site instead of offering the button — a list that
+    // still said "Assign" after assigning would be the bug worth catching.
+    await expect(orphan.getByRole("button", { name: "Assign" })).toHaveCount(0);
+    await expect(orphan).toContainText("novaretail.in");
+
+    // And it is gone from the other site, which only ever saw it as unowned.
+    // Switched in-app, not page.goto — a reload would drop the store and prove
+    // nothing about whether the assignment stuck.
+    await page.getByRole("button", { name: "Switch website" }).click();
+    await page.getByPlaceholder("Search websites").fill("api");
+    await page.locator(".nx-sw__item").first().click();
+    await expect(page).toHaveURL(/\/sites\/2\/databases$/);
+    await expect(page.locator(".db__name").filter({ hasText: "legacy_wp_import" })).toHaveCount(0);
+  });
+
+  test("every row offers phpMyAdmin and the four actions", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    const row = page.locator(".nx-table__row").first();
+    await expect(row.getByRole("button", { name: "Enter phpMyAdmin" })).toBeVisible();
+
+    await row.getByRole("button", { name: /More actions for/ }).click();
+    for (const item of ["Repair", "Change Password", "Change Permissions", "Delete"]) {
+      await expect(page.getByRole("menuitem", { name: item })).toBeVisible();
+    }
+  });
+
+  test("repair runs as a job, not a message that vanishes", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    await page.locator(".nx-table__row").first().getByRole("button", { name: /More actions/ }).click();
+    await page.getByRole("menuitem", { name: "Repair" }).click();
+
+    await expect(page.locator(".jt")).toContainText("Repair nexp_novaretail");
+    await expect(page.locator(".jt")).toContainText("Checking tables");
+  });
+
+  test("dropping a database needs the name typed back, exactly", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    const before = await page.locator(".nx-table__row").count();
+
+    await page.locator(".nx-table__row").first().getByRole("button", { name: /More actions/ }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+
+    const confirm = page.getByRole("button", { name: "Drop database" });
+    await expect(confirm).toBeDisabled();
+
+    const field = page.getByRole("dialog").locator("input").first();
+    await field.fill("nexp_novaretail_stg");
+    // A near miss is still a miss: this is a different database on the same site.
+    await expect(confirm).toBeDisabled();
+
+    await field.fill("nexp_novaretail");
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+
+    await expect(page.locator(".nx-table__row")).toHaveCount(before - 1);
+    await expect(page.locator(".db__name").filter({ hasText: /^nexp_novaretail$/ })).toHaveCount(0);
+  });
+
+  test("changing permissions leaves DROP unticked", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    await page.locator(".nx-table__row").first().getByRole("button", { name: /More actions/ }).click();
+    await page.getByRole("menuitem", { name: "Change Permissions" }).click();
+
+    const dialog = page.getByRole("dialog");
+    // The one privilege on the list that loses data is the one you have to ask
+    // for, and it says why beside it.
+    await expect(dialog.locator(".db__priv").filter({ hasText: "DROP" })).toContainText("destroys tables");
+    await expect(dialog.locator(".db__priv").filter({ hasText: "DROP" }).locator("input")).not.toBeChecked();
+    await expect(dialog.locator(".db__priv").filter({ hasText: "SELECT" }).locator("input")).toBeChecked();
+  });
+
+  test("a created database appears in the list under this site", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    await page.getByPlaceholder("Enter Database Name").fill("shop");
+    await page.getByPlaceholder("Enter User Name").fill("shop_rw");
+    await page.getByRole("button", { name: "Generate a strong password" }).click();
+    await page.getByRole("button", { name: "Create database" }).click();
+
+    const row = page.locator(".nx-table__row").filter({ hasText: "nexp_novaretail_shop" });
+    await expect(row).toContainText("nexp_novaretail_shop_rw");
+    await expect(row).toContainText("novaretail.in");
+
+    // And the name is now taken, server-wide.
+    await page.getByPlaceholder("Enter Database Name").fill("shop");
+    await expect(page.locator(".nx-field__error")).toContainText("already exists");
+  });
+});
+
 test.describe("per-stack screens", () => {
   test("a WordPress site and a Node site get different overviews", async ({ page }) => {
     await page.goto("/sites/1/overview");

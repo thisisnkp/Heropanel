@@ -19,7 +19,9 @@ import type { Component } from "vue";
 
 import IAccountTree from "~icons/material-symbols/account-tree-outline";
 import IAddCircle from "~icons/material-symbols/add-circle-outline";
+import IAddLink from "~icons/material-symbols/add-link-outline";
 import IAddToQueue from "~icons/material-symbols/add-to-queue-outline";
+import IAdminPanelSettings from "~icons/material-symbols/admin-panel-settings-outline";
 import IAlternateEmail from "~icons/material-symbols/alternate-email-outline";
 import IAnalytics from "~icons/material-symbols/analytics-outline";
 import IApi from "~icons/material-symbols/api-outline";
@@ -37,6 +39,7 @@ import IBedtime from "~icons/material-symbols/bedtime-outline";
 import IBlock from "~icons/material-symbols/block-outline";
 import IBolt from "~icons/material-symbols/bolt-outline";
 import IBugReport from "~icons/material-symbols/bug-report-outline";
+import IBuild from "~icons/material-symbols/build-outline";
 import ICalculate from "~icons/material-symbols/calculate-outline";
 import ICallSplit from "~icons/material-symbols/call-split-outline";
 import ICardMembership from "~icons/material-symbols/card-membership-outline";
@@ -107,6 +110,7 @@ import IMemory from "~icons/material-symbols/memory-outline";
 import IMonitorHeart from "~icons/material-symbols/monitor-heart-outline";
 import IMonitoring from "~icons/material-symbols/monitoring-outline";
 import IMoreHoriz from "~icons/material-symbols/more-horiz-outline";
+import IMoreVert from "~icons/material-symbols/more-vert-outline";
 import IMove from "~icons/material-symbols/move-outline";
 import INoteAdd from "~icons/material-symbols/note-add-outline";
 import INotifications from "~icons/material-symbols/notifications-outline";
@@ -166,7 +170,9 @@ import IWidgets from "~icons/material-symbols/widgets-outline";
 export const ICONS: Readonly<Record<string, Component>> = {
   "account-tree": IAccountTree,
   "add-circle": IAddCircle,
+  "add-link": IAddLink,
   "add-to-queue": IAddToQueue,
+  "admin-panel-settings": IAdminPanelSettings,
   "alternate-email": IAlternateEmail,
   "analytics": IAnalytics,
   "api": IApi,
@@ -184,6 +190,7 @@ export const ICONS: Readonly<Record<string, Component>> = {
   "block": IBlock,
   "bolt": IBolt,
   "bug-report": IBugReport,
+  "build": IBuild,
   "calculate": ICalculate,
   "call-split": ICallSplit,
   "card-membership": ICardMembership,
@@ -254,6 +261,7 @@ export const ICONS: Readonly<Record<string, Component>> = {
   "monitor-heart": IMonitorHeart,
   "monitoring": IMonitoring,
   "more-horiz": IMoreHoriz,
+  "more-vert": IMoreVert,
   "move": IMove,
   "note-add": INoteAdd,
   "notifications": INotifications,
