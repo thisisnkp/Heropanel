@@ -192,7 +192,13 @@ const errorDetailsOpen = ref(false);
 
     <div class="nx-grid nx-grid--main">
       <section class="home__panel">
-        <h2 class="nx-section-title">Recent activity</h2>
+        <div class="nx-row home__panel-head">
+          <h2 class="nx-section-title nx-row__grow">Recent activity</h2>
+          <!-- The full log is a screen the desktop navigation otherwise never
+               links to: it is a mobile tab, and on desktop it was reachable only
+               by typing the URL. Five lines is a summary, not the record. -->
+          <RouterLink :to="{ name: 'activity' }" class="home__all">View all</RouterLink>
+        </div>
 
         <NxCallout v-if="activityFailed" tone="danger" title="We could not load your activity feed">
           The panel service did not answer in time. Your sites are unaffected.
@@ -349,6 +355,8 @@ const errorDetailsOpen = ref(false);
 
 .home__scan-foot { padding-top: 16px; }
 
+.home__all { font-size: var(--nx-text-sm); color: var(--nx-primary-text); white-space: nowrap; }
+.home__all:hover { text-decoration: underline; }
 .home__activity { list-style: none; margin: 0; padding: 0; }
 .home__act {
   display: flex;

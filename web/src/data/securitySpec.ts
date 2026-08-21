@@ -66,6 +66,66 @@ const LOG_LINES: Record<LogSource, readonly SpecLogLine[]> = {
   ],
 };
 
+/** The nine sections, in the order the sidebar lists them. */
+export const SECURITY_SECTIONS: readonly { key: SecurityKey; label: string; icon: string }[] = [
+  { key: "overview", label: "Security overview", icon: "shield" },
+  { key: "firewall", label: "Firewall", icon: "local-fire-department" },
+  { key: "waf", label: "WAF", icon: "verified-user" },
+  { key: "malware", label: "Malware scanner", icon: "bug-report" },
+  { key: "ssh", label: "SSH security", icon: "terminal" },
+  { key: "updates", label: "Security updates", icon: "system-update-alt" },
+  { key: "login", label: "Login protection", icon: "lock" },
+  { key: "logs", label: "Security logs", icon: "receipt-long" },
+  { key: "settings", label: "Security settings", icon: "tune" },
+];
+
+export interface SecurityIssue {
+  readonly severity: "critical" | "warning";
+  readonly label: string;
+  readonly key: SecurityKey;
+}
+
+/**
+ * What is currently wrong, as a list rather than a count.
+ *
+ * The design's sidebar shows fixed "1 critical / 3 warnings" chips. Derived
+ * numbers are the only ones worth showing: a chip that reads "1 critical" while
+ * every switch on the page is green is worse than no chip, and turning root
+ * login on has to make the count move. Returning the issues rather than totals
+ * means the chip can say which ones without a second source of truth.
+ */
+export function securityIssues(flags: Flags): readonly SecurityIssue[] {
+  const issues: SecurityIssue[] = [];
+
+  if (flags.isOn("rootLogin")) {
+    issues.push({ severity: "critical", label: "Root SSH login is enabled", key: "ssh" });
+  }
+  if (flags.isOn("passwordLogin")) {
+    issues.push({ severity: "critical", label: "SSH password login is enabled", key: "ssh" });
+  }
+  if (!flags.isOn("fw")) issues.push({ severity: "critical", label: "Firewall is off", key: "firewall" });
+
+  if (!flags.isOn("waf")) issues.push({ severity: "warning", label: "WAF is off", key: "waf" });
+  if (!flags.isOn("fail2ban")) issues.push({ severity: "warning", label: "Fail2Ban is off", key: "login" });
+  if (!flags.isOn("twofa")) issues.push({ severity: "warning", label: "Two-factor is not enforced", key: "login" });
+  if (!flags.isOn("schedScan")) issues.push({ severity: "warning", label: "No scheduled malware scan", key: "malware" });
+  if (!flags.isOn("realtime")) issues.push({ severity: "warning", label: "Real-time protection is off", key: "malware" });
+
+  return issues;
+}
+
+/** The one-line summary under the profile name, in the sidebar footer. */
+export function profileNote(profile: string): string {
+  switch (profile) {
+    case "Lite":
+      return "Lite — the minimum that still blocks the obvious, for low-traffic sites.";
+    case "Maximum":
+      return "Maximum — strictest rules and shortest sessions, applied to every website.";
+    default:
+      return "Standard — balanced defaults, applied to every website.";
+  }
+}
+
 export interface SecurityContext {
   readonly flags: Flags;
   readonly wafLevel: string;

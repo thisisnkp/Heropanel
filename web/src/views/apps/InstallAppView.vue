@@ -3,18 +3,17 @@
  * Install new app — the catalogue, browsed by category.
  *
  * The category is a query parameter rather than local state, so "send me the
- * Databases page" is a link. The design put the category tree in the sidebar;
- * here it is a rail above the grid, because the sidebar in this build is the
- * panel's own navigation and nesting a second tree inside it makes both harder
- * to read.
+ * Databases page" is a link. The tree that picks it lives in the Apps context
+ * sidebar, which replaces the global navigation while you are in this section —
+ * so the categories stay visible as you scroll the grid, and this screen is only
+ * the grid.
  */
 import { computed } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { catalogLeaves } from "@/data/apps";
 import { useUiStore } from "@/stores/ui";
 
 const route = useRoute();
-const router = useRouter();
 const ui = useUiStore();
 
 const categories = catalogLeaves();
@@ -26,10 +25,6 @@ const activeKey = computed(() => {
 });
 
 const active = computed(() => categories.find((c) => c.key === activeKey.value) ?? categories[0]);
-
-function pick(key: string) {
-  void router.replace({ name: "apps-install", query: { category: key } });
-}
 
 function badgeTone(badge: string) {
   return badge === "Installed" || badge === "Free" ? "success" : "info";
@@ -43,21 +38,6 @@ function badgeTone(badge: string) {
       <h1 class="cat__title">{{ active.label }}</h1>
       <p class="cat__sub">{{ active.sub }}</p>
     </header>
-
-    <nav class="cat__rail nxhide" aria-label="App categories">
-      <button
-        v-for="c in categories"
-        :key="c.key"
-        type="button"
-        class="cat__chip"
-        :class="{ 'is-current': c.key === activeKey }"
-        :aria-current="c.key === activeKey ? 'page' : undefined"
-        @click="pick(c.key)"
-      >
-        <NxIcon :name="c.icon" size="sm" />
-        {{ c.label }}
-      </button>
-    </nav>
 
     <div class="nx-grid nx-grid--3">
       <article v-for="a in active.apps" :key="a.name" class="cat__card">
@@ -101,35 +81,6 @@ function badgeTone(badge: string) {
   font-size: var(--nx-text-base);
   color: var(--nx-text-muted);
   text-wrap: pretty;
-}
-
-.cat__rail {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  margin-bottom: 20px;
-}
-.cat__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  padding: 7px 12px;
-  border-radius: var(--nx-radius-pill);
-  font-size: var(--nx-text-base);
-  font-family: inherit;
-  color: var(--nx-text-3);
-  border: 1px solid var(--nx-border);
-  background: var(--nx-surface);
-  cursor: pointer;
-}
-.cat__chip:hover { background: var(--nx-hover); }
-.cat__chip.is-current {
-  background: var(--nx-primary-soft);
-  border-color: var(--nx-primary-border);
-  color: var(--nx-primary-text);
-  font-weight: 500;
 }
 
 .cat__card {

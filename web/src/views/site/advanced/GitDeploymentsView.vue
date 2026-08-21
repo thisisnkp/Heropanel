@@ -9,11 +9,11 @@
  */
 import { computed, ref } from "vue";
 import { DEPLOYS } from "@/data/siteDetail";
+import { useJobsStore } from "@/stores/jobs";
 import { useSitesStore } from "@/stores/sites";
-import { useUiStore } from "@/stores/ui";
 
 const sites = useSitesStore();
-const ui = useUiStore();
+const jobs = useJobsStore();
 
 const site = computed(() => sites.current);
 const connected = computed(() => site.value?.deploy === "GitHub");
@@ -22,9 +22,16 @@ const buildCommand = computed(() => (site.value?.stackKey === "node" ? "npm ci &
 const autoDeploy = ref(true);
 const redeploying = ref(false);
 
+/**
+ * A deploy outlives this screen, so it is reported in the job tray rather than
+ * as a toast. A toast is gone in four seconds and takes the only record of the
+ * deploy with it; the tray keeps the progress visible while you go and look at
+ * the logs, which is the next thing anyone does.
+ */
 function redeploy() {
+  if (!site.value) return;
   redeploying.value = true;
-  ui.toast("Deploying " + (site.value?.branch ?? "main") + "@4f2a1c9…", "info");
+  jobs.start("Deploy " + (site.value.branch ?? "main") + "@4f2a1c9", site.value.domain, "Fetching repository");
   window.setTimeout(() => (redeploying.value = false), 1800);
 }
 </script>

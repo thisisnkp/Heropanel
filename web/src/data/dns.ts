@@ -128,6 +128,25 @@ export const ZONE_REDIRECTS = [
 
 export const NAMESERVERS = ["ns1.nexpanel.net", "ns2.nexpanel.net"];
 
+/**
+ * The zone's plain-language verdict, shown on the domain overview.
+ *
+ * A row of green stats says every check passed but not which check was worth
+ * looking at; the design pairs them with one sentence naming the thing that is
+ * technically fine and still worth tightening.
+ */
+export const ZONE_HEALTH =
+  "Nameservers, SSL and mail records all check out. DMARC is set to p=none — " +
+  "tighten it once you trust your reports.";
+
+/** The two sections a domain has, as the sidebar lists them. */
+export const DOMAIN_SECTIONS = [
+  { key: "overview", label: "Overview", icon: "space-dashboard" },
+  { key: "dns", label: "DNS / nameservers", icon: "dns" },
+] as const;
+
+export type DomainSection = (typeof DOMAIN_SECTIONS)[number]["key"];
+
 export const EXPORT_FORMATS = ["BIND zone file", "JSON", "CSV"] as const;
 
 export function exportPreview(domain: string) {

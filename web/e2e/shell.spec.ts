@@ -23,7 +23,9 @@ test.describe("panel shell", () => {
   test("renders the four navigation groups", async ({ page }) => {
     await page.goto("/");
     const captions = await page.locator(".nx-sidebar__caption").allInnerTexts();
-    expect(captions.map((c) => c.toLowerCase())).toEqual(["manage", "automation", "system", "account"]);
+    // The design's order: Account before System — the things you own come before
+    // the machine they run on.
+    expect(captions.map((c) => c.toLowerCase())).toEqual(["manage", "automations", "account", "system"]);
   });
 
   test("applies the design tokens", async ({ page }) => {

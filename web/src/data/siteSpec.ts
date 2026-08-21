@@ -1,10 +1,6 @@
 import type { Site } from "@/stores/sites";
 import { row, type Spec } from "@/data/spec";
-
-/** The database name the panel derives from a domain. */
-function dbName(domain: string) {
-  return "nexp_" + domain.split(".")[0].replace(/-/g, "_");
-}
+import { dbBase } from "@/data/siteDetail";
 
 function shellUser(domain: string) {
   return "site_" + domain.split(".")[0].replace(/-/g, "");
@@ -38,7 +34,7 @@ export type SpecKey =
 export function buildSiteSpec(key: SpecKey, s: Site): Spec {
   const lang = LANG_FOR_STACK[s.stackKey] ?? "Runtime";
   const versions = LANG_VERSIONS[lang] ?? ["1.0"];
-  const db = dbName(s.domain);
+  const db = dbBase(s.domain);
 
   switch (key) {
     case "lang":

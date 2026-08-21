@@ -5,14 +5,50 @@
  * A sheet rather than a pushed screen, so dismissing it returns you exactly
  * where you were. That is what makes it read as a menu instead of a navigation
  * step you then have to back out of.
+ *
+ * Inside a site it leads with that site's own sections. The site drawer is a
+ * desktop column with nowhere to go on a phone, and without this the only way
+ * to reach cron jobs or hotlink protection on mobile was the six shortcuts on
+ * the overview — every other section was unreachable.
  */
-import { watch } from "vue";
+import { computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { NAV_GROUPS } from "@/config/navigation";
+import { buildSiteNav, isGroup, type SiteNavLeaf, type SiteNavNode } from "@/config/siteNavigation";
+import { useSitesStore } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
 
 const ui = useUiStore();
 const route = useRoute();
+const sites = useSitesStore();
+
+const site = computed(() => (String(route.name ?? "").startsWith("site") ? sites.current : null));
+
+/**
+ * The site's sections, flattened.
+ *
+ * The desktop drawer nests them under disclosures; a sheet you are already
+ * scrolling should not also make you expand three groups to find Logs. The group
+ * label is kept as a prefix on the leaf so the grouping still reads.
+ */
+const siteSections = computed<{ leaf: SiteNavLeaf; group?: string }[]>(() => {
+  const s = site.value;
+  if (!s) return [];
+  const out: { leaf: SiteNavLeaf; group?: string }[] = [];
+  const walk = (nodes: readonly SiteNavNode[], group?: string) => {
+    for (const n of nodes) {
+      if (isGroup(n)) walk(n.children, group ?? n.label);
+      else out.push({ leaf: n, group });
+    }
+  };
+  walk(buildSiteNav({ stackKey: s.stackKey, deploy: s.deploy }));
+  return out;
+});
+
+function sectionTarget(leaf: SiteNavLeaf) {
+  if (leaf.jump) return { name: leaf.to, query: { domain: site.value?.domain ?? "", section: "dns" } };
+  return { name: leaf.to, params: { id: String(site.value?.id ?? "") } };
+}
 
 // Any navigation closes it. Without this, tapping a destination leaves the
 // sheet covering the screen it just opened.
@@ -34,6 +70,23 @@ watch(
           <div class="nx-sheet__grip" aria-hidden="true" />
 
           <div class="nx-sheet__body nxscroll">
+            <template v-if="site">
+              <div class="nx-sheet__caption">{{ site.domain }}</div>
+              <RouterLink
+                v-for="s in siteSections"
+                :key="s.leaf.to + s.leaf.label"
+                :to="sectionTarget(s.leaf)"
+                class="nx-sheet__item"
+                :class="{ 'is-danger': s.leaf.to === 'site-danger' }"
+                :target="s.leaf.newTab ? '_blank' : undefined"
+                :rel="s.leaf.newTab ? 'noopener' : undefined"
+              >
+                <NxIcon :name="s.leaf.icon" size="md" />
+                <span class="nx-row__grow">{{ s.group ? s.group + " · " + s.leaf.label : s.leaf.label }}</span>
+                <NxIcon v-if="s.leaf.newTab" name="open-in-new" size="sm" />
+              </RouterLink>
+            </template>
+
             <template v-for="group in NAV_GROUPS" :key="group.id">
               <div class="nx-sheet__caption">{{ group.label }}</div>
 
@@ -67,6 +120,7 @@ watch(
   inset: 0;
   z-index: 60;
 }
+.nx-sheet__item.is-danger { color: var(--nx-danger); }
 .nx-sheet__scrim {
   position: absolute;
   inset: 0;
@@ -130,11 +184,13 @@ watch(
   transform: translateY(100%);
 }
 .nx-sheet-enter-active .nx-sheet__scrim,
-.nx-sheet-leave-active .nx-sheet__scrim {
+.nx-sheet-leave-active .nx-sheet__item.is-danger { color: var(--nx-danger); }
+.nx-sheet__scrim {
   transition: opacity 240ms ease;
 }
 .nx-sheet-enter-from .nx-sheet__scrim,
-.nx-sheet-leave-to .nx-sheet__scrim {
+.nx-sheet-leave-to .nx-sheet__item.is-danger { color: var(--nx-danger); }
+.nx-sheet__scrim {
   opacity: 0;
 }
 </style>

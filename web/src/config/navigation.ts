@@ -18,6 +18,12 @@ export interface NavEntry {
   readonly icon: string;
   /** Nested entries, rendered under a disclosure caret. */
   readonly children?: readonly NavEntry[];
+  /**
+   * A green pill on the right — the design uses it for "running" on the two
+   * automation apps. Distinct from the numeric count, which is muted: a count
+   * says how many, a badge says what state the thing is in.
+   */
+  readonly badge?: string;
 }
 
 export interface NavGroup {
@@ -50,10 +56,21 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     id: "automation",
-    label: "Automation",
+    label: "Automations",
     entries: [
-      { to: "openclaw", label: "OpenClaw", icon: "smart-toy" },
-      { to: "n8n", label: "n8n", icon: "account-tree" },
+      { to: "openclaw", label: "OpenClaw", icon: "smart-toy", badge: "running" },
+      { to: "n8n", label: "n8n", icon: "account-tree", badge: "running" },
+    ],
+  },
+  // Account before System, as the design orders them: the things you own come
+  // before the machine they run on.
+  {
+    id: "account",
+    label: "Account",
+    entries: [
+      { to: "billing", label: "License & billing", icon: "card-membership" },
+      { to: "api", label: "API", icon: "api" },
+      { to: "temp-access", label: "Temp access", icon: "schedule-send" },
     ],
   },
   {
@@ -71,15 +88,6 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         ],
       },
       { to: "settings", label: "Panel settings", icon: "settings" },
-    ],
-  },
-  {
-    id: "account",
-    label: "Account",
-    entries: [
-      { to: "billing", label: "License & billing", icon: "card-membership" },
-      { to: "api", label: "API", icon: "api" },
-      { to: "temp-access", label: "Temp access", icon: "schedule-send" },
     ],
   },
 ];

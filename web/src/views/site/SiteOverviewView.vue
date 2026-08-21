@@ -9,11 +9,11 @@
  */
 import { computed, ref } from "vue";
 import { SITE_SECURITY, quickActions } from "@/data/siteDetail";
+import { useJobsStore } from "@/stores/jobs";
 import { useSitesStore } from "@/stores/sites";
-import { useUiStore } from "@/stores/ui";
 
 const sites = useSitesStore();
-const ui = useUiStore();
+const jobs = useJobsStore();
 
 const site = computed(() => sites.current);
 const actions = computed(() => (site.value ? quickActions(site.value) : []));
@@ -21,9 +21,17 @@ const isWordPress = computed(() => site.value?.stackKey === "wp");
 const isGit = computed(() => site.value?.stackKey !== "wp" && site.value?.deploy === "GitHub");
 
 const redeploying = ref(false);
+
+/**
+ * A deploy outlives this screen, so it is reported in the job tray rather than
+ * as a toast. A toast is gone in four seconds and takes the only record of the
+ * deploy with it; the tray keeps the progress visible while you go and look at
+ * the logs, which is the next thing anyone does.
+ */
 function redeploy() {
+  if (!site.value) return;
   redeploying.value = true;
-  ui.toast("Deploying " + (site.value?.branch ?? "main") + "@4f2a1c9…", "info");
+  jobs.start("Deploy " + (site.value.branch ?? "main") + "@4f2a1c9", site.value.domain, "Fetching repository");
   window.setTimeout(() => (redeploying.value = false), 1800);
 }
 </script>
@@ -82,7 +90,14 @@ function redeploy() {
             <span class="ov__hint">most used for this site</span>
           </template>
           <div class="nx-stack nx-stack--sm">
-            <RouterLink v-for="q in actions" :key="q.to" :to="{ name: q.to }" class="ov__quick">
+            <RouterLink
+              v-for="q in actions"
+              :key="q.to"
+              :to="{ name: q.to, params: { id: String(site.id) } }"
+              class="ov__quick"
+              :target="q.newTab ? '_blank' : undefined"
+              :rel="q.newTab ? 'noopener' : undefined"
+            >
               <span class="ov__quick-icon" :class="'ov__quick-icon--' + q.tone">
                 <NxIcon :name="q.icon" size="sm" />
               </span>
@@ -90,7 +105,7 @@ function redeploy() {
                 <span class="ov__quick-label nx-truncate">{{ q.label }}</span>
                 <span class="ov__quick-sub nx-mono nx-truncate">{{ q.sub }}</span>
               </span>
-              <NxIcon name="chevron-right" size="sm" class="ov__chevron" />
+              <NxIcon :name="q.newTab ? 'open-in-new' : 'chevron-right'" size="sm" class="ov__chevron" />
             </RouterLink>
           </div>
         </NxCard>

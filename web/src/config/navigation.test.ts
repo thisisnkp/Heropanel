@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MOBILE_TABS, NAV_GROUPS, RAIL_ENTRIES } from "./navigation";
-import { buildSiteNav } from "./siteNavigation";
+import { buildSiteNav, isGroup, navExplain, type SiteNavNode } from "./siteNavigation";
 import { ICONS } from "@/components/ui/icons";
 import { APP_CATEGORIES } from "@/data/apps";
 import { ATTENTION, NOTIFICATIONS, QUICK_ACTIONS, SCAN_TILES } from "@/data/dashboard";
@@ -62,9 +62,16 @@ describe("icon registry", () => {
       collect("site-quick:" + q.label, q.icon);
     }
   }
-  for (const group of buildSiteNav({ stackKey: "wp", deploy: "GitHub" })) {
-    collect("drawer:" + group.label, group.icon);
-    for (const child of group.children ?? []) collect("drawer:" + child.label, child.icon);
+  // Recursive, not two levels: the drawer nests Git inside Advanced, and a
+  // shallow walk silently skipped every icon at that depth.
+  const walkDrawer = (nodes: readonly SiteNavNode[]) => {
+    for (const n of nodes) {
+      collect("drawer:" + n.label, n.icon);
+      if (isGroup(n)) walkDrawer(n.children);
+    }
+  };
+  for (const stack of ["static", "php", "node", "python", "wp"] as const) {
+    for (const deploy of ["Manual", "GitHub"]) walkDrawer(buildSiteNav({ stackKey: stack, deploy }));
   }
 
   it("collects icon names from every source that stores them as strings", () => {
@@ -137,6 +144,22 @@ describe("site drawer", () => {
     expect(labels("Manual")).not.toContain("Git deployments");
     // "Setup Git" is always reachable — that is how you connect one.
     expect(labels("Manual")).toContain("Setup Git");
+  });
+
+  it("explains the shape of the menu for every stack", () => {
+    // The footer card exists so a missing section reads as inapplicable rather
+    // than broken; an empty or duplicated sentence would defeat that.
+    const seen = new Set<string>();
+    for (const stackKey of ["static", "php", "node", "python", "wp"] as const) {
+      for (const deploy of ["Manual", "GitHub"]) {
+        const text = navExplain({ stackKey, deploy });
+        expect(text.length, stackKey).toBeGreaterThan(40);
+        seen.add(text);
+      }
+    }
+    // PHP and WordPress each say one thing regardless of deploy mode; static,
+    // Node and Python each say two. Ten combinations, eight distinct sentences.
+    expect(seen.size).toBe(8);
   });
 
   it("always offers the overview and the danger zone", () => {

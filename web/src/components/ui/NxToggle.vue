@@ -5,7 +5,16 @@
  * A real <input type="checkbox"> underneath, visually hidden: it brings keyboard
  * activation, form participation and the checked state for assistive tech for
  * free, none of which a styled <div> with a click handler has.
+ *
+ * Attributes land on the input, not on the wrapping <label>. Without this an
+ * `aria-label` passed by a caller named the <label> element — which names
+ * nothing — and every switch on the security screens was an unnamed checkbox:
+ * announced as "checkbox, not checked" with no clue what it controls. The label
+ * text sits in a sibling column on those screens, so there is nothing else for
+ * the input to be named by.
  */
+defineOptions({ inheritAttrs: false });
+
 const model = defineModel<boolean>({ required: true });
 
 withDefaults(defineProps<{ label?: string; description?: string; disabled?: boolean }>(), {
@@ -15,7 +24,14 @@ withDefaults(defineProps<{ label?: string; description?: string; disabled?: bool
 
 <template>
   <label :class="['nx-toggle', { 'is-disabled': disabled }]">
-    <input v-model="model" type="checkbox" class="nx-toggle__input" :disabled="disabled" />
+    <input
+      v-bind="$attrs"
+      v-model="model"
+      type="checkbox"
+      role="switch"
+      class="nx-toggle__input"
+      :disabled="disabled"
+    />
     <span class="nx-toggle__track" aria-hidden="true"><span class="nx-toggle__thumb" /></span>
     <span v-if="label || description" class="nx-toggle__text">
       <span v-if="label" class="nx-toggle__label">{{ label }}</span>

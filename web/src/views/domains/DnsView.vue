@@ -17,10 +17,12 @@ import {
   ZONE_REDIRECTS,
   ZONE_STATS,
   ZONE_SUBDOMAINS,
+  ZONE_HEALTH,
   ZONE_TARGETS,
   exportPreview,
   recordFields,
   zoneRecords,
+  type DomainSection,
   type RecordType,
 } from "@/data/dns";
 import { useUiStore } from "@/stores/ui";
@@ -36,12 +38,25 @@ const domain = computed(() => {
 });
 
 function pickDomain(d: string) {
-  void router.replace({ name: "dns", query: { domain: d } });
+  // Landing on the overview, not the record editor: picking a domain answers
+  // "which one", and the next question is usually "is it healthy", not "let me
+  // edit an A record".
+  void router.replace({ name: "dns", query: { domain: d, section: "overview" } });
 }
 
 function clearDomain() {
   void router.replace({ name: "dns" });
 }
+
+/**
+ * Which half of the zone you are looking at, from the URL.
+ *
+ * The design splits a domain into an overview and the DNS/nameserver editor, and
+ * the sidebar lists them as two sections. Holding that in the query string
+ * rather than in local state means the sidebar and the page cannot disagree, and
+ * "send me this zone's records" stays a link.
+ */
+const section = computed<DomainSection>(() => (route.query.section === "dns" ? "dns" : "overview"));
 
 type Tab = "records" | "nameservers" | "redirects" | "subdomains" | "ssl";
 const TABS: readonly { key: Tab; label: string }[] = [
@@ -107,11 +122,13 @@ const exportFormat = ref<string>(EXPORT_FORMATS[0]);
       </NxCard>
     </template>
 
-    <template v-else>
+    <!-- Overview: what this domain points at, and whether it is healthy. -->
+    <template v-else-if="section === 'overview'">
       <header class="dns__head">
         <div class="nx-row__grow">
-          <p class="dns__kicker">DNS / nameservers</p>
+          <p class="dns__kicker">Domain</p>
           <h1 class="dns__title nx-mono nx-truncate">{{ domain }}</h1>
+          <p class="dns__lead">Everything this domain points at, and the records behind it.</p>
         </div>
         <NxButton size="lg" @click="clearDomain">
           <NxIcon name="swap-horiz" size="sm" />
@@ -123,15 +140,36 @@ const exportFormat = ref<string>(EXPORT_FORMATS[0]);
         <NxStat v-for="s in ZONE_STATS" :key="s.label" :label="s.label" :value="s.value" :sub="s.sub" />
       </div>
 
-      <NxCard title="Where it points" class="dns__block">
-        <ul class="dns__ns">
-          <li v-for="t in ZONE_TARGETS" :key="t.label" class="dns__ns-row">
-            <NxIcon :name="t.icon" size="md" class="dns__pick-icon" />
-            <span class="nx-row__grow">{{ t.label }}</span>
-            <span class="dns__muted nx-mono nx-truncate">{{ t.value }}</span>
-          </li>
-        </ul>
-      </NxCard>
+      <div class="dns__split">
+        <NxCard title="Where it points">
+          <ul class="dns__ns">
+            <li v-for="t in ZONE_TARGETS" :key="t.label" class="dns__ns-row">
+              <NxIcon :name="t.icon" size="md" class="dns__pick-icon" />
+              <span class="nx-row__grow">{{ t.label }}</span>
+              <span class="dns__muted nx-mono nx-truncate">{{ t.value }}</span>
+            </li>
+          </ul>
+        </NxCard>
+
+        <NxCard title="Health">
+          <p class="dns__health">{{ ZONE_HEALTH }}</p>
+          <NxButton @click="ui.toast('DNS check is not wired up yet.', 'info')">Run a DNS check</NxButton>
+        </NxCard>
+      </div>
+    </template>
+
+    <!-- DNS / nameservers: the editor. -->
+    <template v-else>
+      <header class="dns__head">
+        <div class="nx-row__grow">
+          <p class="dns__kicker">DNS / nameservers</p>
+          <h1 class="dns__title nx-mono nx-truncate">{{ domain }}</h1>
+        </div>
+        <NxButton size="lg" @click="clearDomain">
+          <NxIcon name="swap-horiz" size="sm" />
+          Change domain
+        </NxButton>
+      </header>
 
       <div class="dns__tabs" role="tablist" aria-label="DNS and nameserver sections">
         <button
@@ -398,6 +436,22 @@ const exportFormat = ref<string>(EXPORT_FORMATS[0]);
 </template>
 
 <style scoped>
+.dns__lead { margin: 6px 0 0; font-size: var(--nx-text-base); color: var(--nx-text-muted); }
+.dns__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 12px;
+}
+@media (max-width: 900px) {
+  .dns__split { grid-template-columns: minmax(0, 1fr); }
+}
+.dns__health {
+  margin: 0 0 16px;
+  font-size: var(--nx-text-base);
+  color: var(--nx-text-muted);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
 .dns__block { margin-bottom: 12px; }
 
 .dns__pick-list { list-style: none; margin: 0; padding: 0; }

@@ -17,6 +17,9 @@ const ui = useUiStore();
       <TransitionGroup name="nx-toast">
         <div v-for="t in ui.toasts" :key="t.id" :class="['nx-toast', `nx-toast--${t.tone}`]">
           <span class="nx-toast__text">{{ t.text }}</span>
+          <button v-if="t.action" type="button" class="nx-toast__action" @click="ui.act(t.id)">
+            {{ t.action.label }}
+          </button>
           <button type="button" class="nx-toast__close" aria-label="Dismiss" @click="ui.dismiss(t.id)">
             <NxIcon name="close" size="sm" />
           </button>
@@ -44,6 +47,18 @@ const ui = useUiStore();
     bottom: calc(74px + env(safe-area-inset-bottom));
   }
 }
+.nx-toast__action {
+  border: 0;
+  background: transparent;
+  color: var(--nx-gold-400);
+  font-size: var(--nx-text-base);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+.nx-toast__action:hover { color: var(--nx-gold-500); }
 .nx-toast {
   pointer-events: auto;
   display: flex;

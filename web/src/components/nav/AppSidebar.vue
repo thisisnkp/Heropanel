@@ -10,17 +10,33 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import { NAV_GROUPS, type NavEntry } from "@/config/navigation";
+import { MAILBOXES } from "@/data/mail";
+import { securityIssues } from "@/data/securitySpec";
+import { useAccountStore } from "@/stores/account";
+import { useFlagsStore } from "@/stores/flags";
 import { useSitesStore } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
 
 const route = useRoute();
 const sites = useSitesStore();
+const flags = useFlagsStore();
+const account = useAccountStore();
 const ui = useUiStore();
 
-/** Counts shown on the right of an entry. Only a few carry one. */
-const counts = computed<Record<string, string>>(() => ({
-  websites: String(sites.count),
-}));
+/**
+ * Counts shown on the right of an entry. Only a few carry one, and each is
+ * derived from the thing it counts — a sidebar that says "1" beside Security
+ * while the security screen shows nothing wrong is worse than a bare label.
+ * Zero is rendered as no count at all rather than as "0".
+ */
+const counts = computed<Record<string, string>>(() => {
+  const critical = securityIssues(flags).filter((i) => i.severity === "critical").length;
+  return {
+    websites: String(sites.count),
+    mail: String(MAILBOXES.length),
+    ...(critical ? { security: String(critical) } : {}),
+  };
+});
 
 function isActive(entry: NavEntry) {
   return route.name === entry.to;
@@ -71,7 +87,8 @@ function isOpen(entry: NavEntry) {
             <span class="nx-nav-item__bar" aria-hidden="true" />
             <NxIcon :name="entry.icon" size="md" class="nx-nav-item__icon" />
             <span class="nx-nav-item__label">{{ entry.label }}</span>
-            <span v-if="counts[entry.to]" class="nx-nav-item__count">{{ counts[entry.to] }}</span>
+            <span v-if="entry.badge" class="nx-nav-item__badge">{{ entry.badge }}</span>
+            <span v-else-if="counts[entry.to]" class="nx-nav-item__count">{{ counts[entry.to] }}</span>
           </RouterLink>
 
           <ul v-if="entry.children && isOpen(entry)" class="nx-sidebar__list is-nested">
@@ -91,6 +108,19 @@ function isOpen(entry: NavEntry) {
         </li>
       </ul>
     </template>
+
+    <div class="nx-sidebar__spacer" />
+
+    <!-- Who is signed in and on what plan. The plan is here rather than only on
+         the billing screen because it decides which entries above do anything:
+         paid apps and extra seats are a plan question, not a permission one. -->
+    <RouterLink :to="{ name: 'billing' }" class="nx-sidebar__user">
+      <span class="nx-sidebar__avatar" aria-hidden="true">{{ account.initials }}</span>
+      <span class="nx-sidebar__user-text">
+        <span class="nx-sidebar__user-name">{{ account.name }}</span>
+        <span class="nx-sidebar__plan">{{ account.plan }} plan</span>
+      </span>
+    </RouterLink>
   </aside>
 </template>
 
@@ -121,6 +151,60 @@ function isOpen(entry: NavEntry) {
   font-size: var(--nx-text-md);
   font-weight: 600;
   line-height: 1;
+}
+.nx-sidebar__spacer { flex: 1; min-height: 16px; }
+.nx-sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--nx-active);
+  border-radius: 0;
+  color: inherit;
+}
+.nx-sidebar__user:hover { background: var(--nx-hover); }
+.nx-sidebar__avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: var(--nx-radius-full);
+  background: var(--nx-primary-soft);
+  color: var(--nx-primary-text);
+  font-size: var(--nx-text-sm);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nx-sidebar__user-text { flex: 1; min-width: 0; }
+.nx-sidebar__user-name {
+  display: block;
+  font-size: var(--nx-text-base);
+  font-weight: 500;
+  color: var(--nx-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-sidebar__plan {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
+  font-size: var(--nx-text-xs);
+  font-weight: 500;
+  color: var(--nx-gold-text);
+  background: var(--nx-gold-soft);
+  border: 1px solid var(--nx-warning-border);
+  border-radius: var(--nx-radius-sm);
+  padding: 0 6px;
+}
+.nx-nav-item__badge {
+  font-size: var(--nx-text-xs);
+  color: var(--nx-success);
+  background: var(--nx-success-soft);
+  padding: 4px 8px;
+  border-radius: var(--nx-radius-sm);
+  font-weight: 500;
 }
 .nx-sidebar__name {
   font-size: var(--nx-text-md);

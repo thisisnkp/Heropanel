@@ -18,6 +18,14 @@ export interface SiteNavLeaf {
   readonly icon: string;
   /** Route params merged in — used by entries that jump out of the site scope. */
   readonly jump?: string;
+  /**
+   * Opens in its own window rather than replacing this one.
+   *
+   * Only the file manager: the design ships it as a separate document the panel
+   * opens with window.open(), because you keep it open beside the panel while
+   * you work rather than visiting it and coming back.
+   */
+  readonly newTab?: boolean;
 }
 
 export interface SiteNavGroup {
@@ -98,7 +106,7 @@ export function buildSiteNav(site: SiteNavInput): SiteNavNode[] {
     label: "Files",
     icon: "folder-open",
     children: [
-      { to: "site-files", label: "File manager", icon: "folder" },
+      { to: "site-files", label: "File manager", icon: "folder", newTab: true },
       { to: "site-ftp", label: "FTP", icon: "swap-vert" },
       { to: "site-ssh", label: "SSH", icon: "terminal" },
     ],
@@ -150,4 +158,31 @@ export function buildSiteNav(site: SiteNavInput): SiteNavNode[] {
   nodes.push({ to: "site-danger", label: "Danger zone", icon: "delete" });
 
   return nodes;
+}
+
+/**
+ * Why this drawer looks the way it does, in one sentence.
+ *
+ * Shown in the drawer's footer card. A menu that silently differs between two
+ * sites reads as a bug or a missing feature; saying "a static site has no
+ * runtime" turns an absence into an explanation. It belongs beside buildSiteNav
+ * because the two answer the same question and would otherwise disagree.
+ */
+export function navExplain(site: SiteNavInput): string {
+  const manual = site.deploy === "GitHub" ? "Deploys come from Git." : "Files are uploaded manually.";
+  switch (site.stackKey) {
+    case "static":
+      return (
+        "A static site has no runtime, so those panels are hidden. " +
+        (site.deploy === "GitHub" ? "Git deployments are shown." : "Files are uploaded manually.")
+      );
+    case "node":
+      return "Node.js site: runtime version, start command and environment variables are shown. " + manual;
+    case "python":
+      return "Python site: interpreter version, WSGI server and environment variables are shown. " + manual;
+    case "wp":
+      return "WordPress site: plugin, theme and database panels are shown; runtime settings are managed for you.";
+    default:
+      return "PHP site: PHP version, extensions and MySQL databases are shown.";
+  }
 }

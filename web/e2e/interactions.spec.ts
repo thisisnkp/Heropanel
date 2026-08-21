@@ -145,6 +145,107 @@ test.describe("file manager", () => {
   });
 });
 
+test.describe("creating a database", () => {
+  test("prefixes the name with the site and shows what you will get", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+
+    // Two prefixes, both fixed: the name and the user are namespaced per site
+    // because MySQL names are global to the server.
+    const prefixes = page.locator(".nx-input__prefix");
+    await expect(prefixes).toHaveCount(2);
+    await expect(prefixes.first()).toHaveText("nexp_novaretail_");
+
+    const create = page.getByRole("button", { name: "Create database" });
+    await expect(create).toBeDisabled();
+
+    await page.getByPlaceholder("Enter Database Name").fill("shop");
+    // The finished string, spelled out — the prefix lives inside the field, so
+    // this is the only place the whole name appears in one piece.
+    await expect(page.locator(".db__preview")).toHaveText("nexp_novaretail_shop");
+
+    // Still incomplete: a database with no user and no password is not a thing
+    // anyone can connect to.
+    await expect(create).toBeDisabled();
+    await page.getByPlaceholder("Enter User Name").fill("shop_rw");
+    await expect(create).toBeDisabled();
+    await page.getByPlaceholder("Password", { exact: true }).fill("a-real-password");
+    await expect(create).toBeEnabled();
+  });
+
+  test("refuses names MySQL would refuse, before the server has to", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    await page.getByPlaceholder("Enter Database Name").fill("shop");
+    await page.getByPlaceholder("Password", { exact: true }).fill("a-real-password");
+
+    const user = page.getByPlaceholder("Enter User Name");
+    await user.fill("bad name!");
+    await expect(page.locator(".nx-field__error")).toContainText("Letters, digits and underscores only");
+
+    // 32 characters total for a MySQL user, and the prefix has already spent 16.
+    await user.fill("a".repeat(17));
+    await expect(page.locator(".nx-field__error")).toContainText("leaving 16 after the prefix");
+    await expect(page.getByRole("button", { name: "Create database" })).toBeDisabled();
+
+    await user.fill("a".repeat(16));
+    await expect(page.locator(".nx-field__error")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create database" })).toBeEnabled();
+  });
+
+  test("generates a password and shows it, because it is shown only once", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    const field = page.getByPlaceholder("Password", { exact: true });
+
+    // Typed passwords stay masked.
+    await expect(field).toHaveAttribute("type", "password");
+
+    await page.getByRole("button", { name: "Generate a strong password" }).click();
+
+    // Revealed on generate: the panel stores a hash, so this is the only moment
+    // the string exists to be copied into a connection string.
+    await expect(field).toHaveAttribute("type", "text");
+    const generated = await field.inputValue();
+    expect(generated).toHaveLength(20);
+    // No characters that get misread out of a terminal, and none a DSN or a
+    // shell would need escaped.
+    expect(generated).toMatch(/^[A-HJ-NP-Za-km-z2-9_-]+$/);
+
+    // Two presses must not produce the same string.
+    await page.getByRole("button", { name: "Generate a strong password" }).click();
+    expect(await field.inputValue()).not.toBe(generated);
+  });
+
+  test("the eye toggles the password back out of sight", async ({ page }) => {
+    await page.goto("/sites/1/databases");
+    const field = page.getByPlaceholder("Password", { exact: true });
+    await field.fill("typed-by-hand");
+
+    await page.getByRole("button", { name: "Show password" }).click();
+    await expect(field).toHaveAttribute("type", "text");
+
+    await page.getByRole("button", { name: "Hide password" }).click();
+    await expect(field).toHaveAttribute("type", "password");
+  });
+
+  test("the two icons do not make the password field taller than the others", async ({ page }) => {
+    // A 28px tap target inside a 35px control is exactly how one field in a
+    // stack ends up eleven pixels out of line with the rest.
+    await page.goto("/sites/1/databases");
+    const heights = await page.locator(".nx-input").evaluateAll((els) =>
+      els.map((e) => Math.round(e.getBoundingClientRect().height)),
+    );
+    expect(new Set(heights).size).toBe(1);
+  });
+
+  test("the prefix matches the names already in the list", async ({ page }) => {
+    // One derivation, not two: a form that promises nexp_shop while the table
+    // below lists nexp_novaretail_* is the bug this shares code to avoid.
+    await page.goto("/sites/2/databases");
+    const prefix = await page.locator(".nx-input__prefix").first().innerText();
+    const first = await page.locator(".nx-table__row .db__name").first().innerText();
+    expect(first.startsWith(prefix.replace(/_$/, ""))).toBe(true);
+  });
+});
+
 test.describe("per-stack screens", () => {
   test("a WordPress site and a Node site get different overviews", async ({ page }) => {
     await page.goto("/sites/1/overview");

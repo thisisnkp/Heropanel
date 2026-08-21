@@ -52,7 +52,13 @@ export const siteRoutes: RouteRecordRaw[] = [
       { path: "wp/plugins", name: "site-wp-plugins", component: () => import("@/views/site/wordpress/WpPluginsView.vue"), meta: { title: "Plugins and updates" } },
 
       // Files
-      { path: "files", name: "site-files", component: () => import("@/views/site/files/FileManagerView.vue"), meta: { title: "File manager", fullBleed: true } },
+      // `standalone` — the file manager is its own window, not a panel screen.
+      // The design ships it as a separate document that the panel opens with
+      // window.open(), which is why it carries its own sidebar and its own
+      // Logout: you work in it for a long stretch, with the panel still open in
+      // the tab you came from. Rendering it inside the panel shell would put two
+      // sidebars and a breadcrumb around a tool that already has its own.
+      { path: "files", name: "site-files", component: () => import("@/views/site/files/FileManagerView.vue"), meta: { title: "File manager", standalone: true } },
       spec("ftp", "site-ftp", "ftp", "FTP"),
       spec("ssh", "site-ssh", "sshsite", "SSH"),
 

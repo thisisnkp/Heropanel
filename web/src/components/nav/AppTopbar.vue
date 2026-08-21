@@ -6,12 +6,16 @@
  * down, so a screen cannot forget to set it and land the user on a page with no
  * idea where they are.
  */
-import { computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { useAiStore } from "@/stores/ai";
 import { useSitesStore } from "@/stores/sites";
+import { useUiStore } from "@/stores/ui";
 
 const route = useRoute();
 const sites = useSitesStore();
+const ui = useUiStore();
+const ai = useAiStore();
 
 const crumb = computed(() => {
   const parts = route.matched
@@ -24,11 +28,36 @@ const crumb = computed(() => {
 });
 
 /** ⌘K on a Mac, Ctrl+K everywhere else. Purely a label. */
-const shortcut = computed(() =>
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K",
-);
+const isApple = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const shortcutKey = isApple ? "⌘K" : "Ctrl K";
 
-const emit = defineEmits<{ (e: "ask-ai"): void; (e: "search"): void }>();
+/**
+ * ⌘K is bound here rather than in the shell because this is the control it
+ * opens: a shortcut whose handler lives somewhere else is a shortcut that
+ * outlives the button it belongs to.
+ */
+function onKeydown(e: KeyboardEvent) {
+  if (e.key?.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey)) return;
+  e.preventDefault();
+  ui.searchOpen = true;
+}
+
+onMounted(() => document.addEventListener("keydown", onKeydown));
+onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
+
+/**
+ * Help lists the shortcuts that exist rather than linking to documentation this
+ * build does not ship. The design draws the button with no behaviour behind it;
+ * an inert button in a shipped panel is a support ticket, and naming the two
+ * real keys is both honest and the thing someone opening Help is usually after.
+ */
+const helpOpen = ref(false);
+
+const SHORTCUTS: readonly { keys: string; what: string }[] = [
+  { keys: shortcutKey, what: "Search sites, domains and screens" },
+  { keys: "Esc", what: "Close a dialog, menu or switcher" },
+  { keys: "Tab", what: "Move through the page in reading order" },
+];
 </script>
 
 <template>
@@ -36,10 +65,10 @@ const emit = defineEmits<{ (e: "ask-ai"): void; (e: "search"): void }>();
     <div class="nx-topbar__crumb">{{ crumb }}</div>
     <div class="nx-topbar__spacer" />
 
-    <button type="button" class="nx-topbar__search" @click="emit('search')">
+    <button type="button" class="nx-topbar__search" @click="ui.searchOpen = true">
       <NxIcon name="search" size="sm" class="nx-topbar__search-icon" />
       <span class="nx-topbar__search-text">Search sites, files, domains</span>
-      <kbd class="nx-topbar__kbd">{{ shortcut }}</kbd>
+      <kbd class="nx-topbar__kbd">{{ shortcutKey }}</kbd>
     </button>
 
     <RouterLink :to="{ name: 'notifications' }" class="nx-topbar__bell" aria-label="Notifications">
@@ -47,12 +76,23 @@ const emit = defineEmits<{ (e: "ask-ai"): void; (e: "search"): void }>();
       <span class="nx-topbar__dot" aria-hidden="true" />
     </RouterLink>
 
-    <NxButton variant="default" size="lg">Help</NxButton>
+    <NxButton variant="default" size="lg" @click="helpOpen = true">Help</NxButton>
 
-    <button type="button" class="nx-topbar__ai" @click="emit('ask-ai')">
+    <button type="button" class="nx-topbar__ai" :aria-expanded="ai.open" @click="ai.toggle()">
       <NxIcon name="auto-awesome" size="md" />
       Ask AI
     </button>
+    <NxModal v-model:open="helpOpen" title="Help" description="What this panel can do from the keyboard.">
+      <dl class="nx-topbar__help">
+        <template v-for="s in SHORTCUTS" :key="s.keys">
+          <dt><kbd class="nx-topbar__kbd">{{ s.keys }}</kbd></dt>
+          <dd>{{ s.what }}</dd>
+        </template>
+      </dl>
+      <p class="nx-topbar__help-note">
+        For anything the panel cannot answer, Ask AI reads your logs, metrics and config.
+      </p>
+    </NxModal>
   </header>
 </template>
 
@@ -151,4 +191,18 @@ const emit = defineEmits<{ (e: "ask-ai"): void; (e: "search"): void }>();
   white-space: nowrap;
 }
 .nx-topbar__ai:hover { background: var(--nx-dark-2); }
+.nx-topbar__help {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 16px;
+  margin: 0;
+  align-items: baseline;
+}
+.nx-topbar__help dd { margin: 0; font-size: var(--nx-text-base); color: var(--nx-text-2); }
+.nx-topbar__help-note {
+  margin: 16px 0 0;
+  font-size: var(--nx-text-sm);
+  color: var(--nx-text-muted);
+  line-height: 1.55;
+}
 </style>

@@ -20,6 +20,8 @@ export interface QuickAction {
   readonly icon: string;
   readonly to: string;
   readonly tone: "brand" | "success" | "warning" | "danger";
+  /** Opens in its own window — see SiteNavLeaf.newTab. */
+  readonly newTab?: boolean;
 }
 
 export interface SecurityCheck {
@@ -92,8 +94,27 @@ export function documentRoot(s: Site) {
   return "/home/nexp/" + s.domain + "/public";
 }
 
+/**
+ * The identifier the panel derives from a domain, and the prefix every database
+ * and database user on this site is named with.
+ *
+ * One derivation, exported, because three places need it and two of them used to
+ * compute it themselves: the table on the databases screen, the phpMyAdmin spec,
+ * and now the create form — whose whole job is to show you the name you are
+ * about to get. Two copies of this is how a form promises `nexp_shop` and the
+ * list underneath shows `nexp_novaretail_shop`.
+ */
+export function dbBase(domain: string) {
+  return "nexp_" + domain.split(".")[0].replace(/-/g, "_");
+}
+
+/** What a new database or user on this site is prefixed with. */
+export function dbPrefix(domain: string) {
+  return dbBase(domain) + "_";
+}
+
 export function databases(s: Site) {
-  const base = "nexp_" + s.domain.split(".")[0].replace(/-/g, "_");
+  const base = dbBase(s.domain);
   return [
     { name: base, user: "nexp_admin", size: "184 MB" },
     { name: base + "_stg", user: "nexp_admin", size: "22 MB" },
@@ -101,16 +122,31 @@ export function databases(s: Site) {
 }
 
 /**
- * The six shortcuts on the overview.
+ * The shortcuts on the overview — at most six.
  *
- * Which six depends on the stack and on whether a repo is connected — a static
- * site has no "Restart app", a manual-deploy site has no "Redeploy from Git".
- * The design picked these per site and deduplicated by destination; that logic
- * lives here so the overview template stays a list renderer.
+ * Which ones depends on the stack and on whether a repo is connected: a static
+ * site has no runtime to restart, a manual-deploy site has no "Redeploy from
+ * Git". Every entry must also exist in that site's drawer, or the overview is
+ * offering a screen the menu says the site does not have.
+ *
+ * Fewer than six is fine and happens — a manual Node site gets five, because the
+ * upload shortcut and the file manager are the same destination and the dedupe
+ * keeps one. Padding the list to six would mean inventing an entry.
  */
 export function quickActions(s: Site): readonly QuickAction[] {
+  const dbs = databases(s);
+
   const all: QuickAction[] = [
-    { label: "File manager", sub: "public/", icon: "folder-open", to: "site-files", tone: "brand" },
+    { label: "File manager", sub: "public/", icon: "folder-open", to: "site-files", tone: "brand", newTab: true },
+    // The sub-line counts the site's own databases rather than saying
+    // "MySQL": the shortcut is worth taking when you know what is behind it.
+    {
+      label: "Databases",
+      sub: dbs.length === 1 ? "1 database" : dbs.length + " databases",
+      icon: "database",
+      to: "site-db",
+      tone: "brand",
+    },
   ];
 
   if (s.stackKey === "wp") {
@@ -118,23 +154,29 @@ export function quickActions(s: Site): readonly QuickAction[] {
   } else if (s.deploy === "GitHub") {
     all.push({ label: "Redeploy from Git", sub: s.branch, icon: "cloud-sync", to: "site-git-deployments", tone: "success" });
   } else {
-    all.push({ label: "Upload files", sub: "zip or folder", icon: "upload", to: "site-files", tone: "success" });
+    all.push({ label: "Upload files", sub: "zip or folder", icon: "upload", to: "site-files", tone: "success", newTab: true });
   }
 
+  // Keyed on the stack rather than falling through to a PHP default: the old
+  // `else` handed a Python site "PHP settings", pointing at a screen that is not
+  // even in that site's menu, and a static site a runtime it does not have.
   if (s.stackKey === "node") {
     all.push({ label: "Restart app", sub: "Node 20 · PM2", icon: "restart-alt", to: "site-runtime", tone: "brand" });
+  } else if (s.stackKey === "python") {
+    all.push({ label: "Restart app", sub: "Gunicorn", icon: "restart-alt", to: "site-runtime", tone: "brand" });
   } else if (s.stackKey === "wp") {
     all.push({ label: "Create staging", sub: "test safely", icon: "content-copy", to: "site-wp-staging", tone: "brand" });
-  } else {
+  } else if (s.stackKey === "php") {
     all.push({ label: "PHP settings", sub: "PHP 8.3", icon: "tune", to: "site-php", tone: "brand" });
   }
 
   all.push({ label: "Domain & SSL", sub: "certificate active", icon: "lock", to: "site-ssl", tone: "success" });
 
+  // Analytics only where there is no runtime to look at instead. Logs used to
+  // sit here for every other stack and no longer do — they are one click away
+  // under Advanced, and the space is better spent on the databases above.
   if (s.stackKey === "static") {
     all.push({ label: "Analytics", sub: "traffic today", icon: "bar-chart", to: "site-analytics", tone: "warning" });
-  } else {
-    all.push({ label: "View logs", sub: "live tail", icon: "receipt-long", to: "site-logs", tone: "warning" });
   }
 
   all.push({ label: "Backups", sub: "14 days kept", icon: "backup", to: "site-backups", tone: "brand" });

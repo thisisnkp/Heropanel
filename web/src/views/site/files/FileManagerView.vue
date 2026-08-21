@@ -3,10 +3,17 @@
  * File manager — browse, search, edit and upload into the document root.
  *
  * Ported from panel_ui_ref/NexPanel File Manager.dc.html, which is a separate
- * design because in the prototype it opened in its own tab. Here it is a route
- * inside the site, so the site drawer stays available and the back button
- * works — a file manager that loses the panel around it is a worse version of
- * the same screen.
+ * design because it opens in its own tab — the panel calls window.open() rather
+ * than routing to it. This route is marked `standalone`, so App.vue renders it
+ * with no panel chrome: no icon rail, no site drawer, no breadcrumb bar. It has
+ * its own sidebar, and stacking the panel's two around it would leave three
+ * columns of navigation next to a file list.
+ *
+ * The trade-off is that this window has no navigation out, exactly as the design
+ * intends: the panel is still open in the tab you came from. The one concession
+ * is the "Back to panel" row at the foot of the sidebar, which matters when this
+ * URL is reached directly — from a bookmark or a pasted link — and there is no
+ * other tab to return to.
  *
  * Delete moves to trash rather than removing: every destructive action in this
  * panel is recoverable for 14 days, and this is the screen where a mis-click is
@@ -173,9 +180,15 @@ function confirmDialog() {
     return;
   }
   if (kind === "delete") {
-    const n = fm.selected.length;
-    fm.moveToTrash(fm.selected);
-    ui.toast(n + (n === 1 ? " item" : " items") + " moved to trash.", "success");
+    // Named before the move, because moveToTrash clears the selection.
+    const names = [...fm.selected];
+    fm.moveToTrash(names);
+    // Genuinely reversible — restore() puts each file back in the folder it came
+    // from, not the one that happens to be open — so the offer is real.
+    ui.toast(names.length + (names.length === 1 ? " item" : " items") + " moved to trash.", "success", {
+      label: "Undo",
+      run: () => names.forEach((n) => fm.restore(n)),
+    });
     return;
   }
   if (kind === "rename" && name) {
@@ -198,18 +211,22 @@ function restore(name: string) {
 </script>
 
 <template>
-  <div class="fm">
-    <SiteHeader
-      v-if="site"
-      kicker="Files"
-      title="File manager"
-      sub="Browse, edit and upload straight into the document root."
-    />
-
+  <!-- Carries the skip-link target itself: in a standalone window there is no
+       shell above to own it, and the link in App.vue still has to land. -->
+  <div id="nx-main" class="fm">
     <FileEditor v-if="fm.openFile" class="fm__editor" />
 
     <div v-else class="fm__shell">
       <aside class="fm__side nxhide">
+        <!-- This window's own identity. It has to name the site: the panel's
+             breadcrumb is not here to say which document root you are in, and
+             "public_html" is the same string on every site you own. -->
+        <div class="fm__brand">
+          <span class="fm__mark" aria-hidden="true">N</span>
+          <h1 class="fm__title">File manager</h1>
+        </div>
+        <p class="fm__domain nx-mono nx-truncate">{{ site?.domain ?? "—" }}</p>
+
         <ul class="fm__side-list">
           <li>
             <button
@@ -251,6 +268,16 @@ function restore(name: string) {
         </ul>
 
         <div class="fm__spacer" />
+
+        <RouterLink
+          v-if="site"
+          :to="{ name: 'site-overview', params: { id: String(site.id) } }"
+          class="fm__side-item fm__back"
+        >
+          <NxIcon name="arrow-back" size="md" />
+          <span class="nx-row__grow nx-truncate">Back to panel</span>
+        </RouterLink>
+
         <div class="fm__disk">
           <NxMeter :value="DISK.pct" height="4px" :note="'Disk ' + DISK.used + ' of ' + DISK.total" />
         </div>
@@ -430,36 +457,78 @@ function restore(name: string) {
 </template>
 
 <style scoped>
-.fm { display: flex; flex-direction: column; min-height: 0; }
-.fm__editor { min-height: 60vh; }
+/* This is the whole window, not a card on a page: the route is `standalone`, so
+ * there is no panel chrome above or beside it and the file list should use every
+ * pixel. Sizing off the viewport rather than off a guessed header height also
+ * retires the `100vh - 230px` this used to carry, which was only ever correct at
+ * the one window height it was measured at. */
+.fm {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--nx-bg);
+}
+.fm__editor { flex: 1; min-height: 0; }
 
 .fm__shell {
   display: flex;
+  flex: 1;
   min-height: 0;
-  height: calc(100vh - 230px);
-  /* Low enough that the shell still fits a short laptop viewport. A larger
-   * floor pushed the bottom of the file list past the fold, so the page scrolled
-   * as well as the list and rows moved under the pointer mid-interaction. */
-  min-height: 320px;
   background: var(--nx-surface);
-  border: 1px solid var(--nx-border);
-  border-radius: var(--nx-radius-lg);
   overflow: hidden;
 }
 
 .fm__side {
-  width: 218px;
-  flex: 0 0 218px;
+  width: 236px;
+  flex: 0 0 236px;
   border-right: 1px solid var(--nx-border);
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 20px 16px 16px;
   overflow-y: auto;
 }
+.fm__brand { display: flex; align-items: center; gap: 12px; padding: 4px 8px; }
+.fm__mark {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-violet-900);
+  color: var(--nx-gold-400);
+  font-size: var(--nx-text-md);
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fm__title {
+  margin: 0;
+  font-size: var(--nx-text-base);
+  font-weight: 600;
+  letter-spacing: var(--nx-ls-tight);
+  color: var(--nx-text);
+}
+.fm__domain {
+  margin: 0;
+  font-size: var(--nx-text-xs);
+  color: var(--nx-text-muted);
+  padding: 4px 8px 20px;
+}
+.fm__back { color: var(--nx-text-muted); }
+.fm__back:hover { color: var(--nx-text); }
+
 @media (max-width: 900px) {
-  .fm__shell { flex-direction: column; height: auto; }
-  .fm__side { width: auto; flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--nx-border); }
+  /* Stacked, and the window scrolls as one: with the sidebar above the list
+     there is no second axis to give the list its own scroller. */
+  .fm { height: auto; min-height: 100dvh; overflow: visible; }
+  .fm__shell { flex-direction: column; }
+  .fm__side { width: auto; flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--nx-border); padding: 12px; }
   .fm__side-list { flex-direction: row; flex-wrap: wrap; }
+  .fm__brand, .fm__domain { padding-left: 0; padding-right: 0; }
+  .fm__domain { padding-bottom: 12px; }
 }
 .fm__side-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .fm__side-item {

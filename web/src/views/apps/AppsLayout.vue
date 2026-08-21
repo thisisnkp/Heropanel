@@ -1,18 +1,10 @@
 <script setup lang="ts">
-// Apps is three sections; the section is in the URL so it can be linked to.
-// Each section writes its own heading, as the security tabs do.
-import type { NxTab } from "@/components/ui/NxTabs.vue";
-
-const tabs: NxTab[] = [
-  { to: "apps-installed", label: "Installed apps", icon: "apps" },
-  { to: "apps-install", label: "Install new app", icon: "add-circle" },
-  { to: "apps-licenses", label: "Licenses", icon: "card-membership" },
-];
+// Apps is three sections plus the catalogue's category tree, all of which are
+// listed in the Apps context sidebar. This layout only exists to give those
+// routes a common parent; the section is in the URL so "install new app" is a
+// link someone can be sent.
 </script>
 
 <template>
-  <div>
-    <NxTabs :tabs="tabs" />
-    <RouterView />
-  </div>
+  <RouterView />
 </template>

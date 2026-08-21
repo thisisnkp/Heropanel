@@ -2,8 +2,16 @@ import { describe, expect, it } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 
 import { buildSiteSpec, type SpecKey } from "./siteSpec";
-import { buildSecuritySpec, LOG_SOURCES, type SecurityKey } from "./securitySpec";
+import {
+  buildSecuritySpec,
+  LOG_SOURCES,
+  profileNote,
+  SECURITY_SECTIONS,
+  securityIssues,
+  type SecurityKey,
+} from "./securitySpec";
 import { quickActions, runtimeFields, runtimeTitle } from "./siteDetail";
+import { buildSiteNav, isGroup, type SiteNavNode } from "@/config/siteNavigation";
 import { useFlagsStore } from "@/stores/flags";
 import type { Site } from "@/stores/sites";
 
@@ -173,6 +181,46 @@ describe("buildSecuritySpec", () => {
   });
 });
 
+describe("securityIssues", () => {
+  const flags = () => {
+    setActivePinia(createPinia());
+    return useFlagsStore();
+  };
+
+  it("reports what is actually wrong, not a fixed number", () => {
+    const f = flags();
+    // Defaults: scheduled scanning and real-time protection are both off, and
+    // nothing is critical. The sidebar chip shows exactly this.
+    const issues = securityIssues(f);
+    expect(issues.filter((i) => i.severity === "critical")).toHaveLength(0);
+    expect(issues.filter((i) => i.severity === "warning")).toHaveLength(2);
+  });
+
+  it("promotes root login to critical the moment it is turned on", () => {
+    const f = flags();
+    f.set("rootLogin", true);
+    const critical = securityIssues(f).filter((i) => i.severity === "critical");
+    expect(critical.map((i) => i.label)).toContain("Root SSH login is enabled");
+  });
+
+  it("points every issue at the section that fixes it", () => {
+    const f = flags();
+    for (const key of ["fw", "waf", "fail2ban", "twofa", "rootLogin", "passwordLogin"] as const) {
+      f.set(key, key === "rootLogin" || key === "passwordLogin");
+    }
+    const sections = new Set(SECURITY_SECTIONS.map((s) => s.key));
+    for (const issue of securityIssues(f)) {
+      expect(sections, issue.label).toContain(issue.key);
+    }
+  });
+
+  it("says something different for each profile", () => {
+    const notes = ["Lite", "Standard", "Maximum"].map(profileNote);
+    expect(new Set(notes).size).toBe(3);
+    for (const n of notes) expect(n.length).toBeGreaterThan(30);
+  });
+});
+
 describe("site overview shortcuts", () => {
   it("never offers the same destination twice", () => {
     for (const stackKey of ["static", "php", "node", "python", "wp"] as const) {
@@ -182,6 +230,40 @@ describe("site overview shortcuts", () => {
         expect(new Set(destinations).size, `${stackKey}/${deploy}`).toBe(destinations.length);
         expect(actions.length, `${stackKey}/${deploy}`).toBeLessThanOrEqual(6);
       }
+    }
+  });
+
+  it("never offers a screen the site's own menu does not have", () => {
+    // This is the invariant that a fall-through `else` broke: a Python site was
+    // offered "PHP settings", linking to a screen its drawer does not list.
+    for (const stackKey of ["static", "php", "node", "python", "wp"] as const) {
+      for (const deploy of ["Manual", "GitHub"]) {
+        const inDrawer = new Set<string>();
+        const walk = (nodes: readonly SiteNavNode[]) => {
+          for (const n of nodes) {
+            if (isGroup(n)) walk(n.children);
+            else inDrawer.add(n.to);
+          }
+        };
+        walk(buildSiteNav({ stackKey, deploy }));
+
+        for (const a of quickActions(site({ stackKey, deploy }))) {
+          expect(inDrawer, `${stackKey}/${deploy}: ${a.label}`).toContain(a.to);
+        }
+      }
+    }
+  });
+
+  it("leads with the two places files and data actually live", () => {
+    for (const stackKey of ["static", "php", "node", "python", "wp"] as const) {
+      const first = quickActions(site({ stackKey })).slice(0, 2).map((a) => a.to);
+      expect(first, stackKey).toEqual(["site-files", "site-db"]);
+    }
+  });
+
+  it("no longer duplicates the logs shortcut the drawer already carries", () => {
+    for (const stackKey of ["static", "php", "node", "python", "wp"] as const) {
+      expect(quickActions(site({ stackKey })).map((a) => a.to), stackKey).not.toContain("site-logs");
     }
   });
 

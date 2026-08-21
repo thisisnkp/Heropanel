@@ -8,10 +8,12 @@
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSitesStore } from "@/stores/sites";
+import { useUiStore } from "@/stores/ui";
 
 const route = useRoute();
 const router = useRouter();
 const sites = useSitesStore();
+const ui = useUiStore();
 
 const inSite = computed(() => String(route.name ?? "").startsWith("site"));
 
@@ -39,7 +41,7 @@ const title = computed(() => {
       <span class="nx-mheader__dot" aria-hidden="true" />
     </RouterLink>
 
-    <button type="button" class="nx-mheader__icon" aria-label="Search">
+    <button type="button" class="nx-mheader__icon" aria-label="Search" @click="ui.searchOpen = true">
       <NxIcon name="search" size="lg" />
     </button>
   </header>
