@@ -14,10 +14,17 @@ func TestValidate(t *testing.T) {
 		sel  Selection
 		ok   bool
 	}{
-		{"ols+mariadb", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMariaDB}, true},
-		{"ols+mysql", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMySQL}, true},
-		{"nginx now allowed", Selection{Webserver: WebserverNginx, DBEngine: DBEngineMariaDB}, true},
-		{"postgres now allowed", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEnginePostgreSQL}, true},
+		{"ols", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMariaDB}, true},
+		{"litespeed enterprise", Selection{Webserver: WebserverLiteSpeed, DBEngine: DBEngineMariaDB}, true},
+		// "mysql" names the same server MariaDB speaks for, so it is accepted and
+		// rewritten rather than refused; an omitted engine means the only one.
+		{"mysql is an alias", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: "mysql"}, true},
+		{"engine may be omitted", Selection{Webserver: WebserverOpenLiteSpeed}, true},
+		// Retired engines are refused on input. They are real, different servers
+		// the panel can no longer configure — saying yes would be a lie.
+		{"nginx retired", Selection{Webserver: "nginx", DBEngine: DBEngineMariaDB}, false},
+		{"apache retired", Selection{Webserver: "apache", DBEngine: DBEngineMariaDB}, false},
+		{"postgres retired", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: "postgresql"}, false},
 		{"unknown webserver", Selection{Webserver: "iis", DBEngine: DBEngineMariaDB}, false},
 		{"unknown engine", Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: "oracle"}, false},
 		{"empty", Selection{}, false},
@@ -64,7 +71,7 @@ func TestBuildPlan_WebserverAndDB(t *testing.T) {
 
 func TestBuildPlan_DNSAndMailOn(t *testing.T) {
 	p := BuildPlan(Selection{
-		Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMySQL,
+		Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMariaDB,
 		ManageDNS: true, CreateMail: true,
 	})
 	if !hasStep(p, StepPackage, "bind9", true) {
@@ -173,7 +180,7 @@ func TestService_CompleteRejectsUnknown(t *testing.T) {
 func TestService_RecordOnlyWithoutProvisioner(t *testing.T) {
 	store := &memStore{}
 	svc := NewService(store, nil, nil) // no provisioner → record-only
-	_, err := svc.Complete(context.Background(), Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMySQL})
+	_, err := svc.Complete(context.Background(), Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMariaDB})
 	if err != nil {
 		t.Fatalf("record-only complete should succeed: %v", err)
 	}

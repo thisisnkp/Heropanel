@@ -1,13 +1,16 @@
 import { createRouter, createWebHistory } from "vue-router";
 
+import { authRoutes } from "./routes/auth";
 import { mainRoutes } from "./routes/main";
 import { appsRoutes } from "./routes/apps";
 import { securityRoutes } from "./routes/security";
 import { siteRoutes } from "./routes/site";
+import { installAuthGuard } from "./guard";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    ...authRoutes,
     ...mainRoutes,
     ...appsRoutes,
     ...securityRoutes,
@@ -18,6 +21,8 @@ export const router = createRouter({
   // screen should start at the top.
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
 });
+
+installAuthGuard(router);
 
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined;

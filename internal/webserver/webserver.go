@@ -4,14 +4,19 @@
 // full desired state is rendered into a single included config file per engine, so
 // there is no per-site config drift.
 //
-// Four engines are supported, chosen by the first-run setup wizard:
-//   - OpenLiteSpeed — its own config format (a single listener config with inline
-//     virtual hosts and server-level FastCGI/proxy extProcessors).
-//   - Nginx — one server block per site.
-//   - Apache — one <VirtualHost> per site.
-//   - LiteSpeed Enterprise — a drop-in Apache replacement that reads Apache
-//     config, so it shares the Apache renderer; only the broker's write/reload
-//     path differs.
+// NexPanel is a single-stack panel: OpenLiteSpeed is the web server, and the one
+// alternative is its commercial sibling.
+//   - OpenLiteSpeed — the default and the only engine a normal install runs. Its
+//     own config format: a single listener config with inline virtual hosts and
+//     server-level FastCGI/proxy extProcessors.
+//   - LiteSpeed Enterprise — the licensed upgrade. It is a drop-in Apache
+//     replacement and parses Apache's config format, so it gets its own
+//     httpd-syntax renderer; only the broker's write/reload path differs.
+//
+// Nginx and Apache were removed rather than left unsupported: an engine nobody
+// installs is an engine nobody tests, and its renderer rots into a liability
+// that still has to compile, still has to be reasoned about in every change to
+// the Site struct, and would eventually ship a broken vhost to whoever tried it.
 //
 // OLS specifics learned against real OpenLiteSpeed:
 //   - The PHP handler must be declared as a server-level (top-level)
@@ -37,8 +42,6 @@ type Engine string
 
 const (
 	EngineOpenLiteSpeed Engine = "openlitespeed"
-	EngineNginx         Engine = "nginx"
-	EngineApache        Engine = "apache"
 	EngineLiteSpeed     Engine = "litespeed_enterprise"
 )
 
@@ -46,7 +49,7 @@ const (
 // baseline the panel has always shipped.
 func normalizeEngine(e Engine) Engine {
 	switch e {
-	case EngineNginx, EngineApache, EngineLiteSpeed, EngineOpenLiteSpeed:
+	case EngineOpenLiteSpeed, EngineLiteSpeed:
 		return e
 	default:
 		return EngineOpenLiteSpeed
@@ -86,7 +89,7 @@ type Site struct {
 }
 
 // AliasDomains returns the site's domains other than the primary — the
-// ServerAlias set for Apache, where the primary is the ServerName.
+// ServerAlias set for the httpd-syntax renderer, where the primary is the ServerName.
 func (s Site) AliasDomains() []string {
 	out := make([]string, 0, len(s.Domains))
 	for _, d := range s.Domains {
@@ -198,12 +201,8 @@ var tmplFuncs = template.FuncMap{
 // RenderFor renders the full config for the given engine.
 func RenderFor(engine Engine, sites []Site) (string, error) {
 	switch normalizeEngine(engine) {
-	case EngineNginx:
-		return renderTemplate(nginxTmpl, sites)
-	case EngineApache, EngineLiteSpeed:
-		// LiteSpeed Enterprise is a drop-in Apache replacement and reads Apache
-		// config, so it shares the Apache renderer.
-		return renderTemplate(apacheTmpl, sites)
+	case EngineLiteSpeed:
+		return renderTemplate(lsweTmpl, sites)
 	default:
 		return RenderConfig(sites)
 	}
@@ -220,7 +219,7 @@ func renderTemplate(t *template.Template, sites []Site) (string, error) {
 // ── OpenLiteSpeed ────────────────────────────────────────────────────────────
 
 // olsJoin keeps the OLS listener's comma-separated domain map (OLS wants commas;
-// nginx/apache want spaces).
+// the httpd-syntax renderer wants spaces).
 var olsFuncs = template.FuncMap{
 	"join":     func(domains []string) string { return strings.Join(domains, ", ") },
 	"rxescape": func(host string) string { return strings.ReplaceAll(host, ".", `\.`) },
@@ -325,52 +324,16 @@ func anyWAF(sites []Site) bool {
 	return false
 }
 
-// ── Nginx ────────────────────────────────────────────────────────────────────
+// ── LiteSpeed Enterprise ─────────────────────────────────────────────────────
 
-// nginxTmpl renders one server block per site. PHP is served by fastcgi_pass to
-// the site's php-fpm socket; an app site reverse-proxies "/" to its upstream; a
-// suspended site returns 503 for everything. Redirects and force-HTTPS are
-// evaluated first, as guard `if`s that short-circuit with a redirect.
-var nginxTmpl = template.Must(template.New("nginx").Funcs(tmplFuncs).Parse(
-	`# NexPanel nginx configuration (rendered, do not edit).
-{{range .}}server {
-    listen 80;
-    server_name {{join .Domains}};
-    access_log {{.LogDir}}/access.log;
-    error_log {{.LogDir}}/error.log warn;
-{{if .Suspended}}    location / { return 503; }
-{{else}}    root {{.DocumentRoot}};
-    index {{if .IsPHP}}index.php {{end}}index.html index.htm;
-{{range .Redirects}}    if ($host = "{{.From}}") { return {{.Code}} {{.To}}$request_uri; }
-{{end}}{{if .ForceHTTPS}}    if ($scheme != "https") { return 301 https://$host$request_uri; }
-{{end}}{{if .WAFEnabled}}    modsecurity on;
-    modsecurity_rules_file /etc/nexpanel/waf/main.conf;
-{{end}}{{if .ProxyTarget}}    location / {
-        proxy_pass http://{{.ProxyTarget}};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-{{else}}    location / {
-        try_files $uri $uri/ {{if .IsPHP}}/index.php?$query_string{{else}}=404{{end}};
-    }
-{{if .IsPHP}}    location ~ \.php$ {
-        include fastcgi_params;
-        fastcgi_pass unix:{{.FpmSocket}};
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    }
-{{end}}{{end}}{{end}}}
-{{end}}`))
-
-// ── Apache (also used by LiteSpeed Enterprise) ───────────────────────────────
-
-// apacheTmpl renders one <VirtualHost *:80> per site. The primary domain is the
-// ServerName and the rest are ServerAlias. PHP is handed to php-fpm via
-// mod_proxy_fcgi; an app site reverse-proxies to its upstream; a suspended site
-// answers 503. AllowOverride All keeps .htaccess working as operators expect.
-var apacheTmpl = template.Must(template.New("apache").Funcs(tmplFuncs).Parse(
-	`# NexPanel Apache configuration (rendered, do not edit).
+// lsweTmpl renders one <VirtualHost *:80> per site in httpd syntax, which is what
+// LiteSpeed Enterprise parses — it is a drop-in Apache replacement, so its config
+// is Apache's config. The primary domain is the ServerName and the rest are
+// ServerAlias. PHP is handed to php-fpm via mod_proxy_fcgi; an app site
+// reverse-proxies to its upstream; a suspended site answers 503. AllowOverride
+// All keeps .htaccess working as operators expect.
+var lsweTmpl = template.Must(template.New("lswe").Funcs(tmplFuncs).Parse(
+	`# NexPanel LiteSpeed Enterprise configuration (rendered, do not edit).
 {{range .}}<VirtualHost *:80>
     ServerName {{.PrimaryDomain}}
 {{range .AliasDomains}}    ServerAlias {{.}}

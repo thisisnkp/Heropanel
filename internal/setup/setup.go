@@ -26,25 +26,62 @@ import (
 
 // Webserver identifies the webserver the panel provisions and manages for hosted
 // sites.
+//
+// There are two, and the only reason there are two is that one of them costs
+// money: OpenLiteSpeed is what every install runs, and LiteSpeed Enterprise is
+// the same server with a licence, better PHP throughput and .htaccess handled
+// natively. Nginx and Apache were removed — a panel that manages four web
+// servers tests one and hopes about the rest.
 type Webserver string
 
 const (
 	WebserverOpenLiteSpeed Webserver = "openlitespeed"
-	WebserverNginx         Webserver = "nginx"
-	WebserverApache        Webserver = "apache"
 	WebserverLiteSpeed     Webserver = "litespeed_enterprise"
 )
 
 // DBEngine identifies the database engine the panel provisions and manages for
 // hosted sites. It is distinct from the panel's own control-plane store, which
 // is always SQLite.
+//
+// There is exactly one. It stays a named type with a catalog rather than
+// becoming a bare constant because the wizard still reports it (the operator
+// should be told what they are getting, even where they have no say), and
+// because a stored selection from an older release can name an engine that no
+// longer exists and has to be recognized to be repaired.
 type DBEngine string
 
 const (
-	DBEngineMySQL      DBEngine = "mysql"
-	DBEngineMariaDB    DBEngine = "mariadb"
-	DBEnginePostgreSQL DBEngine = "postgresql"
+	DBEngineMariaDB DBEngine = "mariadb"
 )
+
+// retiredWebservers and retiredDBEngines are values earlier releases accepted.
+// They are kept only so a stored selection can be recognized and repaired —
+// nothing may be provisioned or rendered for them.
+var (
+	retiredWebservers = map[string]bool{"nginx": true, "apache": true}
+	retiredDBEngines  = map[string]bool{"mysql": true, "postgresql": true, "postgres": true}
+)
+
+// NormalizeStored repairs a selection loaded from the datastore.
+//
+// A panel installed before the stack was narrowed has "nginx" or "postgresql"
+// sitting in its setup row. Validate would refuse it, and since the wizard's
+// state gates the whole panel, that install would come up permanently stuck
+// behind a form it cannot submit. So a retired value is rewritten to what the
+// panel now actually runs, rather than treated as corrupt.
+//
+// MySQL is a rename, not a migration: it is wire-compatible with MariaDB and was
+// always driven through the same code path. PostgreSQL is not — those databases
+// are still on the host, and internal/database refuses to touch their rows so
+// they cannot be silently re-aimed at MariaDB.
+func (s *Selection) NormalizeStored() {
+	if retiredWebservers[string(s.Webserver)] || s.Webserver == "" {
+		s.Webserver = WebserverOpenLiteSpeed
+	}
+	if retiredDBEngines[string(s.DBEngine)] || s.DBEngine == "" {
+		s.DBEngine = DBEngineMariaDB
+	}
+}
 
 // Selection is the operator's answer to the wizard questions.
 type Selection struct {
@@ -88,31 +125,44 @@ type Option struct {
 	Supported bool   `json:"supported"`
 }
 
-// Webservers is the webserver catalog, in display order. All entries are
-// selectable: the wizard provisions (installs + enables) any of them via
-// BuildPlan. Note, though, that only OpenLiteSpeed has a config-rendering
-// backend today (internal/webserver) — a site created after choosing Nginx,
-// Apache or LiteSpeed Enterprise is still rendered as an OLS vhost until those
-// backends land. This is a deliberate operator choice, not a guarantee that
-// every webserver is fully managed yet.
+// Webservers is the webserver catalog, in display order. Both entries are fully
+// managed: each has a config renderer in internal/webserver and an apply/reload
+// path in the broker.
 func Webservers() []Option {
 	return []Option{
-		{ID: string(WebserverOpenLiteSpeed), Label: "OpenLiteSpeed", Supported: true},
-		{ID: string(WebserverNginx), Label: "Nginx", Supported: true},
-		{ID: string(WebserverApache), Label: "Apache", Supported: true},
-		{ID: string(WebserverLiteSpeed), Label: "LiteSpeed Enterprise", Note: "license required", Supported: true},
+		{ID: string(WebserverOpenLiteSpeed), Label: "OpenLiteSpeed", Note: "included", Supported: true},
+		{ID: string(WebserverLiteSpeed), Label: "LiteSpeed Enterprise", Note: "licence required", Supported: true},
 	}
 }
 
-// DBEngines is the database-engine catalog, in display order. All entries are
-// selectable. MariaDB and MySQL share the panel's dual-dialect MySQL backend
-// (internal/database); PostgreSQL is provisioned but not yet managed by the
-// database module — the same deliberate tradeoff as the webserver catalog.
+// DBEngines is the database-engine catalog: MariaDB, and nothing else.
+//
+// It stays a list of one rather than disappearing so the wizard can show the
+// operator what their sites will run on. A choice of one is not a choice, but it
+// is still information.
 func DBEngines() []Option {
 	return []Option{
-		{ID: string(DBEngineMariaDB), Label: "MariaDB", Supported: true},
-		{ID: string(DBEngineMySQL), Label: "MySQL", Supported: true},
-		{ID: string(DBEnginePostgreSQL), Label: "PostgreSQL", Supported: true},
+		{ID: string(DBEngineMariaDB), Label: "MariaDB", Note: "included", Supported: true},
+	}
+}
+
+// Baseline is the stack every install gets regardless of what the operator
+// answers, for the wizard to display. It is not a set of choices — nothing here
+// can be turned off — but the operator should still be told what is going on
+// their machine.
+//
+// LiteSpeed Cache is listed and is not in baselineComponents, because there is
+// nothing to install: page caching is built into OpenLiteSpeed and LiteSpeed
+// Enterprise. It appears here so the wizard describes the stack truthfully
+// rather than only listing the parts that happen to be packages.
+func Baseline() []Option {
+	return []Option{
+		{ID: "lscache", Label: "LiteSpeed Cache", Note: "built into the web server", Supported: true},
+		{ID: "phpmyadmin", Label: "phpMyAdmin", Note: "database management", Supported: true},
+		{ID: "clamav", Label: "ClamAV", Note: "malware scanning", Supported: true},
+		{ID: "fail2ban", Label: "Fail2Ban", Note: "brute-force blocking", Supported: true},
+		{ID: "modsecurity", Label: "ModSecurity + OWASP CRS", Note: "web application firewall", Supported: true},
+		{ID: "nftables", Label: "nftables", Note: "host firewall", Supported: true},
 	}
 }
 
@@ -131,11 +181,22 @@ func supported(opts []Option, id string) bool {
 // IP in place, so callers persist the same form the rest of the panel compares
 // against; both are optional and only checked when present.
 func (s *Selection) Validate() error {
+	// "mysql" is accepted and rewritten: it names the same server MariaDB speaks
+	// for, and a client sending it is not asking for anything the panel cannot do.
+	// A retired *webserver* gets no such treatment — nginx and apache are real,
+	// different servers the panel can no longer configure, and quietly giving the
+	// operator OpenLiteSpeed instead would be answering a question they did not
+	// ask. (A selection already stored from an older release is a different case;
+	// see NormalizeStored.)
+	if s.DBEngine == "" || s.DBEngine == "mysql" {
+		s.DBEngine = DBEngineMariaDB
+	}
 	if !supported(Webservers(), string(s.Webserver)) {
-		return errx.Validation("unknown_webserver", "Unknown webserver.")
+		return errx.Validation("unknown_webserver",
+			"This panel manages OpenLiteSpeed and LiteSpeed Enterprise.")
 	}
 	if !supported(DBEngines(), string(s.DBEngine)) {
-		return errx.Validation("unknown_db_engine", "Unknown database engine.")
+		return errx.Validation("unknown_db_engine", "This panel manages MariaDB.")
 	}
 
 	s.PanelDomain = domain.NormalizeFQDN(s.PanelDomain)
@@ -194,36 +255,51 @@ type Plan struct {
 // packagesFor returns the OS packages a webserver/engine needs.
 var webserverPackages = map[Webserver][]string{
 	WebserverOpenLiteSpeed: {"openlitespeed"},
-	WebserverNginx:         {"nginx"},
-	WebserverApache:        {"apache2"},
 	WebserverLiteSpeed:     {"lsws"},
 }
 
 var webserverService = map[Webserver]string{
 	WebserverOpenLiteSpeed: "lsws",
-	WebserverNginx:         "nginx",
-	WebserverApache:        "apache2",
 	WebserverLiteSpeed:     "lsws",
 }
 
 var dbPackages = map[DBEngine][]string{
-	DBEngineMariaDB:    {"mariadb-server"},
-	DBEngineMySQL:      {"mysql-server"},
-	DBEnginePostgreSQL: {"postgresql"},
+	DBEngineMariaDB: {"mariadb-server"},
 }
 
 var dbService = map[DBEngine]string{
-	DBEngineMariaDB:    "mariadb",
-	DBEngineMySQL:      "mysql",
-	DBEnginePostgreSQL: "postgresql",
+	DBEngineMariaDB: "mariadb",
 }
 
+// baselineComponents is the stack every install gets, whatever the operator
+// answered: the database management client, the malware scanner, the intrusion
+// blocker, the WAF rule engine, and the firewall.
+//
+// They are not questions because treating them as questions produces panels
+// where half the fleet has no WAF. The wizard shows them; it does not offer to
+// omit them. Each one is already driven by a module that exists — phpMyAdmin by
+// the database hand-off, ClamAV by internal/security/malware.go, Fail2Ban by
+// fail2ban.go, ModSecurity by the waf.provision capability, nftables by
+// firewall.go — so this is wiring up what the panel already assumes is there,
+// rather than a promise about future work.
+//
+// maldet (Linux Malware Detect) belongs in this list and is not here yet: it is
+// not in any distro repository, so it installs from an upstream tarball and
+// needs its own capability rather than a package name. Nothing else in the
+// baseline has that problem.
+var baselineComponents = []string{"phpmyadmin", "clamav", "fail2ban", "modsecurity", "nftables"}
+
+// baselineServices are the baseline units that must be running, as opposed to
+// the ones that are only ever invoked as a command (clamscan, fail2ban-client).
+var baselineServices = []string{"clamav-freshclam", "fail2ban", "nftables"}
+
 // BuildPlan turns a selection into an ordered provisioning plan: install and
-// enable the chosen webserver and database engine, then turn the DNS and mail
-// modules on or off. DNS uses BIND (named); mail uses Postfix + Dovecot — the
-// packages the existing dns and mail modules drive.
+// enable the webserver and MariaDB, add the always-on baseline (phpMyAdmin,
+// ClamAV, Fail2Ban, ModSecurity, nftables), then turn the DNS and mail modules
+// on or off. DNS uses BIND (named); mail uses Postfix + Dovecot — the packages
+// the existing dns and mail modules drive.
 func BuildPlan(sel Selection) Plan {
-	steps := make([]Step, 0, 8)
+	steps := make([]Step, 0, 16)
 
 	for _, p := range webserverPackages[sel.Webserver] {
 		steps = append(steps, Step{Kind: StepPackage, Target: p, Enable: true})
@@ -237,6 +313,14 @@ func BuildPlan(sel Selection) Plan {
 	}
 	if svc := dbService[sel.DBEngine]; svc != "" {
 		steps = append(steps, Step{Kind: StepService, Target: svc, Enable: true})
+	}
+
+	// The baseline: not conditional on anything the operator chose.
+	for _, c := range baselineComponents {
+		steps = append(steps, Step{Kind: StepPackage, Target: c, Enable: true, Note: "always installed"})
+	}
+	for _, svc := range baselineServices {
+		steps = append(steps, Step{Kind: StepService, Target: svc, Enable: true, Note: "always enabled"})
 	}
 
 	// DNS (BIND). Only add the package/service work when it is being turned on;
@@ -310,12 +394,23 @@ func (s *Service) Available() bool { return s != nil && s.store != nil }
 
 // Status returns the persisted state. On a fresh install (no row yet) it returns
 // a zero State with Completed=false, which is what gates the wizard.
+//
+// The stored selection is repaired on the way out (NormalizeStored), so an
+// install upgraded from a release with more engines reports the stack it is
+// actually running rather than the one it was originally asked for.
 func (s *Service) Status(ctx context.Context) (*State, error) {
 	if !s.Available() {
 		return nil, errx.New(errx.KindUnavailable, "setup_unavailable",
 			"Setup is unavailable because the panel has no datastore.")
 	}
-	return s.store.Get(ctx)
+	st, err := s.store.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if st != nil {
+		st.Selection.NormalizeStored()
+	}
+	return st, nil
 }
 
 // Complete validates the selection, applies the provisioning plan (when a
@@ -355,13 +450,15 @@ func (s *Service) Complete(ctx context.Context, sel Selection) (*State, error) {
 func (s *Service) Plan(sel Selection) Plan { return BuildPlan(sel) }
 
 // Components returns the logical infrastructure components this selection needs
-// provisioned on the host, in install order: the webserver, the database engine,
-// then BIND (when DNS is managed here) and Postfix + Dovecot (when a mail server
-// is wanted). These are the contract with the broker's system.provision
-// capability; they are distro-agnostic on purpose, because the broker is the only
-// place that knows apt-vs-dnf and the matching package/service names.
+// provisioned on the host, in install order: the webserver, MariaDB, the
+// always-on baseline, then BIND (when DNS is managed here) and Postfix + Dovecot
+// (when a mail server is wanted). These are the contract with the broker's
+// system.provision capability; they are distro-agnostic on purpose, because the
+// broker is the only place that knows apt-vs-dnf and the matching package and
+// service names.
 func (s Selection) Components() []string {
 	out := []string{string(s.Webserver), string(s.DBEngine)}
+	out = append(out, baselineComponents...)
 	if s.ManageDNS {
 		out = append(out, "bind")
 	}

@@ -14,9 +14,15 @@ import (
 // also surfaced (unauthenticated-friendly) in /auth/status, so every client can
 // gate the UI behind it without needing this admin-only detail.
 
-// getSetupHandler returns the persisted setup state plus the selectable option
-// catalogs, so the wizard can render exactly the choices the panel can honor
-// (unsupported backends are marked, not hidden). Gated by "setup.manage".
+// getSetupHandler returns the persisted setup state, the selectable option
+// catalogs, and the always-on baseline.
+//
+// The catalogs are short by design — one web server plus its licensed sibling,
+// and one database — because NexPanel is a single-stack panel. They are still
+// sent as catalogs rather than hardcoded in the client so the panel remains the
+// authority on what it can actually manage. The baseline is sent alongside so
+// the wizard can show what is being installed without offering to skip it.
+// Gated by "setup.manage".
 func getSetupHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state, err := d.Setup.Status(r.Context())
@@ -28,6 +34,7 @@ func getSetupHandler(d Deps) http.HandlerFunc {
 			"state":      state,
 			"webservers": setup.Webservers(),
 			"db_engines": setup.DBEngines(),
+			"baseline":   setup.Baseline(),
 		})
 	}
 }

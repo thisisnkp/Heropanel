@@ -84,6 +84,11 @@ type Domains interface {
 // concrete type).
 type Runtime interface {
 	ProxyPort(ctx context.Context, siteID int64) (int, bool)
+	// Language reports which runtime a proxy site runs on ("node", "python",
+	// "generic"), and whether one is configured at all. It is what lets the site
+	// view answer "what is this site" precisely instead of saying "a proxy" and
+	// leaving every client to guess.
+	Language(ctx context.Context, siteID int64) (string, bool)
 	RemoveForSite(ctx context.Context, siteUID string) error
 	// Control starts/stops/restarts a site's app process. Suspension uses it:
 	// a 503 in the vhost is a curtain, not a stop — behind it the app would keep
@@ -250,7 +255,7 @@ func (s *Service) RunCreate(ctx context.Context, in CreateInput, p job.Progress)
 	if err != nil {
 		return nil, err
 	}
-	view := toView(out)
+	view := s.toView(ctx, out)
 	view.DNSStatus = dnsStatus
 	return view, nil
 }
@@ -544,7 +549,7 @@ func (s *Service) Get(ctx context.Context, uid string) (*Site, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toView(rec), nil
+	return s.toView(ctx, rec), nil
 }
 
 // List returns sites (all owners when ownerID is 0).
@@ -555,7 +560,7 @@ func (s *Service) List(ctx context.Context, ownerID int64, limit, offset int) ([
 	}
 	out := make([]Site, len(recs))
 	for i := range recs {
-		out[i] = *toView(&recs[i])
+		out[i] = *s.toView(ctx, &recs[i])
 	}
 	return out, nil
 }
@@ -569,7 +574,7 @@ func (s *Service) ListForOwners(ctx context.Context, ownerIDs []int64, limit, of
 	}
 	out := make([]Site, len(recs))
 	for i := range recs {
-		out[i] = *toView(&recs[i])
+		out[i] = *s.toView(ctx, &recs[i])
 	}
 	return out, nil
 }
@@ -605,7 +610,7 @@ func (s *Service) setSuspension(ctx context.Context, uid string, suspend bool) (
 		want, from = StatusActive, StatusSuspended
 	}
 	if rec.Status == string(want) {
-		return toView(rec), nil // idempotent: already where the caller wants it
+		return s.toView(ctx, rec), nil // idempotent: already where the caller wants it
 	}
 	// Only a healthy site may be suspended, and only a suspended one resumed.
 	// Suspending a half-provisioned or errored site would write a status that
@@ -631,7 +636,7 @@ func (s *Service) setSuspension(ctx context.Context, uid string, suspend bool) (
 	s.controlApp(ctx, rec, suspend)
 
 	rec.Status = string(want)
-	return toView(rec), nil
+	return s.toView(ctx, rec), nil
 }
 
 // controlApp stops or starts a proxy site's app process alongside a suspension.
@@ -727,7 +732,44 @@ func (s *Service) deprovision(ctx context.Context, rec *Record, p job.Progress) 
 	return nil
 }
 
-func toView(r *Record) *Site {
+// toView builds the API view of a site, including the stack it runs.
+//
+// It is a method rather than a function because the stack of a proxy site lives
+// in the runtime module, not in the site row — see Site.Stack for why the panel
+// answers that question here instead of leaving it to clients.
+func (s *Service) toView(ctx context.Context, r *Record) *Site {
+	v := baseView(r)
+	v.Stack = s.stackFor(ctx, r)
+	return v
+}
+
+// stackFor names what a site actually runs.
+//
+// A PHP site reports "php" even when WordPress is installed on it: the panel has
+// no WordPress module yet, so claiming to know would be inventing an answer.
+// A proxy site with no runtime configured yet — or a generic one — reports
+// "app", which is true and is not "node".
+func (s *Service) stackFor(ctx context.Context, r *Record) string {
+	switch Type(r.Type) {
+	case TypeStatic:
+		return "static"
+	case TypePHP:
+		return "php"
+	case TypeProxy:
+		if s.runtime != nil {
+			if lang, ok := s.runtime.Language(ctx, r.ID); ok {
+				switch lang {
+				case "node", "python":
+					return lang
+				}
+			}
+		}
+		return "app"
+	}
+	return ""
+}
+
+func baseView(r *Record) *Site {
 	return &Site{
 		UID:           r.UID,
 		Name:          r.Name,
@@ -782,7 +824,7 @@ func (s *Service) AppExposure(ctx context.Context, project string) (*Site, error
 		}
 		return nil, err
 	}
-	return toView(rec), nil
+	return s.toView(ctx, rec), nil
 }
 
 func validateCreate(in *CreateInput) error {

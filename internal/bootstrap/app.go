@@ -343,13 +343,14 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		// capability; without a broker it is record-only (choices persist and gate
 		// the panel, but nothing is applied to the host).
 		//
-		// applyStack points the live services at a selection: the web-server engine
-		// (which changes how vhosts render) and the default database engine. It runs
-		// at boot for an already-completed setup, and again from the completion hook
-		// so finishing the wizard takes effect without a restart.
+		// applyStack points the live services at a selection. The only stack choice
+		// left is the web-server engine — OpenLiteSpeed, or the licensed LiteSpeed
+		// Enterprise — which changes how vhosts render. The database engine is not
+		// a choice: MariaDB is the only one the panel manages. This runs at boot for
+		// an already-completed setup, and again from the completion hook so
+		// finishing the wizard takes effect without a restart.
 		applyStack := func(ctx context.Context, sel setup.Selection) {
 			webSvc.SetEngine(webserver.Engine(sel.Webserver))
-			dbSvc.SetDefaultEngine(string(sel.DBEngine))
 		}
 		var setupProv setup.Provisioner
 		if gw != nil {

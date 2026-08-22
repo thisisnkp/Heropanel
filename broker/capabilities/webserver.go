@@ -17,17 +17,9 @@ const (
 	olsListenerConf = "/usr/local/lsws/conf/nexpanel.conf"
 	olsBin          = "/usr/local/lsws/bin/lshttpd"
 	lswsctrl        = "/usr/local/lsws/bin/lswsctrl"
-	// LiteSpeed Enterprise reads an Apache-style config; the panel renders Apache
-	// and writes it here, then reloads via lswsctrl.
+	// LiteSpeed Enterprise parses httpd-syntax config; the panel renders it and
+	// writes it here, then reloads via lswsctrl.
 	lswsEntConf = "/usr/local/lsws/conf/httpd_config.conf"
-	// Nginx.
-	nginxConf = "/etc/nginx/conf.d/nexpanel.conf"
-	nginxBin  = "/usr/sbin/nginx"
-	// Apache (Debian conf-enabled, RHEL conf.d).
-	apacheConfDebian = "/etc/apache2/conf-enabled/nexpanel.conf"
-	apacheConfRHEL   = "/etc/httpd/conf.d/nexpanel.conf"
-	apache2ctl       = "/usr/sbin/apache2ctl"
-	httpdBin         = "/usr/sbin/httpd"
 )
 
 // WebServerApply applies the full desired web-server configuration: it writes the
@@ -37,7 +29,8 @@ const (
 //
 // The configuration text is rendered by npd (per engine); the broker only writes
 // validated paths and runs the (fixed) test/reload commands for the chosen
-// engine. An empty engine means OpenLiteSpeed — the panel's original behavior.
+// engine. An empty or unrecognized engine means OpenLiteSpeed — the panel's
+// default and the only engine an unlicensed install runs.
 type WebServerApply struct{}
 
 type vhostEntry struct {
@@ -87,14 +80,13 @@ func (WebServerApply) Execute(c capability.Context, raw json.RawMessage) (capabi
 		return c.FS.WriteFile(path, []byte(content), mode)
 	}
 
+	// Any engine the panel no longer supports — including "nginx" and "apache",
+	// which it used to — lands on OpenLiteSpeed rather than erroring, so an
+	// upgraded install keeps serving on the engine it now actually runs.
 	switch in.Engine {
-	case "nginx":
-		return applyNginx(c, in, write, rollback)
-	case "apache":
-		return applyApache(c, in, write, rollback)
 	case "litespeed_enterprise":
 		return applyLiteSpeedEnt(c, in, write, rollback)
-	default: // "" or "openlitespeed"
+	default:
 		return applyOLS(c, in, write, rollback)
 	}
 }
@@ -149,57 +141,13 @@ func applyOLS(c capability.Context, in webServerApplyInput, write func(string, s
 	}}, nil
 }
 
-// ── Nginx ────────────────────────────────────────────────────────────────────
-
-func applyNginx(c capability.Context, in webServerApplyInput, write func(string, string, fs.FileMode) error, rollback func()) (capability.Result, error) {
-	if err := write(nginxConf, in.Listener, 0o644); err != nil {
-		rollback()
-		return capability.Result{}, errx.Upstream(err, "listener_write_failed", "Could not write the nginx config.")
-	}
-	// nginx -t is a reliable config test whether or not the server is running, so
-	// gate on it and roll back a genuinely invalid config.
-	test, terr := c.Runner.Run(c.Ctx, exec.Command{Path: nginxBin, Args: []string{"-t"}, Timeout: 20 * time.Second})
-	if terr != nil || test.ExitCode != 0 {
-		rollback()
-		return capability.Result{}, errx.New(errx.KindUpstream, "config_test_failed",
-			"The nginx configuration is invalid; changes were rolled back.")
-	}
-	reloaded := reloadService(c, "nginx")
-	if !reloaded {
-		// Fall back to nginx's own reload signal (host without systemd).
-		r, _ := c.Runner.Run(c.Ctx, exec.Command{Path: nginxBin, Args: []string{"-s", "reload"}, Timeout: 20 * time.Second})
-		reloaded = r.ExitCode == 0
-	}
-	return capability.Result{Data: map[string]any{"engine": "nginx", "reloaded": reloaded}}, nil
-}
-
-// ── Apache ───────────────────────────────────────────────────────────────────
-
-func applyApache(c capability.Context, in webServerApplyInput, write func(string, string, fs.FileMode) error, rollback func()) (capability.Result, error) {
-	debian := updatesIsDebian(c)
-	confPath, testBin, svc := apacheConfRHEL, httpdBin, "httpd"
-	if debian {
-		confPath, testBin, svc = apacheConfDebian, apache2ctl, "apache2"
-	}
-	if err := write(confPath, in.Listener, 0o644); err != nil {
-		rollback()
-		return capability.Result{}, errx.Upstream(err, "listener_write_failed", "Could not write the Apache config.")
-	}
-	test, terr := c.Runner.Run(c.Ctx, exec.Command{Path: testBin, Args: []string{"-t"}, Timeout: 20 * time.Second})
-	if terr != nil || test.ExitCode != 0 {
-		rollback()
-		return capability.Result{}, errx.New(errx.KindUpstream, "config_test_failed",
-			"The Apache configuration is invalid; changes were rolled back.")
-	}
-	return capability.Result{Data: map[string]any{"engine": "apache", "reloaded": reloadService(c, svc)}}, nil
-}
-
 // ── LiteSpeed Enterprise ─────────────────────────────────────────────────────
 
 func applyLiteSpeedEnt(c capability.Context, in webServerApplyInput, write func(string, string, fs.FileMode) error, rollback func()) (capability.Result, error) {
-	// LiteSpeed Enterprise reads an Apache-style config. The panel renders Apache
-	// and writes it to LSWS's config path; reload is graceful (fail-safe) like
-	// OpenLiteSpeed, so there is no separate config-test gate.
+	// LiteSpeed Enterprise is a drop-in Apache replacement, so its config is
+	// httpd syntax; the panel renders that and writes it to LSWS's config path.
+	// Reload is graceful (fail-safe) like OpenLiteSpeed, so there is no separate
+	// config-test gate.
 	if err := write(lswsEntConf, in.Listener, 0o644); err != nil {
 		rollback()
 		return capability.Result{}, errx.Upstream(err, "listener_write_failed", "Could not write the LiteSpeed config.")

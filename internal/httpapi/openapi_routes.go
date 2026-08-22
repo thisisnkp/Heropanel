@@ -174,11 +174,11 @@ var apiDocs = map[string]opMeta{
 	// ── first-run setup ─────────────────────────────────────────────────────────
 	"GET /api/v1/setup": {
 		Summary: "Get setup state", Tags: []string{"Setup"}, Permission: "setup.manage",
-		RespDesc: "The persisted first-run selection (webserver, database engine, DNS/mail toggles) and whether the wizard is complete, plus the selectable option catalogs. Unsupported backends are marked (not hidden) so the wizard reflects the roadmap.",
+		RespDesc: "The persisted first-run selection (webserver, database engine, DNS/mail toggles) and whether the wizard is complete, the selectable option catalogs, and the always-on baseline (LiteSpeed Cache, phpMyAdmin, ClamAV, Fail2Ban, ModSecurity + OWASP CRS, nftables) which is installed on every host and cannot be declined.",
 	},
 	"POST /api/v1/setup": {
 		Summary: "Complete setup", Tags: []string{"Setup"}, Permission: "setup.manage",
-		RespDesc: "Validates the selection, provisions the host to match (install + enable the chosen webserver and database engine, and BIND/Postfix when DNS/mail are on), and records the wizard as finished. Rejected (400) for a webserver or database engine that is not in the catalog.",
+		RespDesc: "Validates the selection, provisions the host to match (the chosen web server, MariaDB, the always-on security baseline, and BIND/Postfix when DNS/mail are on), and records the wizard as finished. Rejected (400) for a web server or database engine this panel does not manage; \"mysql\" is accepted as an alias for MariaDB.",
 	},
 
 	// ── users ─────────────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ var apiDocs = map[string]opMeta{
 		Summary: "Create a database", Tags: []string{"Databases"}, Permission: "database.write",
 		ReqSchema: object(map[string]any{
 			"name":   prop("string", ""),
-			"engine": map[string]any{"type": "string", "enum": []any{"mariadb", "postgres"}},
+			"engine": map[string]any{"type": "string", "enum": []any{"mariadb"}},
 		}, "name"),
 		RespSchema: ref("Database"), RespStatus: 201,
 	},
@@ -360,9 +360,9 @@ var apiDocs = map[string]opMeta{
 		Summary: "Create a database user", Tags: []string{"Databases"}, Permission: "database.write",
 		ReqSchema: object(map[string]any{
 			"username": prop("string", ""),
-			"host":     prop("string", "Host the user may connect from (MariaDB; ignored for PostgreSQL)."),
+			"host":     prop("string", "Host the user may connect from, e.g. localhost."),
 			"password": prop("string", ""),
-			"engine":   map[string]any{"type": "string", "enum": []any{"mariadb", "postgres"}},
+			"engine":   map[string]any{"type": "string", "enum": []any{"mariadb"}},
 		}, "username", "password"),
 		RespSchema: ref("DatabaseUser"), RespStatus: 201,
 	},

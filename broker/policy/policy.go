@@ -86,15 +86,6 @@ func Default() Policy {
 			"db.size":                true,
 			"db.export":              true,
 			"db.import":              true,
-			"pg.create":              true,
-			"pg.drop":                true,
-			"pg.user.create":         true,
-			"pg.user.drop":           true,
-			"pg.grant":               true,
-			"pg.revoke":              true,
-			"pg.size":                true,
-			"pg.export":              true,
-			"pg.import":              true,
 			"cert.install":           true,
 			"cert.write_challenge":   true,
 			"git.deploy":             true,
@@ -182,11 +173,14 @@ func Default() Policy {
 			"docker.compose.logs":          true,
 		},
 		Services: []string{
+			// The opinionated stack: OpenLiteSpeed (or its licensed sibling),
+			// MariaDB, and the mail/DNS/firewall services the wizard can enable.
+			// Unit names span the Debian/RHEL split.
 			"lshttpd", "openlitespeed", "lsws", "mariadb", "redis",
-			"postfix", "dovecot", "nftables",
-			// Webservers/engines/DNS the first-run setup wizard can provision and
-			// enable (system.provision). Names span the Debian/RHEL split.
-			"nginx", "apache2", "httpd", "mysql", "mysqld", "postgresql", "named",
+			"postfix", "dovecot", "nftables", "named",
+			// The always-on security baseline: the intrusion blocker and ClamAV's
+			// signature updater. clamscan itself is a command, not a unit.
+			"fail2ban", "clamav-freshclam",
 		},
 		PathRoots: []string{"/srv/nexpanel/sites"},
 		UIDMin:    20000,

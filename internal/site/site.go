@@ -62,6 +62,17 @@ type Site struct {
 	// WAFEnabled reports whether the ModSecurity + OWASP CRS firewall is on.
 	WAFEnabled bool   `json:"waf_enabled"`
 	CreatedAt  string `json:"created_at"`
+	// Stack is what the site actually runs, as the panel presents it: "static",
+	// "php", "node", "python" or "wp".
+	//
+	// It is not the same question as Type, and the difference is why this field
+	// exists. Type is how the vhost is built — files, PHP, or a reverse proxy —
+	// and three different stacks share the proxy answer. A client that only has
+	// Type has to guess whether a proxy site is Node or Python, and it will
+	// guess wrong for half of them. The server knows: it holds the runtime
+	// record. So it answers, and no client has to.
+	Stack string `json:"stack"`
+
 	// DNSStatus reports whether the primary domain had proven ownership
 	// ("verified" — a free/parked domain or a subdomain of one) at creation
 	// time, or none ("unverified" — the operator should add DNS and verify it

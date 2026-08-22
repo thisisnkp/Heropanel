@@ -26,7 +26,7 @@ func TestBrokerProvisioner_SendsComponents(t *testing.T) {
 	inv := &fakeInvoker{}
 	p := NewBrokerProvisioner(inv)
 	plan := BuildPlan(Selection{
-		Webserver: WebserverNginx, DBEngine: DBEnginePostgreSQL,
+		Webserver: WebserverLiteSpeed, DBEngine: DBEngineMariaDB,
 		ManageDNS: true, CreateMail: true,
 	})
 	if err := p.Provision(context.Background(), plan); err != nil {
@@ -43,8 +43,13 @@ func TestBrokerProvisioner_SendsComponents(t *testing.T) {
 	if !ok {
 		t.Fatalf("components not []string: %T", payload["components"])
 	}
-	// nginx + postgresql + bind + postfix + dovecot, in order.
-	want := []string{"nginx", "postgresql", "bind", "postfix", "dovecot"}
+	// The webserver and MariaDB, then the always-on baseline, then the optional
+	// modules — in install order.
+	want := []string{
+		"litespeed_enterprise", "mariadb",
+		"phpmyadmin", "clamav", "fail2ban", "modsecurity", "nftables",
+		"bind", "postfix", "dovecot",
+	}
 	if len(comps) != len(want) {
 		t.Fatalf("components = %v, want %v", comps, want)
 	}
@@ -66,10 +71,18 @@ func TestBrokerProvisioner_PropagatesError(t *testing.T) {
 	}
 }
 
-// A minimal selection (no DNS, no mail) sends just the webserver + engine.
-func TestSelectionComponents_Minimal(t *testing.T) {
+// Even the most minimal selection — no DNS, no mail — still carries the
+// baseline. That is the point of the baseline: there is no way to answer the
+// wizard that produces a host without a firewall, a WAF or a malware scanner.
+func TestSelectionComponents_MinimalStillCarriesBaseline(t *testing.T) {
 	comps := Selection{Webserver: WebserverOpenLiteSpeed, DBEngine: DBEngineMariaDB}.Components()
-	if len(comps) != 2 || comps[0] != "openlitespeed" || comps[1] != "mariadb" {
-		t.Fatalf("components = %v", comps)
+	want := []string{"openlitespeed", "mariadb", "phpmyadmin", "clamav", "fail2ban", "modsecurity", "nftables"}
+	if len(comps) != len(want) {
+		t.Fatalf("components = %v, want %v", comps, want)
+	}
+	for i := range want {
+		if comps[i] != want[i] {
+			t.Fatalf("components[%d] = %q, want %q (all: %v)", i, comps[i], want[i], comps)
+		}
 	}
 }

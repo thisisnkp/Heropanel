@@ -16,34 +16,68 @@ import (
 
 var reName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
-// Engines the panel manages. Each maps to a broker capability prefix ("db" for
-// MariaDB, "pg" for PostgreSQL) — the SQL differs but the orchestration is the
-// same render → broker → record shape.
-const (
-	EngineMariaDB  = "mariadb"
-	EnginePostgres = "postgres"
-)
+// EngineMariaDB is the database engine the panel manages. It is the only one:
+// NexPanel is a single-stack panel, and PostgreSQL support was removed rather
+// than left in as a second, untested path. The engine is still recorded on every
+// row and returned in the API, because existing installs have the column and
+// because "which engine is this" is a question worth being able to answer if a
+// second one is ever added back deliberately.
+//
+// MySQL is not a separate engine here: it is wire-compatible with MariaDB and
+// driven through the same db.* broker capabilities.
+const EngineMariaDB = "mariadb"
 
 // normalizeEngine validates the engine, defaulting to MariaDB.
 func normalizeEngine(engine string) (string, error) {
 	switch engine {
-	case "", EngineMariaDB:
+	case "", EngineMariaDB, "mysql":
 		return EngineMariaDB, nil
-	case EnginePostgres:
-		return EnginePostgres, nil
 	default:
-		return "", errx.Validation("invalid_engine", "Engine must be \"mariadb\" or \"postgres\".",
+		return "", errx.Validation("invalid_engine", "MariaDB is the only database engine this panel manages.",
 			errx.Field{Field: "engine", Code: "unsupported", Message: "unknown engine"})
 	}
 }
 
-// brokerCap returns the broker capability name for an engine + operation, e.g.
-// ("postgres", "user.create") => "pg.user.create".
-func brokerCap(engine, op string) string {
-	if engine == EnginePostgres {
-		return "pg." + op
+// brokerCap returns the broker capability name for an operation, e.g.
+// "user.create" => "db.user.create".
+func brokerCap(_, op string) string { return "db." + op }
+
+// errUnmanagedEngine explains a row this panel can no longer act on.
+//
+// An install upgraded from a release that supported PostgreSQL still has its
+// pg rows in db_instances and db_users. Those must not be quietly routed to the
+// db.* capabilities: "drop the database called reports" aimed at MariaDB instead
+// of PostgreSQL either fails confusingly or, if a MariaDB database happens to
+// share the name, destroys the wrong one. So the row is refused by name, with
+// the reason, and the operator removes it with the engine's own tools.
+func errUnmanagedEngine(engine string) error {
+	return errx.Validation("unmanaged_engine",
+		"This record was created on "+engine+", which this panel no longer manages. "+
+			"Remove it with that engine's own tools; NexPanel manages MariaDB only.")
+}
+
+// getDatabase loads a database record and refuses one this panel cannot act on.
+func (s *Service) getDatabase(ctx context.Context, uid string) (*InstanceRecord, error) {
+	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	if err != nil {
+		return nil, err
 	}
-	return "db." + op
+	if rec.Engine != "" && rec.Engine != EngineMariaDB {
+		return nil, errUnmanagedEngine(rec.Engine)
+	}
+	return rec, nil
+}
+
+// getUser loads a database-user record and refuses one this panel cannot act on.
+func (s *Service) getUser(ctx context.Context, uid string) (*UserRecord, error) {
+	rec, err := s.repo.GetUserByUID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	if rec.Engine != "" && rec.Engine != EngineMariaDB {
+		return nil, errUnmanagedEngine(rec.Engine)
+	}
+	return rec, nil
 }
 
 // DumpDir is where exports are produced and imports are staged. It must match
@@ -124,35 +158,17 @@ type Repo interface {
 
 // Service orchestrates database operations.
 type Service struct {
-	repo          Repo
-	broker        broker.Gateway
-	adminerURL    string
-	ssoRepo       SSORepo
-	defaultEngine string // "" means MariaDB; set from the setup wizard's choice
+	repo       Repo
+	broker     broker.Gateway
+	adminerURL string
+	ssoRepo    SSORepo
 }
 
 // NewService constructs the database Service.
 func NewService(repo Repo, gw broker.Gateway) *Service { return &Service{repo: repo, broker: gw} }
 
-// SetDefaultEngine sets the engine used when a create call does not specify one.
-// It follows the first-run setup wizard's database choice: "mysql" and "mariadb"
-// both map to MariaDB (wire-compatible, same db.* capabilities); "postgresql"
-// maps to PostgreSQL. An unknown value leaves the default at MariaDB.
-func (s *Service) SetDefaultEngine(setupEngine string) {
-	switch setupEngine {
-	case "postgresql", EnginePostgres:
-		s.defaultEngine = EnginePostgres
-	case "mysql", "mariadb":
-		s.defaultEngine = EngineMariaDB
-	}
-}
-
-// resolveEngine applies the configured default when the caller left engine empty,
-// then validates it.
+// resolveEngine validates the caller's engine, defaulting to MariaDB.
 func (s *Service) resolveEngine(engine string) (string, error) {
-	if engine == "" && s.defaultEngine != "" {
-		engine = s.defaultEngine
-	}
 	return normalizeEngine(engine)
 }
 
@@ -179,9 +195,6 @@ func (s *Service) CreateDatabase(ctx context.Context, ownerID int64, name, engin
 		return nil, err
 	}
 	charset := "utf8mb4"
-	if engine == EnginePostgres {
-		charset = "UTF8"
-	}
 	rec := &InstanceRecord{OwnerID: ownerID, Engine: engine, Name: name, Charset: charset, Status: "active"}
 	if err := s.repo.InsertDatabase(ctx, rec); err != nil {
 		return nil, err
@@ -195,7 +208,7 @@ func (s *Service) CreateDatabase(ctx context.Context, ownerID int64, name, engin
 
 // DeleteDatabase drops a database and removes its record.
 func (s *Service) DeleteDatabase(ctx context.Context, uid string) error {
-	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	rec, err := s.getDatabase(ctx, uid)
 	if err != nil {
 		return err
 	}
@@ -269,11 +282,11 @@ func (s *Service) ListUsers(ctx context.Context, ownerID int64, limit, offset in
 
 // Grant grants privileges on a database to a user.
 func (s *Service) Grant(ctx context.Context, dbUID, userUID string, privileges []string) error {
-	dbRec, err := s.repo.GetDatabaseByUID(ctx, dbUID)
+	dbRec, err := s.getDatabase(ctx, dbUID)
 	if err != nil {
 		return err
 	}
-	userRec, err := s.repo.GetUserByUID(ctx, userUID)
+	userRec, err := s.getUser(ctx, userUID)
 	if err != nil {
 		return err
 	}
@@ -299,7 +312,7 @@ func (s *Service) Grant(ctx context.Context, dbUID, userUID string, privileges [
 
 // DeleteUser drops a database user and removes its record.
 func (s *Service) DeleteUser(ctx context.Context, uid string) error {
-	rec, err := s.repo.GetUserByUID(ctx, uid)
+	rec, err := s.getUser(ctx, uid)
 	if err != nil {
 		return err
 	}
@@ -318,11 +331,11 @@ func (s *Service) DeleteUser(ctx context.Context, uid string) error {
 // after MariaDB confirms, so the panel never claims access was removed when it
 // was not.
 func (s *Service) Revoke(ctx context.Context, dbUID, userUID string, privileges []string) error {
-	dbRec, err := s.repo.GetDatabaseByUID(ctx, dbUID)
+	dbRec, err := s.getDatabase(ctx, dbUID)
 	if err != nil {
 		return err
 	}
-	userRec, err := s.repo.GetUserByUID(ctx, userUID)
+	userRec, err := s.getUser(ctx, userUID)
 	if err != nil {
 		return err
 	}
@@ -345,7 +358,7 @@ func (s *Service) Revoke(ctx context.Context, dbUID, userUID string, privileges 
 
 // Size reports a database's on-disk size.
 func (s *Service) Size(ctx context.Context, uid string) (*Size, error) {
-	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	rec, err := s.getDatabase(ctx, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +376,7 @@ func (s *Service) Size(ctx context.Context, uid string) (*Size, error) {
 // stream. The caller must call DiscardExport when done, however it goes: the
 // dump is a full copy of the customer's data sitting on disk.
 func (s *Service) Export(ctx context.Context, uid string) (*Export, error) {
-	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	rec, err := s.getDatabase(ctx, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +423,7 @@ func (s *Service) ImportStagePath(gzipped bool) (path, file string) {
 
 // Import loads a SQL file previously staged at ImportStagePath into a database.
 func (s *Service) Import(ctx context.Context, uid, file string) error {
-	rec, err := s.repo.GetDatabaseByUID(ctx, uid)
+	rec, err := s.getDatabase(ctx, uid)
 	if err != nil {
 		return err
 	}

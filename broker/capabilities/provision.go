@@ -27,8 +27,8 @@ const (
 
 // provisionComponent maps one logical component to the packages to install on
 // each distro family and the systemd unit to enable. Package names and service
-// units differ between Debian and RHEL (apache2/httpd, mysql/mysqld), so both are
-// recorded.
+// units differ between Debian and RHEL (dovecot-core/dovecot, bind9/bind), so
+// both are recorded.
 type provisionComponent struct {
 	debianPkgs []string
 	rhelPkgs   []string
@@ -40,15 +40,21 @@ type provisionComponent struct {
 // (webserver + db engine enum values, plus bind/postfix/dovecot).
 var provisionComponents = map[string]provisionComponent{
 	"openlitespeed":        {debianPkgs: []string{"openlitespeed"}, rhelPkgs: []string{"openlitespeed"}, debianSvc: "lshttpd", rhelSvc: "lshttpd"},
-	"nginx":                {debianPkgs: []string{"nginx"}, rhelPkgs: []string{"nginx"}, debianSvc: "nginx", rhelSvc: "nginx"},
-	"apache":               {debianPkgs: []string{"apache2"}, rhelPkgs: []string{"httpd"}, debianSvc: "apache2", rhelSvc: "httpd"},
 	"litespeed_enterprise": {debianPkgs: []string{"lsws"}, rhelPkgs: []string{"lsws"}, debianSvc: "lsws", rhelSvc: "lsws"},
 	"mariadb":              {debianPkgs: []string{"mariadb-server"}, rhelPkgs: []string{"mariadb-server"}, debianSvc: "mariadb", rhelSvc: "mariadb"},
-	"mysql":                {debianPkgs: []string{"mysql-server"}, rhelPkgs: []string{"mysql-server"}, debianSvc: "mysql", rhelSvc: "mysqld"},
-	"postgresql":           {debianPkgs: []string{"postgresql"}, rhelPkgs: []string{"postgresql-server"}, debianSvc: "postgresql", rhelSvc: "postgresql"},
 	"bind":                 {debianPkgs: []string{"bind9"}, rhelPkgs: []string{"bind"}, debianSvc: "named", rhelSvc: "named"},
-	"postfix":              {debianPkgs: []string{"postfix"}, rhelPkgs: []string{"postfix"}, debianSvc: "postfix", rhelSvc: "postfix"},
-	"dovecot":              {debianPkgs: []string{"dovecot-core"}, rhelPkgs: []string{"dovecot"}, debianSvc: "dovecot", rhelSvc: "dovecot"},
+
+	// The always-on baseline (internal/setup.baselineComponents). Only the ones
+	// that run continuously get a service: clamav is scanned with clamscan on
+	// demand, so the unit that matters is the signature updater, not a resident
+	// daemon; modsecurity is a webserver module with no unit of its own.
+	"phpmyadmin":  {debianPkgs: []string{"phpmyadmin"}, rhelPkgs: []string{"phpMyAdmin"}},
+	"clamav":      {debianPkgs: []string{"clamav", "clamav-freshclam"}, rhelPkgs: []string{"clamav", "clamav-update"}, debianSvc: "clamav-freshclam"},
+	"fail2ban":    {debianPkgs: []string{"fail2ban"}, rhelPkgs: []string{"fail2ban"}, debianSvc: "fail2ban", rhelSvc: "fail2ban"},
+	"modsecurity": {debianPkgs: []string{"modsecurity-crs"}, rhelPkgs: []string{"mod_security_crs"}},
+	"nftables":    {debianPkgs: []string{"nftables"}, rhelPkgs: []string{"nftables"}, debianSvc: "nftables", rhelSvc: "nftables"},
+	"postfix":     {debianPkgs: []string{"postfix"}, rhelPkgs: []string{"postfix"}, debianSvc: "postfix", rhelSvc: "postfix"},
+	"dovecot":     {debianPkgs: []string{"dovecot-core"}, rhelPkgs: []string{"dovecot"}, debianSvc: "dovecot", rhelSvc: "dovecot"},
 }
 
 // SystemProvision is the setup-wizard provisioning capability.
@@ -73,8 +79,8 @@ func (SystemProvision) Name() string { return "system.provision" }
 // package is touched. A package-install failure aborts (the caller can retry —
 // apt/dnf installs are idempotent), while a service that will not enable is
 // reported per-component rather than failing the whole run: a freshly installed
-// engine that needs post-setup (e.g. PostgreSQL initdb) is enabled by its own
-// module, not here.
+// component that needs post-setup of its own is enabled by its own module, not
+// here.
 func (SystemProvision) Execute(c capability.Context, raw json.RawMessage) (capability.Result, error) {
 	var in systemProvisionInput
 	if err := json.Unmarshal(raw, &in); err != nil {

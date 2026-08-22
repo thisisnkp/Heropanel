@@ -16,7 +16,7 @@ func TestSystemProvisionDebian(t *testing.T) {
 	_ = fs.WriteFile("/usr/bin/apt-config", []byte("x"), 0o755) // ⇒ Debian family
 
 	res, err := (capabilities.SystemProvision{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
-		"components": []string{"nginx", "mariadb", "bind"},
+		"components": []string{"openlitespeed", "mariadb", "bind"},
 	}))
 	if err != nil {
 		t.Fatalf("system.provision: %v", err)
@@ -36,26 +36,25 @@ func TestSystemProvisionDebian(t *testing.T) {
 		}
 	}
 	joined := " " + join(installed) + " "
-	for _, pkg := range []string{"nginx", "mariadb-server", "bind9"} {
+	for _, pkg := range []string{"openlitespeed", "mariadb-server", "bind9"} {
 		if !contains(joined, " "+pkg+" ") {
 			t.Errorf("expected %q installed; got %v", pkg, installed)
 		}
 	}
-	for _, svc := range []string{"nginx", "mariadb", "named"} {
+	for _, svc := range []string{"lshttpd", "mariadb", "named"} {
 		if !enabled[svc] {
 			t.Errorf("expected service %q enabled; got %v", svc, enabled)
 		}
 	}
 }
 
-// On a RHEL host (no apt-config), it uses dnf and the RHEL package/service names
-// (httpd, not apache2).
+// On a RHEL host (no apt-config), it uses dnf and the RHEL package/service names.
 func TestSystemProvisionRHEL(t *testing.T) {
 	fr := &exec.FakeRunner{}
 	fs := fsys.NewFake() // no apt-config ⇒ RHEL family
 
 	_, err := (capabilities.SystemProvision{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
-		"components": []string{"apache", "mysql"},
+		"components": []string{"openlitespeed", "postfix", "dovecot"},
 	}))
 	if err != nil {
 		t.Fatalf("system.provision (rhel): %v", err)
@@ -77,11 +76,11 @@ func TestSystemProvisionRHEL(t *testing.T) {
 	if !usedDNF {
 		t.Error("expected dnf to be used on the RHEL family")
 	}
-	if !installed["httpd"] {
-		t.Error("expected httpd (RHEL apache package)")
+	if !installed["dovecot"] {
+		t.Errorf("expected dovecot (RHEL package name); got %v", installed)
 	}
-	if !enabled["httpd"] || !enabled["mysqld"] {
-		t.Errorf("expected httpd + mysqld enabled; got %v", enabled)
+	if !enabled["lshttpd"] || !enabled["postfix"] {
+		t.Errorf("expected lshttpd + postfix enabled; got %v", enabled)
 	}
 }
 
@@ -127,7 +126,7 @@ func TestSystemProvisionUnknownComponent(t *testing.T) {
 	_ = fs.WriteFile("/usr/bin/apt-config", []byte("x"), 0o755)
 
 	_, err := (capabilities.SystemProvision{}).Execute(appCtx(fr, fs), raw(t, map[string]any{
-		"components": []string{"nginx", "iis"},
+		"components": []string{"openlitespeed", "iis"},
 	}))
 	if err == nil {
 		t.Fatal("expected an error for an unknown component")
