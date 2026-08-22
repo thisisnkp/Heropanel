@@ -308,7 +308,16 @@ export interface Site {
   uid: string;
   name: string;
   primary_domain: string;
+  /** How the vhost is built: "static", "php" or "proxy". */
   type: string;
+  /**
+   * What the site runs: "static", "php", "node", "python" or "app".
+   *
+   * Not derivable from `type` — three stacks share the "proxy" answer — which
+   * is why npd computes it. Read this, never `type`, when the question is
+   * "what kind of site is this".
+   */
+  stack: string;
   deploy_mode: string;
   status: string;
   webserver: string;
@@ -320,6 +329,38 @@ export interface Site {
    *  or a subdomain of one) or "unverified". Empty when the registry was not
    *  available at creation time. */
   dns_status?: "verified" | "unverified" | "";
+}
+
+/** What POST /databases/{uid}/phpmyadmin answers: a URL, and no credentials. */
+export interface PMAHandoff {
+  url: string;
+  expires_at: string;
+}
+
+/**
+ * Opens a database in phpMyAdmin.
+ *
+ * The window is opened *before* the request, not after. A browser only treats a
+ * window as user-initiated while it is still handling the click, so opening it
+ * from the promise's callback gets it blocked by the popup blocker — and the
+ * operator sees nothing happen at all. So a blank tab is claimed first and
+ * pointed at the hand-off URL once npd answers; if the request fails, that tab
+ * is closed again rather than left sitting on about:blank.
+ *
+ * The hand-off carries a one-time ticket and no credentials: phpMyAdmin's own
+ * sign-on script redeems it against the panel over loopback, so the database
+ * password never reaches the browser.
+ */
+export async function openPhpMyAdmin(databaseUid: string): Promise<void> {
+  const tab = window.open("", "_blank", "noopener");
+  try {
+    const handoff = await api.post<PMAHandoff>(`/databases/${databaseUid}/phpmyadmin`);
+    if (tab) tab.location.replace(handoff.url);
+    else window.location.assign(handoff.url); // popups blocked: use this tab
+  } catch (e) {
+    tab?.close();
+    throw e;
+  }
 }
 
 /**

@@ -1,0 +1,22 @@
+
+> nexpanel-web@0.0.0 dev:api
+> node scripts/dev-api.mjs
+
+dev-api: npd on http://127.0.0.1:8443 (sqlite F:\HeroPanel\NexPanel\np.db)
+dev-api: the panel UI is `npm run dev` in another terminal, on :5173.
+
+{"time":"2026-08-22T18:31:34.978002+05:30","level":"INFO","msg":"no config file — running on defaults and NP_* environment variables","looked_for":"/etc/nexpanel/config.yaml","override_with":"-config <path> or NP_CONFIG"}
+{"time":"2026-08-22T18:31:34.9808259+05:30","level":"INFO","msg":"database ready","dialect":"sqlite","migrations_applied":0}
+{"time":"2026-08-22T18:31:34.9808259+05:30","level":"INFO","msg":"cache: Redis disabled; running L1-only"}
+{"time":"2026-08-22T18:31:34.9808259+05:30","level":"WARN","msg":"no security.secret_key set — private Git repositories are disabled"}
+{"time":"2026-08-22T18:31:35.0403878+05:30","level":"INFO","msg":"setup adopted","webserver":"openlitespeed","db_engine":"mariadb"}
+{"time":"2026-08-22T18:31:35.0456379+05:30","level":"INFO","msg":"terminal session recording enabled","dir":"/var/lib/nexpanel/recordings","retention_days":30}
+{"time":"2026-08-22T18:31:35.0456379+05:30","level":"INFO","msg":"auth ready","session_ttl":"24h0m0s"}
+{"time":"2026-08-22T18:31:35.0456379+05:30","level":"INFO","msg":"certificate renewer enabled","interval":"12h0m0s","window":"720h0m0s"}
+{"time":"2026-08-22T18:31:35.0456379+05:30","level":"INFO","msg":"realtime hub enabled","redis_bridge":false}
+{"time":"2026-08-22T18:31:35.0461976+05:30","level":"INFO","msg":"http server listening","addr":"127.0.0.1:8443","tls":false}
+{"time":"2026-08-22T18:31:35.3942947+05:30","level":"INFO","msg":"http_request","method":"GET","path":"/healthz","status":200,"bytes":15,"duration_ms":0,"request_id":"NKP-747/g0n3CNnJtp-000001","ip":"127.0.0.1:64679"}
+{"time":"2026-08-22T18:31:35.5093978+05:30","level":"INFO","msg":"http_request","method":"GET","path":"/api/v1/setup/info","status":404,"bytes":122,"duration_ms":0,"request_id":"NKP-747/g0n3CNnJtp-000002","ip":"127.0.0.1:64681"}
+{"time":"2026-08-22T18:31:45.4832727+05:30","level":"INFO","msg":"http_request","method":"GET","path":"/","status":200,"bytes":981,"duration_ms":0,"request_id":"NKP-747/g0n3CNnJtp-000003","ip":"127.0.0.1:64683"}
+{"time":"2026-08-22T19:17:24.4675939+05:30","level":"INFO","msg":"shutdown signal received, draining connections"}
+{"time":"2026-08-22T19:17:24.4708947+05:30","level":"INFO","msg":"shutdown complete"}

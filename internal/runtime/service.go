@@ -199,6 +199,18 @@ func (s *Service) ProxyPort(ctx context.Context, siteID int64) (int, bool) {
 	return rec.Port, true
 }
 
+// Language reports the runtime a site is configured to run, and whether one is
+// configured at all. A site with no runtime record yet answers false — it is a
+// proxy site that has not been told what to proxy to, which is a real state and
+// not the same as "generic".
+func (s *Service) Language(ctx context.Context, siteID int64) (string, bool) {
+	rec, err := s.repo.GetBySiteID(ctx, siteID)
+	if err != nil || rec == nil {
+		return "", false
+	}
+	return rec.Runtime, true
+}
+
 // RemoveForSite stops and removes a site's unit (used during de-provisioning). A
 // missing runtime is not an error.
 func (s *Service) RemoveForSite(ctx context.Context, siteUID string) error {

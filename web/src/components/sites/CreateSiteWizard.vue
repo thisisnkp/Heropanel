@@ -9,8 +9,9 @@
  * fails.
  */
 import { computed, ref, watch } from "vue";
-import { STACKS, STACK_KEYS, type StackKey } from "@/config/stacks";
-import { useSitesStore, type Site } from "@/stores/sites";
+import { STACKS, CREATABLE_STACKS, type StackKey } from "@/config/stacks";
+import { api, ApiRequestError, type Site as ApiSite } from "@/lib/api";
+import { fromApi, useSitesStore, type Site } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
 
 const open = defineModel<boolean>("open", { required: true });
@@ -24,6 +25,8 @@ const ui = useUiStore();
 type Source = "manual" | "git" | null;
 
 const step = ref<1 | 2>(1);
+const busy = ref(false);
+const error = ref<string | null>(null);
 const stack = ref<StackKey>(props.stack ?? "static");
 const domain = ref("");
 const source = ref<Source>(null);
@@ -36,6 +39,7 @@ watch(open, (isOpen) => {
   if (!isOpen) return;
   step.value = 1;
   stack.value = props.stack ?? "static";
+  error.value = null;
   domain.value = "";
   source.value = null;
   repo.value = "";
@@ -85,38 +89,66 @@ function next() {
   create();
 }
 
-function create() {
-  const name = domain.value.trim() || "my-site.nexpanel.app";
+/**
+ * Creates the site on the server, then puts it in the list.
+ *
+ * npd answers 202 with a job when its queue is running and 201 with the site
+ * when it is not, because provisioning a site means creating a Linux user, a
+ * directory tree, a PHP pool and a vhost — too long to hold a request open on a
+ * busy host. Both are handled: with a job, the row is added optimistically as
+ * "building" and the real state arrives on the next list refresh.
+ */
+async function create() {
+  const name = domain.value.trim();
   const usesGit = gitAvailable.value && source.value === "git";
-  const id = Math.max(0, ...sites.sites.map((s) => s.id)) + 1;
+  busy.value = true;
+  error.value = null;
 
-  const site: Site = {
-    id,
-    name,
-    domain: name,
-    stackKey: stack.value,
-    deploy: usesGit ? "GitHub" : "Manual",
-    status: "building",
-    lastDeploy: "deploying…",
-    branch: usesGit ? branch.value.trim() || "main" : "—",
-    repo: usesGit ? repo.value.trim() || "username/repository" : "—",
-  };
+  try {
+    const created = await api.post<ApiSite | { job: { uid: string } }>("/sites", {
+      name,
+      primary_domain: name,
+      // The stack, not the vhost type. npd maps one to the other, so "node" and
+      // "python" do not have to be flattened to "proxy" here and lost.
+      stack: stack.value,
+      deploy_mode: usesGit ? "git" : "baremetal",
+    });
 
-  sites.hydrate([site, ...sites.sites]);
-  open.value = false;
-  ui.toast("Creating " + name + "…", "info");
-  emit("created", site);
+    const site: Site =
+      "uid" in created
+        ? fromApi(created)
+        : {
+            // Provisioning is running as a job; there is no uid yet. The row is
+            // a placeholder keyed by the job so it is replaced, not duplicated,
+            // when the list refreshes.
+            uid: "job:" + created.job.uid,
+            name,
+            domain: name,
+            stackKey: stack.value,
+            deploy: usesGit ? "GitHub" : "Manual",
+            status: "building",
+            lastDeploy: "provisioning…",
+            branch: usesGit ? branch.value.trim() || "main" : "—",
+            repo: usesGit ? repo.value.trim() || "username/repository" : "—",
+          };
 
-  // The design flipped the row to live after a couple of seconds. Kept so the
-  // building state is something that has been seen and laid out, rather than a
-  // status only the real backend will ever produce.
-  window.setTimeout(() => {
-    const built = sites.byId(id);
-    if (!built) return;
-    built.status = "live";
-    built.lastDeploy = "just now";
-    ui.toast(name + " is live.", "success");
-  }, 2200);
+    sites.add(site);
+    open.value = false;
+    ui.toast(
+      site.status === "building" ? "Creating " + name + "…" : name + " is ready.",
+      site.status === "building" ? "info" : "success",
+    );
+    emit("created", site);
+
+    // The authoritative list, once provisioning has had a moment. The optimistic
+    // row is replaced by the real one — including its real uid, which every
+    // link on the site's own screens needs.
+    window.setTimeout(() => void sites.reload(), 3000);
+  } catch (e) {
+    error.value = e instanceof ApiRequestError ? e.message : "The site could not be created.";
+  } finally {
+    busy.value = false;
+  }
 }
 </script>
 
@@ -127,6 +159,8 @@ function create() {
     :title="'New ' + meta.label + ' website'"
     :description="'Step ' + step + ' of 2 · ' + (step === 1 ? 'Domain' : 'Source')"
   >
+    <NxCallout v-if="error" tone="danger">{{ error }}</NxCallout>
+
     <div v-if="step === 1" class="wiz__step">
       <NxField label="Domain" required>
         <template #default="{ id, describedBy }">
@@ -149,7 +183,7 @@ function create() {
         <legend class="wiz__legend">Type</legend>
         <div class="wiz__chips">
           <button
-            v-for="k in STACK_KEYS"
+            v-for="k in CREATABLE_STACKS"
             :key="k"
             type="button"
             class="wiz__chip"
@@ -206,7 +240,7 @@ function create() {
     <template #footer>
       <NxButton size="lg" @click="back">{{ step === 1 ? "Cancel" : "Back" }}</NxButton>
       <span class="wiz__foot-note">{{ step === 1 ? "You can change the type later" : "Live in about 40 seconds" }}</span>
-      <NxButton variant="primary" size="lg" :disabled="!canAdvance" @click="next">
+      <NxButton variant="primary" size="lg" :disabled="!canAdvance" :loading="busy" @click="next">
         {{ step === 1 ? "Next" : "Create website" }}
       </NxButton>
     </template>

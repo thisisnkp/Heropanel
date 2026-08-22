@@ -413,6 +413,114 @@ Phase 4 tail below.)* See [18 — Web Terminal](18-web-terminal.md).
 
 ---
 
+## Phase 11 — The opinionated stack & the API seam
+
+The panel reached 1.0 able to manage four web servers and two database engines,
+with a browser UI that talked to none of them. Phase 11 closes both gaps: it
+narrows the product to one stack, and connects the new Vue panel to the 265
+endpoints that were already there.
+
+- **The stack narrowed — done.** NexPanel now manages **OpenLiteSpeed** (with
+  **LiteSpeed Enterprise** as the licensed upgrade) and **MariaDB**, and nothing
+  else. Nginx, Apache and PostgreSQL were **deleted**, not marked unsupported:
+  each had a working implementation, and leaving it in means a renderer that
+  still has to compile, still has to be updated whenever a vhost gains a
+  feature, and is maintained by people who never run it — so the first operator
+  to select it gets the breakage no test was going to catch. LiteSpeed
+  Enterprise keeps the httpd-syntax renderer because it *is* a drop-in Apache
+  replacement, not a fourth server. Three different rules cover an upgraded
+  install, and the differences are the point: a stored web server is **repaired**
+  (the wizard gates the whole panel, so refusing its own stored value would
+  brick it), a submitted one is **refused** (nginx is a real, different server —
+  substituting OpenLiteSpeed answers a question nobody asked), and a PostgreSQL
+  **row** is refused rather than migrated, because `brokerCap` now always
+  returns `db.*` and "drop the database called reports" aimed at the wrong
+  engine either fails confusingly or destroys a MariaDB database of the same
+  name. `mysql` is the one value rewritten rather than refused — a rename, not a
+  migration. See [29 — The Opinionated Stack](29-opinionated-stack.md).
+- **The always-on baseline — done.** phpMyAdmin, ClamAV, Fail2Ban, ModSecurity +
+  OWASP CRS and nftables are provisioned on **every** host by `BuildPlan`,
+  whatever the operator answers; LiteSpeed Cache is listed alongside them and
+  installs nothing, because page caching is built into the web server. They are
+  shown in the wizard and cannot be declined, for a reason that is not about any
+  one of them: a fleet where some hosts have a WAF makes every later statement
+  about that fleet conditional, and nobody remembers which hosts are which. The
+  questions that remain are the ones a panel genuinely cannot infer — DNS here
+  or at a registrar, mail or no mail, and this installation's own domain.
+- **`stack` vs `type` — done.** `Site.Stack` ("static" | "php" | "node" |
+  "python" | "app") joins `Site.Type` ("static" | "php" | "proxy") in the API,
+  and `POST /sites` takes `stack`. Three stacks share the `proxy` shape, so a
+  client holding only `type` has to guess which and is wrong for two of the
+  three; the server holds the runtime record, so it answers. `stack: "wp"` is
+  **refused** until there is a WordPress module — accepting it would hand back a
+  site badged WordPress with no WordPress on it.
+- **The API seam — done.** The Vue panel was entirely fixture-driven and had no
+  HTTP layer at all. It now has the typed client (envelope, double-submit CSRF,
+  upload progress via XHR because `fetch` has no upload event), a session store,
+  a navigation guard, and the three pre-session screens the guard needs. The
+  guard distinguishes four states that all look like "not signed in" from a
+  distance and each need a different screen: npd unreachable, npd with no
+  datastore, npd with no administrator, and a signed-out browser. Sites are now
+  keyed by **uid** throughout the client rather than a numeric id — every
+  `/sites/{uid}` endpoint takes one, and the standalone file-manager window
+  opens cold with no site list to map a number against.
+- **e2e now proves the first run.** The browser suite bootstraps the
+  administrator, signs in and completes the wizard against a real npd before
+  anything else runs — the one sequence every installation executes exactly
+  once, with no way to retry it if it is broken, and nothing else covered it.
+  Site rows are seeded by `tools/e2eseed` through the real repository, because
+  npd there has no broker and correctly refuses to provision; the host-side
+  effects stay `deploy/docker/e2e`'s job, as they always were.
+- **maldet — done.** A second malware engine beside ClamAV, and it earns its
+  place: ClamAV's signatures are a general antivirus corpus, maldet's are built
+  from what actually lands on shared hosting — web shells, injected PHP
+  droppers, obfuscated backdoors. A clean result from one is not evidence about
+  the other, so every scan row now records which engine produced it (`0046`) and
+  the API takes `?engine=`. maldet's **own quarantine is forced off** on every
+  scan's command line rather than left to the host's `conf.maldet`: the panel
+  already has a quarantine with restore and history, and two places a file might
+  be is a place nobody can reason about. Installing it is the one place in
+  NexPanel that fetches code and runs it as root, so it is bounded three ways —
+  the **host is a constant in the broker** (an operator-supplied URL would turn
+  a config file into arbitrary root execution), the download path must be a
+  plain `/downloads/<name>.tar.gz`, and a configured SHA-256 is enforced before
+  anything is unpacked. The observed hash is always returned and shown, so a
+  first unverified install can be pinned and every one after it checked.
+  **Honest limit:** TLS-and-a-pinned-hostname is weaker than the signed,
+  key-pinned chain used for the panel's own releases — it is the strongest thing
+  rfxn's distribution allows, since they publish neither a signature nor a
+  stable checksum. During setup the install is attempted and its **failure is
+  not fatal**, because a third-party download being briefly unreachable must not
+  hold a whole first-run install hostage; the malware screen shows the gap with
+  a one-click Install. The scan-id parser is the piece under test: output with
+  no scan id is a **failure**, never a clean result — a green scan that never
+  ran is the worst thing a malware scanner can report.
+- **phpMyAdmin hand-off — done, and redesigned.** The old flow returned live
+  credentials for the browser to POST at Adminer's login form. Against
+  phpMyAdmin that is both unreliable and worse: its cookie login carries a CSRF
+  token, and the approach puts a working database password in the page. Now the
+  browser gets a **one-time ticket** and nothing else; phpMyAdmin's own
+  documented `SignonScript` hook redeems it against npd **over loopback**, and
+  the password exists only between two processes on the same host. Redemption is
+  what mints the throwaway account, so nothing is stored and no credential
+  exists for a click nobody follows through. The redeem route is the one
+  unauthenticated route in the panel and is bounded accordingly: **loopback
+  decided from `RemoteAddr`, never a forwarded header** (a proxy in front of the
+  panel can set those, and so can anyone reaching npd directly); single-use
+  enforced by `UPDATE … WHERE redeemed_at IS NULL`, because a `SELECT` then
+  `UPDATE` would let two requests with the same ticket both get an account; and
+  expired, spent and never-existed all answer identically, since telling them
+  apart tells a caller holding a guess whether the guess was close. See
+  [14 — Databases](14-databases.md) §4.
+- **Still open:** the **WordPress module** (wp-cli, install, migrate, staging,
+  plugins, LiteSpeed Cache plugin) — deferred by decision, since the installer
+  will be served from NexPanel's own release host; and wiring the remaining
+  screens — databases, files, cron, git, PHP, runtime, backups, security, DNS,
+  mail — to the endpoints that already serve them. The databases screen is the
+  one that matters most next: it is what makes the phpMyAdmin button live.
+
+---
+
 ## Cross-cutting workstreams (continuous, every phase)
 - **Testing**: unit + integration (testcontainers) + e2e (Playwright) + installer matrix; coverage gates.
 - **Security**: threat-model deltas per module; broker capability review is mandatory for any new privileged op.

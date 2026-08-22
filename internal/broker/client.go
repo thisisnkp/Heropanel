@@ -57,6 +57,15 @@ var capabilityTimeouts = map[string]time.Duration{
 	// AIDE hashes the watched tree; init/check are minutes on a real host.
 	"fim.init":  10 * time.Minute,
 	"fim.check": 10 * time.Minute,
+	// A malware scan walks a whole site tree; clamscan and maldet are both
+	// minutes on a real WordPress install, not seconds.
+	"malware.scan": 30 * time.Minute,
+	"maldet.scan":  30 * time.Minute,
+	// maldet ships no distribution package: download, extract, then its own
+	// install.sh, which compiles nothing but does a lot of filesystem work.
+	"maldet.install": 20 * time.Minute,
+	// Pulling a fresh signature pack from rfxn.com.
+	"maldet.update": 10 * time.Minute,
 	// First-run setup provisioning: apt/dnf update + install of a webserver, a
 	// database engine, and optionally BIND/Postfix/Dovecot. On a fresh box that
 	// is many minutes of downloads, so the client backstop must sit above the

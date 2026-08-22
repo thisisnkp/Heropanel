@@ -47,7 +47,7 @@ const siteSections = computed<{ leaf: SiteNavLeaf; group?: string }[]>(() => {
 
 function sectionTarget(leaf: SiteNavLeaf) {
   if (leaf.jump) return { name: leaf.to, query: { domain: site.value?.domain ?? "", section: "dns" } };
-  return { name: leaf.to, params: { id: String(site.value?.id ?? "") } };
+  return { name: leaf.to, params: { uid: site.value?.uid ?? "" } };
 }
 
 // Any navigation closes it. Without this, tapping a destination leaves the

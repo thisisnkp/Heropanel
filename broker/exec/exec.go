@@ -29,6 +29,14 @@ type Command struct {
 	// Timeout bounds execution. Zero means no explicit timeout (the caller's
 	// context still applies).
 	Timeout time.Duration
+	// Dir is the working directory. Empty means the broker's own.
+	//
+	// This is not a shell escape hatch — it changes where a program runs, not
+	// how its arguments are parsed. It exists for installers that are written to
+	// be run from inside their own unpacked tree and resolve their files
+	// relatively; the alternative, `sh -c "cd X && ./y"`, would reintroduce the
+	// shell string this package exists to forbid.
+	Dir string
 }
 
 // Result captures the outcome of a Command.
@@ -66,6 +74,7 @@ func (OSRunner) Run(ctx context.Context, cmd Command) (Result, error) {
 	}
 
 	c := osexec.CommandContext(ctx, cmd.Path, cmd.Args...)
+	c.Dir = cmd.Dir // empty => inherit the broker's working directory
 	c.Env = cmd.Env // nil => empty environment
 	if len(cmd.Stdin) > 0 {
 		c.Stdin = bytes.NewReader(cmd.Stdin)

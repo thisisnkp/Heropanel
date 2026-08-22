@@ -131,17 +131,76 @@ func firewallStatusHandler(d Deps) http.HandlerFunc {
 
 // scanSiteHandler runs a malware scan over a site's tree and returns the
 // detections. Gated by "security.write" (a scan is an action, not a view).
+//
+// The scanner is chosen with ?engine=clamav|maldet, defaulting to ClamAV. It is
+// a query parameter rather than two routes because "scan this site" is one
+// operation with a choice of tool — and because the audit entry then records
+// which tool ran against the same action name.
 func scanSiteHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		siteUID := chi.URLParam(r, "uid")
+		engine := r.URL.Query().Get("engine")
 		audit.AddDetail(r.Context(), "site", siteUID)
-		scan, findings, err := d.Malware.ScanSite(r.Context(), siteUID)
+		scan, findings, err := d.Malware.ScanSite(r.Context(), siteUID, engine)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
+		audit.AddDetail(r.Context(), "engine", scan.Engine)
 		audit.AddDetail(r.Context(), "infected", strconv.Itoa(scan.Infected))
 		writeJSON(w, r, http.StatusOK, map[string]any{"scan": scan, "findings": findings})
+	}
+}
+
+// malwareEnginesHandler reports which scanners this host can actually run.
+//
+// ClamAV comes from a distribution package and the baseline always installs it;
+// maldet ships no package, so it may genuinely be absent. Without this the
+// malware screen would offer a scanner that fails on click, which teaches an
+// operator to distrust the button rather than to install the tool.
+// Gated by "security.read".
+func malwareEnginesHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.Malware.Engines(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// installMaldetHandler installs maldet from rfxn.com. Gated by
+// "security.write" and force-audited: it fetches code and runs it as root,
+// which is the only place in the panel that happens.
+func installMaldetHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.Malware.InstallMaldet(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.SetResource(r.Context(), "security", "maldet")
+		// The hash of what was actually installed, so an operator can pin it and
+		// have every later install checked against it.
+		if sum, ok := out["sha256"].(string); ok {
+			audit.AddDetail(r.Context(), "sha256", sum)
+		}
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// updateMaldetHandler refreshes maldet's signature set. Gated by
+// "security.write".
+func updateMaldetHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.Malware.UpdateMaldet(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.SetResource(r.Context(), "security", "maldet")
+		writeJSON(w, r, http.StatusOK, out)
 	}
 }
 

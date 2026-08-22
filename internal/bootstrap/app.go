@@ -354,7 +354,11 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		}
 		var setupProv setup.Provisioner
 		if gw != nil {
-			setupProv = setup.NewBrokerProvisioner(gw)
+			// The sign-on script POSTs tickets back to npd over loopback. The
+			// address comes from the panel's own listener rather than a second
+			// setting, so the two cannot disagree.
+			redeem := fmt.Sprintf("http://127.0.0.1:%d/api/v1/databases/sso/redeem", cfg.Server.Port)
+			setupProv = setup.NewBrokerProvisioner(gw).WithLogger(log).WithRedeemURL(redeem)
 		}
 		setupSvc = setup.NewService(repository.NewSetupStore(db), setupProv, log).
 			WithOnComplete(func(ctx context.Context, sel setup.Selection) {
@@ -494,7 +498,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 			log.Info("firewall guard enabled")
 		}
 		// Malware scanning (ClamAV) with quarantine, over the site tree.
-		malwareSvc = security.NewMalware(repository.NewMalwareStore(db), gw, malwareSiteAdapter{repo: siteStore})
+		malwareSvc = security.NewMalware(repository.NewMalwareStore(db), gw, malwareSiteAdapter{repo: siteStore}).
+			WithMaldet(cfg.Security.MaldetPath, cfg.Security.MaldetSHA256)
 		// Fail2Ban surfacing (read-only view + manual ban/unban through its client).
 		fail2banSvc = security.NewFail2Ban(gw)
 		// SSH hardening: a panel-owned sshd drop-in, sshd -t tested, reloaded.

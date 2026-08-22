@@ -2,9 +2,11 @@ package setup
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/thisisnkp/nexpanel/internal/php"
 	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
@@ -187,4 +189,60 @@ func TestService_RecordOnlyWithoutProvisioner(t *testing.T) {
 	if store.state == nil || !store.state.Completed {
 		t.Fatal("expected selection recorded even without a provisioner")
 	}
+}
+
+// Every baseline entry the wizard ticks must be something an install actually
+// puts on the host.
+//
+// The wizard's list is the panel's promise about what a NexPanel server is, and
+// it is made before anything has been installed — so nothing checks it later. An
+// entry that is Supported but provisioned by nothing would be a tick beside a
+// component that never arrives, and the operator would discover it from a site
+// that will not start.
+//
+// lscache is the one exemption, and it is exempt because there is nothing to
+// install: page caching is compiled into OpenLiteSpeed and LiteSpeed Enterprise.
+func TestBaselineTicksOnlyWhatIsProvisioned(t *testing.T) {
+	provisioned := map[string]bool{"lscache": true}
+	for _, c := range baselineComponents {
+		provisioned[c] = true
+	}
+	// maldet is installed by its own broker capability during setup rather than
+	// through baselineComponents, because it has no distribution package; see
+	// MaldetInstallCapability in broker.go.
+	provisioned["maldet"] = true
+
+	var planned []string
+	for _, o := range Baseline() {
+		if o.Supported && !provisioned[o.ID] {
+			t.Errorf("baseline %q is ticked but nothing installs it", o.ID)
+		}
+		if !o.Supported {
+			planned = append(planned, o.ID)
+		}
+		if o.Label == "" {
+			t.Errorf("baseline %q has no label", o.ID)
+		}
+	}
+
+	// The runtimes are listed as planned on purpose: the default stack runs PHP
+	// and Node, and no provisioning is written for either yet. If that changes,
+	// this is the test that says to flip the flag rather than leaving the wizard
+	// permanently apologising for something it now does.
+	if len(planned) != 2 {
+		t.Errorf("planned baseline entries = %v, want exactly php and node", planned)
+	}
+}
+
+// The PHP the wizard names has to be the version a site is actually given.
+func TestBaselineNamesThePanelPHPDefault(t *testing.T) {
+	for _, o := range Baseline() {
+		if o.ID == "php" {
+			if !strings.Contains(o.Label, php.DefaultVersion) {
+				t.Errorf("baseline php label = %q, want it to name %s", o.Label, php.DefaultVersion)
+			}
+			return
+		}
+	}
+	t.Error("the baseline does not mention PHP at all")
 }

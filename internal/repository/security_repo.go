@@ -178,9 +178,9 @@ func (s *MalwareStore) InsertScan(ctx context.Context, r *security.ScanRecord) e
 		r.UID = idgen.NewULID()
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO malware_scans (uid, site_uid, target, infected_count, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		r.UID, r.SiteUID, r.Target, r.Infected, r.Status, fmtTS(time.Now()))
+		`INSERT INTO malware_scans (uid, site_uid, target, engine, infected_count, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		r.UID, r.SiteUID, r.Target, r.Engine, r.Infected, r.Status, fmtTS(time.Now()))
 	if err != nil {
 		return errx.Internal(err)
 	}
@@ -194,7 +194,7 @@ func (s *MalwareStore) InsertScan(ctx context.Context, r *security.ScanRecord) e
 func (s *MalwareStore) ListScans(ctx context.Context, limit int) ([]security.ScanRecord, error) {
 	var rows []security.ScanRecord
 	if err := s.db.SelectContext(ctx, &rows,
-		`SELECT id, uid, site_uid, target, infected_count, status, created_at FROM malware_scans
+		`SELECT id, uid, site_uid, target, engine, infected_count, status, created_at FROM malware_scans
 		 ORDER BY created_at DESC, id DESC LIMIT ?`, limit); err != nil {
 		return nil, errx.Internal(err)
 	}

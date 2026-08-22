@@ -51,13 +51,16 @@ type Service struct {
 	broker   broker.Gateway
 	reloader VhostReloader
 	hostname string // webmail FQDN (NP_WEBMAIL_HOSTNAME); "" = disabled
-	phpVer   string // php-fpm version for the webmail pool (e.g. "8.3")
+	phpVer   string // php-fpm version for the webmail pool (e.g. "8.4")
 }
 
 // NewService constructs the webmail service. hostname empty leaves it disabled.
 func NewService(gw broker.Gateway, hostname, phpVersion string) *Service {
+	// Falls through to the panel's own default rather than a second constant:
+	// two hard-coded versions drift, and the one that drifts is this one,
+	// because nobody looks at webmail until it breaks.
 	if phpVersion == "" {
-		phpVersion = "8.3"
+		phpVersion = php.DefaultVersion
 	}
 	return &Service{broker: gw, hostname: strings.ToLower(strings.TrimSpace(hostname)), phpVer: phpVersion}
 }

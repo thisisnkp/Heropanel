@@ -72,11 +72,20 @@ func (f *Fake) RemoveAll(path string) error {
 	return nil
 }
 
+// Exists reports files *and* directories, matching os.Stat.
+//
+// Directories count because the real implementation is a bare os.Stat, which
+// does not distinguish them — and capabilities do ask "is this directory
+// there?" (phpMyAdmin's conf.d, for one). A fake that answered no for a
+// directory it had just been told to create would make those tests pass for the
+// wrong reason and fail on a real host.
 func (f *Fake) Exists(path string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	_, ok := f.files[path]
-	return ok, nil
+	if _, ok := f.files[path]; ok {
+		return true, nil
+	}
+	return f.dirs[path], nil
 }
 
 // Written returns the content written to path and whether it exists (test helper).

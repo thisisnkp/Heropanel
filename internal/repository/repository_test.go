@@ -26,8 +26,8 @@ func newTestDB(t *testing.T) *repository.DB {
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if applied != 45 {
-		t.Fatalf("applied %d migrations, want 45", applied)
+	if applied != 47 {
+		t.Fatalf("applied %d migrations, want 47", applied)
 	}
 	return db
 }

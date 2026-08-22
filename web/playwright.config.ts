@@ -1,4 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The config is ESM, so there is no __dirname. The storage-state path has to be
+// absolute: Playwright resolves it relative to the process cwd, not this file.
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 // Browser-level end-to-end tests, driven against a **real npd** serving the real
 // built SPA — not a mock and not the dev server.
@@ -37,16 +43,38 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // Bootstraps the admin and finishes the first-run wizard once, then hands
+    // the session to every other spec. Without it each spec would arrive at a
+    // blank panel and be redirected to /welcome — and only the first would be
+    // able to bootstrap, since creating the first administrator happens once.
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: path.join(here, "e2e", ".auth", "state.json"),
+      },
+      dependencies: ["setup"],
+    },
+  ],
 
   webServer: {
-    // A fresh database per run: these tests bootstrap the first admin, which is
-    // a one-time act, and a leftover database from a previous run would make the
-    // suite pass or fail depending on what ran before it.
+    // A fresh database per run, seeded with sites, then npd.
+    //
+    // Fresh because these tests bootstrap the first admin, which is a one-time
+    // act - a leftover database from a previous run would make the suite pass
+    // or fail depending on what ran before it.
+    //
+    // Seeded because npd here has no broker, and creating a site means creating
+    // a Linux user, a directory tree, an FPM pool and a vhost through it. npd
+    // correctly refuses, so without seeding every screen under /sites/{uid} has
+    // nothing to render. tools/e2eseed writes the rows through the real
+    // repository; the host-side effects stay the container suite's job.
     command:
       process.platform === "win32"
-        ? `powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue $env:TEMP\\np-e2e.db; $env:NP_SERVER_PORT='${PORT}'; $env:NP_SECURITY_RATE_LIMIT_ENABLED='false'; $env:NP_DATABASE_DRIVER='sqlite'; $env:NP_DATABASE_DSN=\\"$env:TEMP\\np-e2e.db\\"; ../bin/npd.exe"`
-        : `sh -c "rm -f /tmp/np-e2e.db && NP_SERVER_PORT=${PORT} NP_SECURITY_RATE_LIMIT_ENABLED=false NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-e2e.db ../bin/npd"`,
+        ? `powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue $env:TEMP\\np-e2e.db; go run ../tools/e2eseed/main.go \\"$env:TEMP\\np-e2e.db\\"; $env:NP_SERVER_PORT='${PORT}'; $env:NP_SECURITY_RATE_LIMIT_ENABLED='false'; $env:NP_DATABASE_DRIVER='sqlite'; $env:NP_DATABASE_DSN=\\"$env:TEMP\\np-e2e.db\\"; ../bin/npd.exe"`
+        : `sh -c "rm -f /tmp/np-e2e.db && go run ../tools/e2eseed/main.go /tmp/np-e2e.db && NP_SERVER_PORT=${PORT} NP_SECURITY_RATE_LIMIT_ENABLED=false NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=/tmp/np-e2e.db ../bin/npd"`,
     url: `http://127.0.0.1:${PORT}/healthz`,
     reuseExistingServer: false,
     timeout: 60_000,

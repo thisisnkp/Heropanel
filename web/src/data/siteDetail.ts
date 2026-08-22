@@ -65,7 +65,7 @@ export function runtimeFields(s: Site): readonly KeyValue[] {
     ];
   }
   return [
-    { label: "PHP version", value: "8.3" },
+    { label: "PHP version", value: "8.4" },
     { label: "memory_limit", value: "512M" },
     { label: "max_execution_time", value: "120" },
     { label: "Extensions", value: "opcache, redis, imagick" },
@@ -167,7 +167,7 @@ export function quickActions(s: Site): readonly QuickAction[] {
   } else if (s.stackKey === "wp") {
     all.push({ label: "Create staging", sub: "test safely", icon: "content-copy", to: "site-wp-staging", tone: "brand" });
   } else if (s.stackKey === "php") {
-    all.push({ label: "PHP settings", sub: "PHP 8.3", icon: "tune", to: "site-php", tone: "brand" });
+    all.push({ label: "PHP settings", sub: "PHP 8.4", icon: "tune", to: "site-php", tone: "brand" });
   }
 
   all.push({ label: "Domain & SSL", sub: "certificate active", icon: "lock", to: "site-ssl", tone: "success" });
@@ -251,10 +251,12 @@ export const SITE_LOG_LINES = [
 // ---- PHP settings ----------------------------------------------------------
 
 export const PHP_VERSIONS = [
-  { version: "8.4", note: "latest" },
-  { version: "8.3", note: "recommended" },
-  { version: "8.2", note: "supported" },
-  { version: "8.1", note: "supported" },
+  { version: "8.5", note: "latest" },
+  { version: "8.4", note: "recommended" },
+  { version: "8.3", note: "security fixes only" },
+  { version: "8.2", note: "security fixes only" },
+  { version: "8.1", note: "end of life" },
+  { version: "8.0", note: "end of life" },
   { version: "7.4", note: "end of life" },
 ];
 

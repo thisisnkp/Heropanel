@@ -10,7 +10,7 @@ import type { Site } from "@/stores/sites";
 
 function site(over: Partial<Site> = {}): Site {
   return {
-    id: 1,
+    uid: "ste_novaretail",
     name: "novaretail.in",
     domain: "novaretail.in",
     stackKey: "wp",

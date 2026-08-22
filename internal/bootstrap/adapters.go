@@ -192,6 +192,10 @@ func (a siteRuntimeAdapter) ProxyPort(ctx context.Context, siteID int64) (int, b
 	return a.svc.ProxyPort(ctx, siteID)
 }
 
+func (a siteRuntimeAdapter) Language(ctx context.Context, siteID int64) (string, bool) {
+	return a.svc.Language(ctx, siteID)
+}
+
 func (a siteRuntimeAdapter) RemoveForSite(ctx context.Context, siteUID string) error {
 	return a.svc.RemoveForSite(ctx, siteUID)
 }

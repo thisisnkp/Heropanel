@@ -182,6 +182,21 @@ func NewRouter(d Deps) http.Handler {
 		// Built by walking the live routing tree (openapi.go), so it cannot drift.
 		r.Get("/openapi.json", openapiHandler(d))
 
+		// phpMyAdmin's signon script redeems a hand-off ticket here.
+		//
+		// Outside the auth group on purpose: the caller is a PHP process on this
+		// host, which has no session cookie and no CSRF token to present. What
+		// stands in for them is stricter — the handler refuses anything that is
+		// not a loopback connection, the ticket is single-use and lives for a
+		// minute, and what it yields is an account scoped to one database that
+		// expires in fifteen. It carries the auditor of its own accord: handing
+		// out a database login is the last event that should be missing from the
+		// chain.
+		if d.Databases != nil {
+			r.With(auditor(d.Audit, d.Logger)).
+				Post("/databases/sso/redeem", redeemPMATicketHandler(d))
+		}
+
 		// Auth-dependent routes are mounted only when a datastore (and thus the
 		// auth service) is available. When it is not, the panel cannot sign anyone
 		// in — so the three routes the login screen actually calls are still
@@ -319,7 +334,7 @@ func NewRouter(d Deps) http.Handler {
 					r.With(requirePermission("database.write")).Post("/databases/{uid}/import", importDatabaseHandler(d))
 					// The hand-off mints a live credential, so it is write-gated
 					// even though it only reads data.
-					r.With(requirePermission("database.write")).Post("/databases/{uid}/adminer-sso", adminerSSOHandler(d))
+					r.With(requirePermission("database.write")).Post("/databases/{uid}/phpmyadmin", phpMyAdminHandler(d))
 					r.With(requirePermission("database.read")).Get("/database-users", listDBUsersHandler(d))
 					r.With(requirePermission("database.write")).Post("/database-users", createDBUserHandler(d))
 					r.With(requirePermission("database.write")).Delete("/database-users/{uid}", deleteDBUserHandler(d))
@@ -567,6 +582,9 @@ func NewRouter(d Deps) http.Handler {
 				}
 				if d.Malware != nil {
 					r.With(requirePermission("security.write")).Post("/sites/{uid}/scan", scanSiteHandler(d))
+					r.With(requirePermission("security.read")).Get("/security/malware/engines", malwareEnginesHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/malware/maldet/install", installMaldetHandler(d))
+					r.With(requirePermission("security.write")).Post("/security/malware/maldet/update", updateMaldetHandler(d))
 					r.With(requirePermission("security.read")).Get("/security/quarantine", listQuarantineHandler(d))
 					r.With(requirePermission("security.write")).Post("/security/quarantine", quarantineHandler(d))
 					r.With(requirePermission("security.write")).Post("/security/quarantine/{uid}/restore", restoreQuarantineHandler(d))

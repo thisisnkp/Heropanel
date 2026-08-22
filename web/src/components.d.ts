@@ -22,6 +22,7 @@ declare module 'vue' {
     DomainSidebar: typeof import('./components/nav/DomainSidebar.vue')['default']
     FileEditor: typeof import('./components/files/FileEditor.vue')['default']
     JobTray: typeof import('./components/ui/JobTray.vue')['default']
+    MalwareEngines: typeof import('./components/security/MalwareEngines.vue')['default']
     MobileHeader: typeof import('./components/nav/MobileHeader.vue')['default']
     MobileNavSheet: typeof import('./components/nav/MobileNavSheet.vue')['default']
     MobileTabBar: typeof import('./components/nav/MobileTabBar.vue')['default']

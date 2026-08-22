@@ -43,7 +43,7 @@ const explain = computed(() =>
 );
 
 const switcherItems = computed(() =>
-  sites.sites.map((s) => ({ key: s.id, label: s.domain, sub: STACKS[s.stackKey].label })),
+  sites.sites.map((s) => ({ key: s.uid, label: s.domain, sub: STACKS[s.stackKey].label })),
 );
 
 /**
@@ -53,8 +53,8 @@ const switcherItems = computed(() =>
  * the route blindly would land on a section that cannot exist there. Falling
  * back to the overview is the only honest answer in that case.
  */
-function switchTo(id: string | number) {
-  const next = sites.sites.find((s) => s.id === Number(id));
+function switchTo(uid: string | number) {
+  const next = sites.byUid(String(uid));
   if (!next) return;
 
   const here = String(route.name ?? "");
@@ -68,7 +68,7 @@ function switchTo(id: string | number) {
   collect(buildSiteNav({ stackKey: next.stackKey, deploy: next.deploy }));
 
   const target = available.has(here) ? here : "site-overview";
-  void router.push({ name: target, params: { id: String(next.id) } });
+  void router.push({ name: target, params: { uid: next.uid } });
 }
 
 function leafActive(to: string) {
@@ -84,10 +84,10 @@ function groupOpen(group: SiteNavGroup) {
   return ui.isGroupOpen(`site:${group.id}`) || containsActive(group);
 }
 
-const params = computed(() => ({ id: String(site.value?.id ?? "") }));
+const params = computed(() => ({ uid: site.value?.uid ?? "" }));
 
 /**
- * "DNS zone editor" leaves the site scope, so it takes no :id — but it has to
+ * "DNS zone editor" leaves the site scope, so it takes no :uid — but it has to
  * carry the domain, or it lands on the zone picker having thrown away the one
  * thing the user had already chosen.
  */
@@ -115,7 +115,7 @@ function leavesOf(group: SiteNavGroup): SiteNavLeaf[] {
       <NxSwitcher
         v-if="site"
         :items="switcherItems"
-        :current="site.id"
+        :current="site.uid"
         placeholder="Search websites"
         empty-text="No website matches."
         label="Switch website"

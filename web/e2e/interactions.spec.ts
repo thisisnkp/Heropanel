@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoPanel } from "./helpers";
 
 /**
  * The flows a screenshot cannot prove: the create-site wizard's gating, the
@@ -12,7 +13,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("create a website", () => {
   test("each step is gated on being answerable", async ({ page }) => {
-    await page.goto("/websites");
+    await gotoPanel(page, "/websites");
 
     await page.getByRole("button", { name: /Add Website/ }).click();
     await page.locator(".list__menu-item").filter({ hasText: "Node.js" }).click();
@@ -39,12 +40,22 @@ test.describe("create a website", () => {
     await expect(create).toBeEnabled();
     await create.click();
 
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.locator(".nx-table__row").first()).toContainText("shop.example.com");
+    // npd here has no broker, and provisioning a site means creating a Linux
+    // user, a directory tree, an FPM pool and a vhost through it — so the
+    // create is genuinely refused. That is the assertion worth making at this
+    // layer: the wizard reports the server's answer and invents nothing. A
+    // successful create needs real software and is covered by the container
+    // suite (deploy/docker/e2e).
+    await expect(dialog.locator(".nx-callout--danger")).toContainText(/broker is not available/i);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+
+    // The row must not appear. A wizard that adds it optimistically and never
+    // takes it back leaves a site in the list that does not exist anywhere.
+    await expect(page.locator(".nx-table__row").filter({ hasText: "shop.example.com" })).toHaveCount(0);
   });
 
   test("a WordPress site is not offered a repository", async ({ page }) => {
-    await page.goto("/websites");
+    await gotoPanel(page, "/websites");
     await page.getByRole("button", { name: /Add Website/ }).click();
     await page.locator(".list__menu-item").filter({ hasText: "WordPress" }).click();
 
@@ -58,7 +69,7 @@ test.describe("create a website", () => {
   });
 
   test("Escape closes the add menu", async ({ page }) => {
-    await page.goto("/websites");
+    await gotoPanel(page, "/websites");
     await page.getByRole("button", { name: /Add Website/ }).click();
     await expect(page.locator(".nx-menu__panel")).toBeVisible();
     await page.keyboard.press("Escape");
@@ -67,32 +78,47 @@ test.describe("create a website", () => {
 });
 
 test.describe("deleting a website", () => {
+  // Aimed at delete-me.example, which the seed creates for exactly this and
+  // nothing else. The suite runs sequentially against one datastore and this
+  // deletes real server state, so deleting any other site would pull the ground
+  // out from under every spec that runs afterwards.
   test("requires the domain typed back, exactly", async ({ page }) => {
-    await page.goto("/websites");
+    await gotoPanel(page, "/websites");
 
+    // Wait for the list to arrive before counting: the sites come from npd, so
+    // an immediate count is taken against an empty table.
+    const row = page.locator(".nx-table__row").filter({ hasText: "delete-me.example" });
+    await expect(row).toBeVisible();
     const rowCount = await page.locator(".nx-table__row").count();
-    await page.locator(".nx-table__row").first().getByRole("button", { name: "Delete" }).click();
+    await row.getByRole("button", { name: "Delete" }).click();
 
     const confirm = page.getByRole("button", { name: "Delete website" });
     await expect(confirm).toBeDisabled();
 
     const input = page.getByRole("dialog").locator("input").first();
-    await input.fill("novaretail");
+    // A prefix is not the domain. This is the gesture's whole point: it has to
+    // be hard to perform by accident on the wrong site.
+    await input.fill("delete-me");
     await expect(confirm).toBeDisabled();
 
-    await input.fill("novaretail.in");
+    await input.fill("delete-me.example");
     await expect(confirm).toBeEnabled();
     await confirm.click();
 
     await expect(page.locator(".nx-table__row")).toHaveCount(rowCount - 1);
     const names = await page.locator(".nx-table__row .list__name").allInnerTexts();
-    expect(names.map((n) => n.trim())).not.toContain("novaretail.in");
+    expect(names.map((n) => n.trim())).not.toContain("delete-me.example");
+
+    // Gone on the server, not just dropped from a list in this tab. A reload is
+    // the only way to tell those apart.
+    await page.reload();
+    await expect(page.locator(".nx-table__row").filter({ hasText: "delete-me.example" })).toHaveCount(0);
   });
 });
 
 test.describe("file manager", () => {
   test("navigates, searches across folders, and edits", async ({ page }) => {
-    await page.goto("/sites/1/files");
+    await gotoPanel(page, "/sites/e2e-php/files");
     await expect(page.locator(".fm__row")).toHaveCount(9);
 
     // Tools stay disabled with nothing selected — no silent no-ops.
@@ -125,7 +151,7 @@ test.describe("file manager", () => {
   });
 
   test("delete goes to trash and restore puts it back", async ({ page }) => {
-    await page.goto("/sites/1/files");
+    await gotoPanel(page, "/sites/e2e-php/files");
 
     await page.locator(".fm__row").filter({ hasText: "robots.txt" }).click();
     await page.getByRole("button", { name: "Move to trash" }).first().click();
@@ -147,7 +173,7 @@ test.describe("file manager", () => {
 
 test.describe("creating a database", () => {
   test("prefixes the name with the site and shows what you will get", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
 
     // Two prefixes, both fixed: the name and the user are namespaced per site
     // because MySQL names are global to the server.
@@ -173,7 +199,7 @@ test.describe("creating a database", () => {
   });
 
   test("refuses names MySQL would refuse, before the server has to", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     await page.getByPlaceholder("Enter Database Name").fill("shop");
     await page.getByPlaceholder("Password", { exact: true }).fill("a-real-password");
 
@@ -192,7 +218,7 @@ test.describe("creating a database", () => {
   });
 
   test("generates a password and shows it, because it is shown only once", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     const field = page.getByPlaceholder("Password", { exact: true });
 
     // Typed passwords stay masked.
@@ -215,7 +241,7 @@ test.describe("creating a database", () => {
   });
 
   test("the eye toggles the password back out of sight", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     const field = page.getByPlaceholder("Password", { exact: true });
     await field.fill("typed-by-hand");
 
@@ -229,7 +255,7 @@ test.describe("creating a database", () => {
   test("the two icons do not make the password field taller than the others", async ({ page }) => {
     // A 28px tap target inside a 35px control is exactly how one field in a
     // stack ends up eleven pixels out of line with the rest.
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     const heights = await page.locator(".nx-input").evaluateAll((els) =>
       els.map((e) => Math.round(e.getBoundingClientRect().height)),
     );
@@ -239,7 +265,7 @@ test.describe("creating a database", () => {
   test("the prefix matches the names already in the list", async ({ page }) => {
     // One derivation, not two: a form that promises nexp_shop while the table
     // below lists nexp_novaretail_* is the bug this shares code to avoid.
-    await page.goto("/sites/2/databases");
+    await gotoPanel(page, "/sites/e2e-node/databases");
     const prefix = await page.locator(".nx-input__prefix").first().innerText();
     const first = await page.locator(".nx-table__row .db__name").first().innerText();
     expect(first.startsWith(prefix.replace(/_$/, ""))).toBe(true);
@@ -248,7 +274,7 @@ test.describe("creating a database", () => {
 
 test.describe("the database list", () => {
   test("shows this site's databases and every unowned one, and nobody else's", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     const names = await page.locator(".db__name").allInnerTexts();
 
     // Site 1's own.
@@ -260,7 +286,7 @@ test.describe("the database list", () => {
     expect(names).not.toContain("nexp_api");
     expect(names).not.toContain("nexp_billing_portal");
 
-    await page.goto("/sites/2/databases");
+    await gotoPanel(page, "/sites/e2e-node/databases");
     const other = await page.locator(".db__name").allInnerTexts();
     expect(other).toContain("nexp_api");
     expect(other).not.toContain("nexp_novaretail");
@@ -269,7 +295,7 @@ test.describe("the database list", () => {
   });
 
   test("assigning an orphan links it to the site you are in", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
 
     const orphan = page.locator(".nx-table__row").filter({ hasText: "legacy_wp_import" });
     await expect(orphan.getByRole("button", { name: "Assign" })).toBeVisible();
@@ -287,12 +313,12 @@ test.describe("the database list", () => {
     await page.getByRole("button", { name: "Switch website" }).click();
     await page.getByPlaceholder("Search websites").fill("api");
     await page.locator(".nx-sw__item").first().click();
-    await expect(page).toHaveURL(/\/sites\/2\/databases$/);
+    await expect(page).toHaveURL(/\/sites\/e2e-node\/databases$/);
     await expect(page.locator(".db__name").filter({ hasText: "legacy_wp_import" })).toHaveCount(0);
   });
 
   test("every row offers phpMyAdmin and the four actions", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     const row = page.locator(".nx-table__row").first();
     await expect(row.getByRole("button", { name: "Enter phpMyAdmin" })).toBeVisible();
 
@@ -303,7 +329,7 @@ test.describe("the database list", () => {
   });
 
   test("repair runs as a job, not a message that vanishes", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     await page.locator(".nx-table__row").first().getByRole("button", { name: /More actions/ }).click();
     await page.getByRole("menuitem", { name: "Repair" }).click();
 
@@ -312,7 +338,11 @@ test.describe("the database list", () => {
   });
 
   test("dropping a database needs the name typed back, exactly", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
+    // Counted only once a row is on screen. Reading it straight after the
+    // navigation catches the table mid-flight and yields zero, which then makes
+    // the "one fewer" assertion below expect -1 rows.
+    await expect(page.locator(".nx-table__row").first()).toBeVisible();
     const before = await page.locator(".nx-table__row").count();
 
     await page.locator(".nx-table__row").first().getByRole("button", { name: /More actions/ }).click();
@@ -335,7 +365,7 @@ test.describe("the database list", () => {
   });
 
   test("changing permissions leaves DROP unticked", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     await page.locator(".nx-table__row").first().getByRole("button", { name: /More actions/ }).click();
     await page.getByRole("menuitem", { name: "Change Permissions" }).click();
 
@@ -348,7 +378,7 @@ test.describe("the database list", () => {
   });
 
   test("a created database appears in the list under this site", async ({ page }) => {
-    await page.goto("/sites/1/databases");
+    await gotoPanel(page, "/sites/e2e-php/databases");
     await page.getByPlaceholder("Enter Database Name").fill("shop");
     await page.getByPlaceholder("Enter User Name").fill("shop_rw");
     await page.getByRole("button", { name: "Generate a strong password" }).click();
@@ -365,27 +395,32 @@ test.describe("the database list", () => {
 });
 
 test.describe("per-stack screens", () => {
-  test("a WordPress site and a Node site get different overviews", async ({ page }) => {
-    await page.goto("/sites/1/overview");
-    await expect(page.locator(".shead__wp")).toHaveCount(1);
-    await expect(page.locator("body")).toContainText("Pending updates");
+  // The WordPress branch of these screens — "Open wp-admin", the pending-updates
+  // card — is not covered here, and cannot be: npd refuses `stack: "wp"` until
+  // there is a WordPress module, so no seeded site reports that stack. Asserting
+  // it would mean seeding a row the panel itself would not create.
+  test("a PHP site and a Node site get different overviews", async ({ page }) => {
+    await gotoPanel(page, "/sites/e2e-php/overview");
+    // Manual deploy: no repository, so no deploy card and no wp-admin link.
+    await expect(page.locator(".shead__wp")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("Last deploy");
 
-    await page.goto("/sites/2/overview");
+    await gotoPanel(page, "/sites/e2e-node/overview");
     await expect(page.locator(".shead__wp")).toHaveCount(0);
     await expect(page.locator("body")).toContainText("Last deploy");
   });
 
   test("the version screen offers the right runtime", async ({ page }) => {
-    await page.goto("/sites/2/version");
+    await gotoPanel(page, "/sites/e2e-node/version");
     await expect(page.locator("body")).toContainText("Node.js version");
-    await expect(page.locator("body")).toContainText("22.4");
+    await expect(page.locator("body")).toContainText("22 LTS");
 
-    await page.goto("/sites/1/version");
+    await gotoPanel(page, "/sites/e2e-php/version");
     await expect(page.locator("body")).toContainText("PHP version");
   });
 
   test("a site with no repository is offered the setup screen, not an empty table", async ({ page }) => {
-    await page.goto("/sites/1/git/deployments");
+    await gotoPanel(page, "/sites/e2e-php/git/deployments");
     await expect(page.locator("body")).toContainText("No repository connected");
   });
 });
@@ -393,7 +428,7 @@ test.describe("per-stack screens", () => {
 test.describe("responsive shell", () => {
   test("swaps to the mobile chrome and back", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await expect(page.locator(".nx-tabbar")).toBeVisible();
     await expect(page.locator(".nx-sidebar")).toHaveCount(0);
 
@@ -413,8 +448,8 @@ test.describe("responsive shell", () => {
 
   test("no screen scrolls horizontally at 360px", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 900 });
-    for (const path of ["/", "/websites", "/security/firewall", "/sites/1/files", "/sites/1/php", "/dns"]) {
-      await page.goto(path);
+    for (const path of ["/", "/websites", "/security/firewall", "/sites/e2e-php/files", "/sites/e2e-php/php", "/dns"]) {
+      await gotoPanel(page, path);
       const blown = await page.evaluate(() => {
         const bad: string[] = [];
         for (const el of document.querySelectorAll("body *")) {

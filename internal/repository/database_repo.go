@@ -54,6 +54,19 @@ func (s *DatabaseStore) ListDatabases(ctx context.Context, ownerID int64, limit,
 	return recs, nil
 }
 
+func (s *DatabaseStore) GetDatabaseByID(ctx context.Context, id int64) (*database.InstanceRecord, error) {
+	var rec database.InstanceRecord
+	err := s.db.GetContext(ctx, &rec,
+		`SELECT id, uid, owner_id, engine, name, charset, status, created_at FROM db_instances WHERE id = ?`, id)
+	if isNoRows(err) {
+		return nil, errx.NotFound("database_not_found", "No such database.")
+	}
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &rec, nil
+}
+
 func (s *DatabaseStore) GetDatabaseByUID(ctx context.Context, uid string) (*database.InstanceRecord, error) {
 	var rec database.InstanceRecord
 	err := s.db.GetContext(ctx, &rec,
@@ -180,6 +193,61 @@ func (s *DatabaseStore) InsertSSOSession(ctx context.Context, r *database.SSOSes
 		r.ID = id
 	}
 	return nil
+}
+
+// InsertSSOTicket records a pending hand-off. Only the ticket's hash is stored.
+func (s *DatabaseStore) InsertSSOTicket(ctx context.Context, r *database.SSOTicketRecord) error {
+	if r.UID == "" {
+		r.UID = idgen.NewULID()
+	}
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO db_sso_tickets (uid, db_instance_id, ticket_hash, actor_user_id, expires_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		r.UID, r.DBInstanceID, r.TicketHash, r.ActorUserID, r.ExpiresAt)
+	if err != nil {
+		return errx.Internal(err)
+	}
+	if id, err := res.LastInsertId(); err == nil {
+		r.ID = id
+	}
+	return nil
+}
+
+// RedeemSSOTicket marks an unredeemed, unexpired ticket used and returns it.
+// A ticket that does not exist, has expired, or has already been redeemed
+// yields (nil, nil) — the caller turns all three into one answer.
+//
+// The UPDATE is what makes redemption single-use, and it has to be: a SELECT
+// followed by an UPDATE would let two requests arriving with the same ticket
+// both pass the check and both get a database account. `redeemed_at IS NULL` in
+// the WHERE means exactly one of them changes a row.
+func (s *DatabaseStore) RedeemSSOTicket(ctx context.Context, hash, now string) (*database.SSOTicketRecord, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE db_sso_tickets SET redeemed_at = ?
+		 WHERE ticket_hash = ? AND redeemed_at IS NULL AND expires_at > ?`, now, hash, now)
+	if err != nil {
+		return nil, errx.Internal(err)
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return nil, nil
+	}
+	var rec database.SSOTicketRecord
+	if err := s.db.GetContext(ctx, &rec,
+		`SELECT id, uid, db_instance_id, ticket_hash, actor_user_id, created_at, expires_at
+		 FROM db_sso_tickets WHERE ticket_hash = ?`, hash); err != nil {
+		return nil, errx.Internal(err)
+	}
+	return &rec, nil
+}
+
+// DeleteExpiredSSOTickets prunes tickets that can no longer be redeemed.
+func (s *DatabaseStore) DeleteExpiredSSOTickets(ctx context.Context, now string) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM db_sso_tickets WHERE expires_at <= ?`, now)
+	if err != nil {
+		return 0, errx.Internal(err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // ListExpiredSSOSessions returns the sessions whose accounts are due to be

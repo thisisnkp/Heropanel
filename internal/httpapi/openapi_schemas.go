@@ -83,11 +83,15 @@ var openapiSchemas = map[string]any{
 		"name":           prop("string", ""),
 		"primary_domain": prop("string", ""),
 		"type":           map[string]any{"type": "string", "enum": []any{"php", "static", "proxy"}},
-		"deploy_mode":    map[string]any{"type": "string", "enum": []any{"managed", "git"}},
-		"status":         map[string]any{"type": "string", "enum": []any{"active", "suspended", "provisioning", "error"}},
-		"system_user":    prop("string", "The dedicated non-root user the site runs as."),
-		"php_version":    prop("string", ""),
-		"created_at":     map[string]any{"type": "string", "format": "date-time"},
+		"stack": map[string]any{
+			"type": "string", "enum": []any{"static", "php", "node", "python", "app"},
+			"description": "What the site runs, as the panel presents it. Distinct from type: static, php, node, python and app are five stacks over three vhost shapes, so a client cannot derive this from type alone.",
+		},
+		"deploy_mode": map[string]any{"type": "string", "enum": []any{"managed", "git"}},
+		"status":      map[string]any{"type": "string", "enum": []any{"active", "suspended", "provisioning", "error"}},
+		"system_user": prop("string", "The dedicated non-root user the site runs as."),
+		"php_version": prop("string", ""),
+		"created_at":  map[string]any{"type": "string", "format": "date-time"},
 	}),
 	"SiteLimits": object(map[string]any{
 		"cpu_quota_pct":   prop("integer", "CPU quota as a percentage of one core (cgroup)."),
@@ -239,12 +243,15 @@ var openapiSchemas = map[string]any{
 		"username": prop("string", ""),
 		"host":     prop("string", ""),
 	}),
-	"AdminerSSO": object(map[string]any{
-		"url":      prop("string", "Adminer endpoint to POST the throwaway credential to."),
+	"PMAHandoff": object(map[string]any{
+		"url":        prop("string", "Open this in a new tab. It carries a one-time ticket and no credentials."),
+		"expires_at": map[string]any{"type": "string", "format": "date-time", "description": "The ticket expires a minute after it is issued."},
+	}),
+	"PMACredentials": object(map[string]any{
+		"username": prop("string", "Throwaway account, dropped by the sweeper after fifteen minutes."),
+		"password": prop("string", "Returned once, to phpMyAdmin only, and never stored."),
+		"database": prop("string", "The one database this account is granted on."),
 		"server":   prop("string", ""),
-		"username": prop("string", "Throwaway account, auto-expired."),
-		"password": prop("string", ""),
-		"db":       prop("string", ""),
 	}),
 	"DatabaseSize": object(map[string]any{
 		"bytes": prop("integer", ""),

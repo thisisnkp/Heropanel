@@ -19,6 +19,8 @@ web/.vite/
 # Playwright's run output: traces and screenshots of a failed run, useful
 # locally and as a CI artifact, never something to commit.
 web/test-results/
+# The e2e session cookie, minted fresh by the setup project on every run.
+web/e2e/.auth/
 web/playwright-report/
 web/blob-report/
 web/.playwright/

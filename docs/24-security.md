@@ -35,8 +35,48 @@ port ranges and named sets, and an OS-level belt-and-suspenders timer
 
 ## 2. Malware scanning + quarantine
 
-`malware.scan` runs **ClamAV** (`clamscan`) over a confined site tree and
-returns each detection (path + signature). Scanning is read-only and can run
+**Two scanners, one quarantine.** `malware.scan` runs **ClamAV** (`clamscan`)
+and `maldet.scan` runs **Linux Malware Detect**, both over a confined site tree,
+both returning the same shape — each detection as a path and a signature — so
+everything downstream is engine-agnostic.
+
+Two of them because they look for different things. ClamAV's signatures are a
+general antivirus corpus; maldet's are built from what actually lands on shared
+hosting: web shells, injected PHP droppers, obfuscated backdoors, harvested from
+edge intrusion data and from ClamAV's own misses. On a panel whose job is
+hosting other people's PHP, the second list is the one that catches the thing
+that got in. A clean result from one is therefore **not evidence about the
+other**, which is why every scan row records which engine produced it
+(migration `0046`) — a history that does not name the scanner cannot be read.
+
+maldet has a quarantine of its own and it is switched **off**, explicitly, on
+every scan's command line (`--config-option quarantine_hits=0,quarantine_clean=0`)
+rather than being left to whatever the host's `conf.maldet` says. Two
+quarantines would mean a file the operator can see in one and not the other, and
+a "restore" that puts back something the other tool already moved.
+
+**maldet is installed by the panel, because nothing else will.** It is in no
+distribution repository, so `system.provision` cannot resolve it to a package
+name; `maldet.install` downloads its tarball and runs its installer. That is the
+one place in NexPanel that fetches code and executes it as root, and it is
+bounded three ways: the **host is a constant** in the broker (an
+operator-supplied URL would turn a config file into arbitrary root execution),
+the download **path** must be a plain `/downloads/<name>.tar.gz`, and a
+**configured SHA-256 is enforced** before anything is unpacked. The observed
+hash is always returned and shown in the UI, so an operator who installs once
+unverified can pin it and have every install after that checked.
+
+**Honest limit, stated because it is real:** this is TLS-and-a-pinned-hostname
+trust, weaker than the signed, key-pinned chain the panel uses for its own
+releases ([26](26-self-update.md)) and for marketplace modules. It is the
+strongest thing maldet's distribution allows — rfxn publishes no signature and
+no stable checksum for the current tarball. During first-run setup the install
+is **attempted and its failure is not fatal**: every other baseline component
+comes from the host's own repositories, and a third-party download being briefly
+unreachable must not hold a whole install hostage. The gap is visible — the
+malware screen shows maldet as not installed, with a one-click Install.
+
+The scan itself returns each detection (path + signature). Scanning is read-only and can run
 anywhere confined; the dangerous verb is `malware.quarantine`, which **moves**
 a detected file out of its site tree into a root-only holding area
 (`/var/lib/nexpanel/quarantine`, 0600 root) where it can neither be served nor
@@ -184,9 +224,9 @@ count labels without a number. `fim.status` reports whether a baseline exists.
 **Audit scanners (`audit.scan`):** **rkhunter** (rootkit hunter) and **lynis**
 (system auditor) run on demand and their output is parsed — rkhunter's warning
 count, lynis's hardening index + warning/suggestion counts, plus the report.
-`maldet` is deliberately not wired: it is another ClamAV-style malware scanner
-and would duplicate the malware module, whereas rkhunter and lynis add different
-signal (rootkit heuristics, a configuration audit). These scans take minutes, so
+These are host scanners, distinct from the two file scanners in §2: rkhunter and
+lynis add rootkit heuristics and a configuration audit rather than more
+signatures. These scans take minutes, so
 their client-side broker timeout and the server write timeout
 (`NP_SERVER_WRITE_TIMEOUT`) are raised accordingly.
 

@@ -14,12 +14,24 @@ import (
 	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
-// DefaultVersion is used when a PHP site does not specify a version.
-const DefaultVersion = "8.3"
+// DefaultVersion is used when a PHP site does not specify a version. It is one
+// release behind the newest on purpose: the newest is where plugin and framework
+// compatibility is thinnest, and a panel default is what somebody gets when they
+// express no opinion at all.
+const DefaultVersion = "8.4"
 
-// SupportedVersions is the set of selectable PHP versions. (Runtime detection of
-// installed versions is a follow-up; this is the allowlist for now.)
-var SupportedVersions = []string{"8.1", "8.2", "8.3"}
+// SupportedVersions is the set of selectable PHP versions, oldest first.
+//
+// The end-of-life releases are here deliberately. A panel that refuses 7.4 does
+// not move that application forward; it moves it to a host with no panel, where
+// nothing is confined and nobody is watching. So the version is selectable and
+// the interface says plainly what it is - see the catalogue's support chips.
+//
+// This is an allowlist, not a reading of the host: it says what npd will write a
+// pool for, and php-fpm<version> still has to exist on the machine (Sury on
+// Debian and Ubuntu, Remi on RHEL). Detecting what is actually installed is a
+// follow-up.
+var SupportedVersions = []string{"7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5"}
 
 // IsSupported reports whether v is a selectable version.
 func IsSupported(v string) bool {

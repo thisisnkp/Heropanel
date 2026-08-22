@@ -30,28 +30,6 @@
         },
         "type": "object"
       },
-      "AdminerSSO": {
-        "properties": {
-          "db": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          },
-          "server": {
-            "type": "string"
-          },
-          "url": {
-            "description": "Adminer endpoint to POST the throwaway credential to.",
-            "type": "string"
-          },
-          "username": {
-            "description": "Throwaway account, auto-expired.",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "AuditEntry": {
         "properties": {
           "action": {
@@ -840,6 +818,40 @@
         },
         "type": "object"
       },
+      "PMACredentials": {
+        "properties": {
+          "database": {
+            "description": "The one database this account is granted on.",
+            "type": "string"
+          },
+          "password": {
+            "description": "Returned once, to phpMyAdmin only, and never stored.",
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "username": {
+            "description": "Throwaway account, dropped by the sweeper after fifteen minutes.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PMAHandoff": {
+        "properties": {
+          "expires_at": {
+            "description": "The ticket expires a minute after it is issued.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "description": "Open this in a new tab. It carries a one-time ticket and no credentials.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ParkedDomain": {
         "properties": {
           "attached": {
@@ -987,6 +999,17 @@
             "type": "string"
           },
           "primary_domain": {
+            "type": "string"
+          },
+          "stack": {
+            "description": "What the site runs, as the panel presents it. Distinct from type: static, php, node, python and app are five stacks over three vhost shapes, so a client cannot derive this from type alone.",
+            "enum": [
+              "static",
+              "php",
+              "node",
+              "python",
+              "app"
+            ],
             "type": "string"
           },
           "status": {
@@ -3713,6 +3736,79 @@
         "x-required-permission": "database.write"
       }
     },
+    "/api/v1/databases/sso/redeem": {
+      "post": {
+        "operationId": "api_v1_databases_sso_redeem_redeem_a_sign_on_ticket",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ticket": {
+                    "description": "The one-time ticket from the hand-off URL.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ticket"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PMACredentials"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Called by phpMyAdmin's sign-on script on this host, not by a browser. Refused (403) unless the connection is from loopback — RemoteAddr, never a forwarded header. The ticket is single-use and lives for one minute; what it yields is an account on one database that the sweeper drops after fifteen."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [],
+        "summary": "Redeem a sign-on ticket",
+        "tags": [
+          "Databases"
+        ]
+      }
+    },
     "/api/v1/databases/{uid}": {
       "delete": {
         "description": "Requires the `database.write` permission.",
@@ -3774,92 +3870,6 @@
           }
         },
         "summary": "Drop a database",
-        "tags": [
-          "Databases"
-        ],
-        "x-required-permission": "database.write"
-      }
-    },
-    "/api/v1/databases/{uid}/adminer-sso": {
-      "post": {
-        "description": "Requires the `database.write` permission.",
-        "operationId": "api_v1_databases_uid_adminer_sso_adminer_single_sign_on",
-        "parameters": [
-          {
-            "description": "Resource UID.",
-            "in": "path",
-            "name": "uid",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/AdminerSSO"
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/Meta"
-                    }
-                  },
-                  "required": [
-                    "data",
-                    "meta"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Mints a throwaway credential to POST into Adminer."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Validation or request error"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not authenticated"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Authenticated but missing the required permission"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal error"
-          }
-        },
-        "summary": "Adminer single sign-on",
         "tags": [
           "Databases"
         ],
@@ -4085,6 +4095,92 @@
           }
         },
         "summary": "Import into a database",
+        "tags": [
+          "Databases"
+        ],
+        "x-required-permission": "database.write"
+      }
+    },
+    "/api/v1/databases/{uid}/phpmyadmin": {
+      "post": {
+        "description": "Requires the `database.write` permission.",
+        "operationId": "api_v1_databases_uid_phpmyadmin_open_a_database_in_phpmyadmin",
+        "parameters": [
+          {
+            "description": "Resource UID.",
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PMAHandoff"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Returns a URL to open and nothing else. The one-time ticket it carries is worthless without loopback access to this panel; phpMyAdmin's own sign-on script redeems it server-side for a throwaway MariaDB account scoped to this one database and expiring in fifteen minutes. No password is ever put in the page."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Open a database in phpMyAdmin",
         "tags": [
           "Databases"
         ],
@@ -12522,6 +12618,174 @@
         "x-required-permission": "security.write"
       }
     },
+    "/api/v1/security/malware/engines": {
+      "get": {
+        "description": "Requires the `security.read` permission.",
+        "operationId": "api_v1_security_malware_engines_malware_scanners_available_on_this_host",
+        "responses": {
+          "200": {
+            "description": "Which scanners can actually run. ClamAV comes from a distribution package the baseline installs; maldet ships no package, so it reports whether it is installed and which signature set it holds."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Malware scanners available on this host",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.read"
+      }
+    },
+    "/api/v1/security/malware/maldet/install": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_malware_maldet_install_install_maldet",
+        "responses": {
+          "200": {
+            "description": "Downloads maldet from the pinned host over TLS and runs its installer. Returns the SHA-256 of what was installed so it can be pinned in config and every later install verified against it. This is the one place the panel fetches code and runs it as root; it is force-audited."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Install maldet",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
+    "/api/v1/security/malware/maldet/update": {
+      "post": {
+        "description": "Requires the `security.write` permission.",
+        "operationId": "api_v1_security_malware_maldet_update_update_maldet_signatures",
+        "responses": {
+          "200": {
+            "description": "Pulls a fresh signature pack and reports the resulting revision."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Update maldet signatures",
+        "tags": [
+          "Security"
+        ],
+        "x-required-permission": "security.write"
+      }
+    },
     "/api/v1/security/quarantine": {
       "get": {
         "description": "Requires the `security.read` permission.",
@@ -13289,7 +13553,18 @@
                   "primary_domain": {
                     "type": "string"
                   },
+                  "stack": {
+                    "description": "What to run. Decides the vhost shape, so send this rather than type. \"wp\" is rejected until the WordPress module exists.",
+                    "enum": [
+                      "static",
+                      "php",
+                      "node",
+                      "python"
+                    ],
+                    "type": "string"
+                  },
                   "type": {
+                    "description": "The vhost shape. Accepted for older clients and ignored when stack is set.",
                     "enum": [
                       "php",
                       "static",
@@ -13300,8 +13575,7 @@
                 },
                 "required": [
                   "name",
-                  "primary_domain",
-                  "type"
+                  "primary_domain"
                 ],
                 "type": "object"
               }
@@ -17873,7 +18147,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Runs ClamAV over the site's tree and returns each detection (path + signature). A scan is read-only; quarantining a detection is a separate, deliberate act."
+            "description": "Runs a malware scanner over the site's tree and returns each detection (path + signature). The scanner is chosen with ?engine=clamav|maldet and defaults to ClamAV; the scan record names which one ran, because a clean result from one says nothing about the other. A scan is read-only — quarantining a detection is a separate, deliberate act, and maldet's own quarantine is switched off so the panel's is the only one."
           },
           "400": {
             "content": {

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoPanel } from "./helpers";
 
 /**
  * Every screen the panel links to, found by crawling rather than by a list.
@@ -16,8 +17,8 @@ import { expect, test, type Page } from "@playwright/test";
 const SEEDS = [
   "/",
   "/websites",
-  "/sites/1/overview",
-  "/sites/2/overview",
+  "/sites/e2e-php/overview",
+  "/sites/e2e-node/overview",
   "/security/overview",
   "/apps/installed",
   "/apps/install",
@@ -55,7 +56,7 @@ async function expandAll(page: Page) {
 async function crawl(page: Page): Promise<string[]> {
   const found = new Set<string>();
   for (const seed of SEEDS) {
-    await page.goto(seed);
+    await gotoPanel(page, seed);
     await expandAll(page);
     for (const href of await linksOn(page)) found.add(href);
     found.add(seed);
@@ -77,7 +78,7 @@ test("every linked screen renders its own content, with one heading and no error
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
 
-    await page.goto(path);
+    await gotoPanel(page, path);
 
     const headings = await page.locator("h1").count();
     if (headings !== 1) failures.push(`${path}: ${headings} <h1> (want exactly 1)`);
@@ -111,7 +112,7 @@ for (const width of [360, 901]) {
     const failures: string[] = [];
 
     for (const path of paths) {
-      await page.goto(path);
+      await gotoPanel(page, path);
 
       const blown = await page.evaluate(() => {
         const bad: string[] = [];

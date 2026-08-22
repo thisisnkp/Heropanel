@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { ADMIN, gotoPanel } from "./helpers";
 
 /**
  * The shell's scoped contexts and its global overlays.
@@ -13,12 +14,12 @@ import { expect, test } from "@playwright/test";
 test.describe("scoped sidebars", () => {
   test("each context replaces the global sidebar and keeps the rail", async ({ page }) => {
     for (const [path, label] of [
-      ["/sites/1/cron", "Site sections"],
+      ["/sites/e2e-php/cron", "Site sections"],
       ["/security/firewall", "Security sections"],
       ["/apps/installed", "Apps sections"],
       ["/dns?domain=novaretail.in", "Domain sections"],
     ] as const) {
-      await page.goto(path);
+      await gotoPanel(page, path);
       await expect(page.locator(`aside[aria-label="${label}"]`), path).toBeVisible();
       // The global sidebar is gone, and the rail is there instead — otherwise a
       // scoped context is a dead end with no way back to the rest of the panel.
@@ -30,16 +31,16 @@ test.describe("scoped sidebars", () => {
   test("the zone picker is not a context, but a picked zone is", async ({ page }) => {
     // With no domain chosen there is nothing to name in a sidebar; claiming a
     // context here would put a switcher above an empty editor.
-    await page.goto("/dns");
+    await gotoPanel(page, "/dns");
     await expect(page.locator(".nx-sidebar")).toBeVisible();
     await expect(page.locator('aside[aria-label="Domain sections"]')).toHaveCount(0);
 
-    await page.goto("/dns?domain=brightlabs.dev");
+    await gotoPanel(page, "/dns?domain=brightlabs.dev");
     await expect(page.locator('aside[aria-label="Domain sections"]')).toBeVisible();
   });
 
   test("the security chips count live state, not a constant", async ({ page }) => {
-    await page.goto("/security/ssh");
+    await gotoPanel(page, "/security/ssh");
     const sidebar = page.locator('aside[aria-label="Security sections"]');
     // Two warnings out of the box: scheduled scanning and real-time protection
     // are both off in the defaults, and the chip says so rather than saying the
@@ -63,7 +64,7 @@ test.describe("scoped sidebars", () => {
   });
 
   test("the apps sidebar carries the catalogue tree", async ({ page }) => {
-    await page.goto("/apps/install?category=php");
+    await gotoPanel(page, "/apps/install?category=php");
     const sidebar = page.locator('aside[aria-label="Apps sections"]');
     // The PHP category sits under "Server side scripting", which must arrive
     // expanded when the link points inside it.
@@ -78,7 +79,7 @@ test.describe("scoped sidebars", () => {
 
 test.describe("website switcher", () => {
   test("switches site and stays on the same section", async ({ page }) => {
-    await page.goto("/sites/1/cron");
+    await gotoPanel(page, "/sites/e2e-php/cron");
     await expect(page.locator("body")).toContainText("Cron jobs");
 
     await page.getByRole("button", { name: "Switch website" }).click();
@@ -87,22 +88,22 @@ test.describe("website switcher", () => {
 
     // Same section, different site: comparing two sites' cron jobs should not
     // mean going back to the list and drilling in again.
-    await expect(page).toHaveURL(/\/sites\/2\/cron$/);
+    await expect(page).toHaveURL(/\/sites\/e2e-node\/cron$/);
     await expect(page.locator("body")).toContainText("Cron jobs");
   });
 
   test("falls back to the overview when the section cannot exist there", async ({ page }) => {
     // Site 1 is WordPress; site 2 is not, and has no plugins screen.
-    await page.goto("/sites/1/wp/plugins");
+    await gotoPanel(page, "/sites/e2e-php/wp/plugins");
     await page.getByRole("button", { name: "Switch website" }).click();
     await page.getByPlaceholder("Search websites").fill("api");
     await page.locator(".nx-sw__item").first().click();
 
-    await expect(page).toHaveURL(/\/sites\/2\/overview$/);
+    await expect(page).toHaveURL(/\/sites\/e2e-node\/overview$/);
   });
 
   test("says so when nothing matches, rather than showing an empty list", async ({ page }) => {
-    await page.goto("/sites/1/overview");
+    await gotoPanel(page, "/sites/e2e-php/overview");
     await page.getByRole("button", { name: "Switch website" }).click();
     await page.getByPlaceholder("Search websites").fill("zzzz");
     await expect(page.locator(".nx-sw__empty")).toContainText("No website matches");
@@ -112,19 +113,19 @@ test.describe("website switcher", () => {
   });
 
   test("explains why this site's menu looks the way it does", async ({ page }) => {
-    await page.goto("/sites/1/overview");
+    await gotoPanel(page, "/sites/e2e-php/overview");
     const drawer = page.locator('aside[aria-label="Site sections"]');
     await expect(drawer).toContainText("SHOWN FOR THIS SITE");
-    await expect(drawer).toContainText("WordPress site");
+    await expect(drawer).toContainText("PHP site");
 
-    await page.goto("/sites/2/overview");
+    await gotoPanel(page, "/sites/e2e-node/overview");
     await expect(drawer).toContainText("Node.js site");
   });
 });
 
 test.describe("shell overlays", () => {
   test("⌘K opens search and Enter navigates", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await page.keyboard.press("ControlOrMeta+k");
 
     const field = page.getByPlaceholder("Search sites, files, domains");
@@ -133,11 +134,11 @@ test.describe("shell overlays", () => {
     await field.fill("brightlabs");
     await expect(page.locator(".pal__hit").first()).toContainText("brightlabs.dev");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/sites\/\d+\/overview$/);
+    await expect(page).toHaveURL(/\/sites\/e2e-static\/overview$/);
   });
 
   test("search finds screens as well as sites", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await page.keyboard.press("ControlOrMeta+k");
     await page.getByPlaceholder("Search sites, files, domains").fill("Containers");
     await page.locator(".pal__hit").first().click();
@@ -145,7 +146,7 @@ test.describe("shell overlays", () => {
   });
 
   test("Ask AI opens a panel that states its work before doing it", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await page.getByRole("button", { name: "Ask AI" }).click();
 
     const panel = page.getByRole("complementary", { name: "NexPanel AI" });
@@ -161,7 +162,7 @@ test.describe("shell overlays", () => {
   });
 
   test("applying a proposal reports into the job tray, not a toast", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await page.getByRole("button", { name: "Ask AI" }).click();
     await page.getByRole("button", { name: "Apply", exact: true }).click();
 
@@ -182,7 +183,7 @@ test.describe("shell overlays", () => {
   });
 
   test("a deploy is a job, not a message that disappears", async ({ page }) => {
-    await page.goto("/sites/2/overview");
+    await gotoPanel(page, "/sites/e2e-node/overview");
     await page.getByRole("button", { name: /Redeploy/ }).first().click();
     await expect(page.locator(".jt")).toContainText("api.novaretail.in");
   });
@@ -190,7 +191,7 @@ test.describe("shell overlays", () => {
 
 test.describe("the file manager is its own window", () => {
   test("renders with no panel chrome at all", async ({ page }) => {
-    await page.goto("/sites/1/files");
+    await gotoPanel(page, "/sites/e2e-php/files");
 
     // Not "the drawer is hidden" — none of the panel chrome is rendered. The
     // design opens this as a separate document precisely so the tool gets the
@@ -211,7 +212,7 @@ test.describe("the file manager is its own window", () => {
   });
 
   test("is opened in a new tab from everywhere that links to it", async ({ page }) => {
-    await page.goto("/sites/1/overview");
+    await gotoPanel(page, "/sites/e2e-php/overview");
 
     const quick = page.locator(".ov__quick").filter({ hasText: "File manager" }).first();
     await expect(quick).toHaveAttribute("target", "_blank");
@@ -222,30 +223,33 @@ test.describe("the file manager is its own window", () => {
     await page.locator("aside .nx-row").filter({ hasText: "Files" }).first().click();
     const drawer = page.locator("aside a.nx-row").filter({ hasText: "File manager" }).first();
     await expect(drawer).toHaveAttribute("target", "_blank");
-    await expect(drawer).toHaveAttribute("href", "/sites/1/files");
+    await expect(drawer).toHaveAttribute("href", "/sites/e2e-php/files");
   });
 
   test("a direct link is not a dead end", async ({ page }) => {
     // Reached from a bookmark, with no panel tab to go back to.
-    await page.goto("/sites/2/files");
+    await gotoPanel(page, "/sites/e2e-node/files");
     await page.getByRole("link", { name: "Back to panel" }).click();
-    await expect(page).toHaveURL(/\/sites\/2\/overview$/);
+    await expect(page).toHaveURL(/\/sites\/e2e-node\/overview$/);
     // Full panel chrome again on the way out.
     await expect(page.locator(".nx-rail")).toBeVisible();
   });
 });
 
 test.describe("chrome details the design specifies", () => {
-  test("the sidebar names who is signed in and on what plan", async ({ page }) => {
-    await page.goto("/");
+  // The name comes from the session, not from a fixture. This is the whole
+  // account chain in one assertion: npd's principal → the session store → the
+  // account store's derived initials → the avatar.
+  test("the sidebar names who is actually signed in", async ({ page }) => {
+    await gotoPanel(page, "/");
     const sidebar = page.locator(".nx-sidebar");
-    await expect(sidebar).toContainText("Aarav Rao");
+    await expect(sidebar).toContainText(ADMIN.username);
     await expect(sidebar).toContainText("Business plan");
-    await expect(sidebar.locator(".nx-sidebar__avatar")).toHaveText("AR");
+    await expect(sidebar.locator(".nx-sidebar__avatar")).toHaveText("E");
   });
 
   test("counts and badges come from what they count", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     const sidebar = page.locator(".nx-sidebar");
     // Four mailboxes in the fixture, four beside Mail.
     await expect(sidebar.getByRole("link", { name: /Mail/ })).toContainText("4");
@@ -263,7 +267,7 @@ test.describe("chrome details the design specifies", () => {
     const FILLED_HOME = "M4 21V9l8-6l8 6v12h-6v-7h-4v7z";
     const OUTLINE_HOME = "M6 19h3v-6h6v6h3v-9l-6-4.5L6 10zm-2 2V9l8-6l8 6v12h-7v-6h-2v6zm8-8.75";
 
-    await page.goto("/");
+    await gotoPanel(page, "/");
     const home = page.locator(".nx-sidebar").getByRole("link", { name: /^Home/ }).locator("svg path");
     const d = await home.first().getAttribute("d");
     expect(d).toBe(OUTLINE_HOME);

@@ -11,6 +11,7 @@ import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { STACKS, STACK_KEYS, type StackKey } from "@/config/stacks";
 import { AUTOMATION_TILES } from "@/data/dashboard";
+import { api, ApiRequestError } from "@/lib/api";
 import { useSitesStore, type Site } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
 
@@ -33,8 +34,8 @@ const STATUS_LABEL: Record<Site["status"], string> = {
   suspended: "suspended",
 };
 
-function openSite(id: number) {
-  void router.push({ name: "site-overview", params: { id: String(id) } });
+function openSite(uid: string) {
+  void router.push({ name: "site-overview", params: { uid } });
 }
 
 const wizardOpen = ref(false);
@@ -49,6 +50,8 @@ function startCreate(stack: StackKey) {
 // ---- delete confirmation ----------------------------------------------------
 const pendingDelete = ref<Site | null>(null);
 const typedName = ref("");
+const deleting = ref(false);
+const deleteError = ref<string | null>(null);
 
 const canDelete = computed(
   () => pendingDelete.value !== null && typedName.value.trim() === pendingDelete.value.domain,
@@ -57,15 +60,32 @@ const canDelete = computed(
 function askDelete(site: Site) {
   pendingDelete.value = site;
   typedName.value = "";
+  deleteError.value = null;
 }
 
-function confirmDelete() {
+/**
+ * Deletes on the server, then drops the row.
+ *
+ * In that order. Removing the row first shows the site as gone whether or not
+ * it is — and a delete that failed halfway is exactly the state an operator has
+ * to be able to see rather than have hidden behind an optimistic list.
+ */
+async function confirmDelete() {
   if (!canDelete.value || !pendingDelete.value) return;
-  const name = pendingDelete.value.name;
-  sites.remove(pendingDelete.value.id);
-  pendingDelete.value = null;
-  typedName.value = "";
-  ui.toast(name + " deleted.", "success");
+  const { uid, name } = pendingDelete.value;
+  deleting.value = true;
+  deleteError.value = null;
+  try {
+    await api.del(`/sites/${uid}`);
+    sites.remove(uid);
+    pendingDelete.value = null;
+    typedName.value = "";
+    ui.toast(name + " deleted.", "success");
+  } catch (e) {
+    deleteError.value = e instanceof ApiRequestError ? e.message : "The website could not be deleted.";
+  } finally {
+    deleting.value = false;
+  }
 }
 </script>
 
@@ -128,7 +148,21 @@ function confirmDelete() {
       </div>
     </div>
 
-    <NxCard v-if="sites.count > 0" flush>
+    <!-- Three states, not two. "No websites yet" is a claim about the server,
+         and showing it while the list is still in flight — or after the request
+         failed — makes the panel assert something it does not know. -->
+    <NxCallout v-if="sites.error" tone="danger" title="Could not load your websites">
+      {{ sites.error }}
+      <template #actions>
+        <NxButton size="sm" @click="sites.reload()">Try again</NxButton>
+      </template>
+    </NxCallout>
+
+    <NxCard v-else-if="sites.loading && sites.count === 0" flush>
+      <div class="list__loading"><NxSkeleton height="160px" /></div>
+    </NxCard>
+
+    <NxCard v-else-if="sites.count > 0" flush>
       <NxTable
         :columns="[
           { key: 'name', label: 'Website', width: '1.9fr' },
@@ -138,7 +172,7 @@ function confirmDelete() {
           { key: 'actions', label: '', width: '168px', align: 'end' },
         ]"
         :rows="sites.sites"
-        :row-key="(s) => s.id"
+        :row-key="(s) => s.uid"
       >
         <template #default="{ row }">
           <div class="list__name-cell">
@@ -156,7 +190,7 @@ function confirmDelete() {
           <div class="list__muted nx-mono nx-truncate">{{ row.deploy }}</div>
           <div class="list__muted nx-truncate">{{ row.lastDeploy }}</div>
           <div class="list__actions">
-            <NxButton variant="primary" @click="openSite(row.id)">Dashboard</NxButton>
+            <NxButton variant="primary" @click="openSite(row.uid)">Dashboard</NxButton>
             <NxButton variant="danger" @click="askDelete(row)">Delete</NxButton>
           </div>
         </template>
@@ -181,6 +215,8 @@ function confirmDelete() {
       :dismissible="false"
       @update:open="(v) => { if (!v) pendingDelete = null; }"
     >
+      <NxCallout v-if="deleteError" tone="danger">{{ deleteError }}</NxCallout>
+
       <NxField label="Type the domain to confirm" :hint="'Enter ' + (pendingDelete?.domain ?? '') + ' exactly.'">
         <template #default="{ id, describedBy }">
           <NxInput
@@ -196,7 +232,13 @@ function confirmDelete() {
 
       <template #footer>
         <NxButton @click="pendingDelete = null">Cancel</NxButton>
-        <NxButton variant="primary" class="list__delete-btn" :disabled="!canDelete" @click="confirmDelete">
+        <NxButton
+          variant="primary"
+          class="list__delete-btn"
+          :disabled="!canDelete"
+          :loading="deleting"
+          @click="confirmDelete"
+        >
           Delete website
         </NxButton>
       </template>
@@ -330,6 +372,7 @@ function confirmDelete() {
 .list__muted { color: var(--nx-text-muted); }
 .list__actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+.list__loading { padding: 16px; }
 .list__empty {
   background: var(--nx-surface);
   border: 1px dashed var(--nx-border-strong);

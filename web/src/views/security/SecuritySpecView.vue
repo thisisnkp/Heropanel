@@ -58,6 +58,11 @@ const bindsChoice = computed(() =>
       <p class="secv__sub">{{ spec.sub }}</p>
     </header>
 
+    <!-- The one live piece on these screens: which scanners this host can
+         actually run. Everything else here is still a fixture, and "is maldet
+         installed" is the one question a fixture cannot answer without lying. -->
+    <MalwareEngines v-if="securityKey === 'malware'" />
+
     <SpecScreen v-if="bindsChoice" v-model:choice="choice" :spec="spec" />
     <SpecScreen v-else :spec="spec" />
   </div>

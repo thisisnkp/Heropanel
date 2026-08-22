@@ -694,13 +694,19 @@ func (s *Service) RunDelete(ctx context.Context, uid string, p job.Progress) err
 // deprovision removes the site's runtime footprint. The DB row is already
 // soft-deleted, so re-applying the web-server config drops this site's vhost.
 func (s *Service) deprovision(ctx context.Context, rec *Record, p job.Progress) error {
+	// With no broker there is nothing to de-provision: no vhost was ever applied,
+	// no Linux user was ever created, no slice exists. Checking this first — and
+	// not after applyWebserver — matters because the row is already soft-deleted
+	// by the time we get here. Trying anyway fails with "broker unavailable" and
+	// reports the delete as failed, so the operator is told nothing happened
+	// about a site that has in fact gone.
+	if s.broker == nil {
+		return nil
+	}
 	// Drop this site's vhost by re-rendering the remaining serving sites.
 	p.Report(40, "reconfiguring web server")
 	if err := s.applyWebserver(ctx, 0); err != nil {
 		return err
-	}
-	if s.broker == nil {
-		return nil
 	}
 	// The app unit was already removed in RunDelete, before the soft-delete, so it
 	// is gone by now. Tear the slice down next, so nothing is left pointing at a
@@ -827,6 +833,31 @@ func (s *Service) AppExposure(ctx context.Context, project string) (*Site, error
 	return s.toView(ctx, rec), nil
 }
 
+// typeForStack maps a stack the operator picked onto the vhost shape that
+// serves it.
+//
+// "wp" is refused rather than quietly created as a PHP site. The panel has no
+// WordPress module yet — no wp-cli, no install, no LiteSpeed Cache plugin — so
+// accepting it would hand back a site badged WordPress with no WordPress on it.
+// Refusing is the honest answer until that module exists.
+func typeForStack(stack string) (Type, error) {
+	switch stack {
+	case "static":
+		return TypeStatic, nil
+	case "php":
+		return TypePHP, nil
+	case "node", "python":
+		return TypeProxy, nil
+	case "wp":
+		return "", errx.Validation("stack_unavailable",
+			"WordPress sites are not available yet. Create a PHP site and install WordPress into it.",
+			errx.Field{Field: "stack", Code: "unavailable", Message: "no WordPress module"})
+	default:
+		return "", errx.Validation("invalid_stack", "Unknown stack.",
+			errx.Field{Field: "stack", Code: "unsupported", Message: "must be static, php, node or python"})
+	}
+}
+
 func validateCreate(in *CreateInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	in.PrimaryDomain = strings.ToLower(strings.TrimSpace(in.PrimaryDomain))
@@ -836,6 +867,17 @@ func validateCreate(in *CreateInput) error {
 	}
 	if err := validateFQDN(in.PrimaryDomain); err != nil {
 		return err
+	}
+	// Stack is what the caller actually chose; Type is how the vhost gets built.
+	// Taking the stack here — rather than making the client map it — keeps the
+	// vocabulary in one place, and keeps the panel able to refuse a stack it
+	// cannot deliver instead of silently making something adjacent.
+	if in.Stack != "" {
+		typ, err := typeForStack(in.Stack)
+		if err != nil {
+			return err
+		}
+		in.Type = typ
 	}
 	switch in.Type {
 	case TypeStatic, TypePHP, TypeProxy:

@@ -23,10 +23,10 @@ const jobs = useJobsStore();
 const ui = useUiStore();
 
 const site = computed(() => sites.current);
-const rows = computed(() => (site.value ? dbs.forSite(site.value.id) : []));
+const rows = computed(() => (site.value ? dbs.forSite(site.value.domain) : []));
 
-function siteName(id: number | null) {
-  return sites.sites.find((s) => s.id === id)?.domain ?? "";
+function siteName(domain: string | null) {
+  return domain ?? "";
 }
 
 /** "14 Mar 2026" — an ISO date is stored, a readable one is shown. */
@@ -125,7 +125,7 @@ const complete = computed(
 
 function create() {
   if (!complete.value || !site.value) return;
-  dbs.add(prefix.value + dbName.value, prefix.value + userName.value, site.value.id);
+  dbs.add(prefix.value + dbName.value, prefix.value + userName.value, site.value.domain);
   ui.toast(`Created ${prefix.value}${dbName.value}.`, "success");
   dbName.value = "";
   userName.value = "";
@@ -139,13 +139,13 @@ const openMenu = ref<string | null>(null);
 
 function assign(db: Database) {
   if (!site.value) return;
-  dbs.assign(db.name, site.value.id);
+  dbs.assign(db.name, site.value.domain);
   ui.toast(`${db.name} is now linked to ${site.value.domain}.`, "success");
 }
 
 /** Repair is a long-running table scan, so it reports in the job tray. */
 function repair(db: Database) {
-  jobs.start("Repair " + db.name, siteName(db.siteId) || "unassigned", "Checking tables");
+  jobs.start("Repair " + db.name, siteName(db.siteDomain) || "unassigned", "Checking tables");
 }
 
 const pwFor = ref<Database | null>(null);
@@ -317,7 +317,7 @@ function confirmDelete() {
               <!-- Owned by this site, or owned by nobody. There is no third case
                    here: another site's databases are not in this list. -->
               <span v-if="!dbs.isOrphan(row)" class="db__linked nx-mono nx-truncate">
-                {{ siteName(row.siteId) }}
+                {{ siteName(row.siteDomain) }}
               </span>
               <NxButton v-else size="sm" @click="assign(row)">
                 <NxIcon name="add-link" size="sm" />
@@ -326,6 +326,12 @@ function confirmDelete() {
             </div>
 
             <div class="db__row-actions">
+              <!-- Goes to the phpMyAdmin screen for now. The hand-off itself is
+                   live on the server — POST /databases/{uid}/phpmyadmin returns
+                   a one-time ticket URL, and lib/api.ts's openPhpMyAdmin opens
+                   it — but this list is still fixtures, so its rows carry no
+                   database uid to hand it. It becomes a direct call the moment
+                   the list is wired. -->
               <NxButton size="sm" @click="router.push({ name: 'site-phpmyadmin' })">
                 Enter phpMyAdmin
               </NxButton>

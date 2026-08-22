@@ -8,7 +8,7 @@
 BIN := bin
 GOFLAGS := -trimpath
 
-.PHONY: all dist web build test race vet fmt run clean tidy
+.PHONY: all dist web build test race vet fmt run dev-api clean tidy
 
 all: build
 
@@ -43,6 +43,16 @@ fmt:
 ## run: run npd from source (dev)
 run:
 	go run ./cmd/npd
+
+## dev-api: run npd for `vite dev` — SQLite, loopback, port 8443
+##
+## The Vite dev server proxies /api to 127.0.0.1:8443; this is what listens
+## there. SQLite because a workstation has no MariaDB, and the default driver
+## with an empty DSN boots npd with no datastore at all — which the panel
+## reports as `configured: false` and every login then fails.
+## Same thing as `npm --prefix web run dev:api`.
+dev-api:
+	NP_SERVER_HOST=127.0.0.1 NP_SERVER_PORT=8443 NP_DATABASE_DRIVER=sqlite NP_DATABASE_DSN=$(CURDIR)/np.db go run ./cmd/npd
 
 ## tidy: tidy go modules
 tidy:

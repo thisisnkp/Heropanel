@@ -1,21 +1,45 @@
 /**
- * The app marketplace, from the design.
+ * The app catalogue.
  *
  * Categories are nested one level deep (Server side scripting → PHP / Node.js /
  * Python) because that is how the design grouped them and because a flat list
  * of forty entries is not browsable. The nesting lives in the data, so the
  * catalogue screen renders a tree it is given rather than hard-coding which
  * category happens to have children.
+ *
+ * The stack categories — webservers, the language runtimes, databases — describe
+ * **this panel's stack**, not a marketplace. There is no marketplace: nothing
+ * here is fetched from anywhere, so what a card offers has to be something
+ * NexPanel actually manages or means to. Nginx, Apache, Caddy and MongoDB were
+ * removed for that reason — the panel deleted its nginx/apache renderers in the
+ * opinionated-stack change and never had a line of MongoDB, so a card offering
+ * them promised a thing that could not happen.
+ *
+ * Where the catalogue is wider than what the panel manages, the category says so
+ * in `note` rather than the card pretending otherwise. PostgreSQL is the case
+ * that matters: it installs and runs, and the panel's Databases screen does not
+ * manage it — which is exactly why pgAdmin is in the list beside it.
  */
 
 export type AppBadge = "Installed" | "Free" | string;
+
+/**
+ * Support status for versioned software, shown as a chip beside the name.
+ *
+ * `eol` is the one that earns its place: a panel that lists PHP 7.4 and Node 14
+ * without marking them is inviting someone to put an unpatched interpreter in
+ * front of the internet. They stay listed because legacy apps are real and the
+ * operator may have no choice — but not silently.
+ */
+export type AppTag = "current" | "active" | "lts" | "security-only" | "eol";
 
 export interface CatalogApp {
   readonly name: string;
   readonly icon: string;
   readonly desc: string;
-  /** "Installed", "Free", or a price like "₹149/mo". */
+  /** "Installed", "Free", "Licence", or a price like "₹149/mo". */
   readonly badge: AppBadge;
+  readonly tag?: AppTag;
 }
 
 export interface AppCategory {
@@ -25,9 +49,22 @@ export interface AppCategory {
   readonly sub: string;
   readonly apps: readonly CatalogApp[];
   readonly children?: readonly AppCategory[];
+  /**
+   * The constraint that governs the whole category — mutual exclusion, or a
+   * limit on what the panel manages. Shown above the grid, because it applies
+   * to every card and repeating it on each one would bury it.
+   */
+  readonly note?: string;
+  readonly noteTone?: "info" | "warning";
 }
 
-const app = (name: string, icon: string, desc: string, badge: AppBadge): CatalogApp => ({ name, icon, desc, badge });
+const app = (name: string, icon: string, desc: string, badge: AppBadge, tag?: AppTag): CatalogApp => ({
+  name,
+  icon,
+  desc,
+  badge,
+  ...(tag ? { tag } : {}),
+});
 
 export const APP_CATEGORIES: readonly AppCategory[] = [
   {
@@ -35,11 +72,23 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
     label: "Webservers",
     icon: "dns",
     sub: "The server that answers requests. Switching keeps your files untouched.",
+    note:
+      "These two are alternatives, not additions — LiteSpeed Enterprise is a drop-in replacement " +
+      "that reads the same configuration, so a host runs one of them. Nginx, Apache and Caddy are " +
+      "no longer offered: the panel no longer has a renderer for them.",
     apps: [
-      app("Nginx", "dns", "Fast reverse proxy and static file server. Panel default.", "Installed"),
-      app("OpenLiteSpeed", "bolt", "Built-in cache, excellent for WordPress.", "Free"),
-      app("Apache", "lan", "Widest .htaccess compatibility for legacy PHP apps.", "Free"),
-      app("Caddy", "enhanced-encryption", "Automatic HTTPS with the simplest config.", "Free"),
+      app(
+        "OpenLiteSpeed",
+        "bolt",
+        "The panel default, installed on every host. Event-driven, LiteSpeed Cache built in, .htaccess understood.",
+        "Installed",
+      ),
+      app(
+        "LiteSpeed Enterprise",
+        "dns",
+        "The same server under licence: LSAPI instead of FastCGI for PHP, ESI, and vendor support. Replaces OpenLiteSpeed in place.",
+        "Licence",
+      ),
     ],
   },
   {
@@ -54,10 +103,18 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
         label: "PHP",
         icon: "php",
         sub: "Versions, extensions and package tooling for PHP sites.",
+        note:
+          "Versions live side by side: each site picks one and gets its own FPM pool, so an old " +
+          "app can stay on 7.4 while everything else runs 8.4. Extensions and OPcache are the " +
+          "exception — those belong to the version's FPM master and change for every site on it.",
         apps: [
-          app("PHP 8.3", "php", "Current stable. Recommended for new sites.", "Installed"),
-          app("PHP 8.2", "php", "Keep alongside 8.3 for older plugins.", "Free"),
-          app("PHP 7.4", "php", "Legacy only — no security patches upstream.", "Free"),
+          app("PHP 8.5", "php", "Newest release. Ahead of what most plugins and frameworks have been tested against.", "Free", "current"),
+          app("PHP 8.4", "php", "The panel default: a new PHP site runs here unless you choose otherwise.", "Installed", "active"),
+          app("PHP 8.3", "php", "Still patched, and what a lot of production code was written for.", "Free", "security-only"),
+          app("PHP 8.2", "php", "Security fixes only. Fine for an app you are not moving yet.", "Free", "security-only"),
+          app("PHP 8.1", "php", "No upstream patches. Only for an app that has not been ported.", "Free", "eol"),
+          app("PHP 8.0", "php", "No upstream patches. Only for an app that has not been ported.", "Free", "eol"),
+          app("PHP 7.4", "php", "No upstream patches since 2022. Legacy apps only — do not start here.", "Free", "eol"),
           app("Composer", "inventory-2", "Dependency manager for PHP projects.", "Installed"),
           app("Imagick extension", "image", "Image processing for WordPress and Laravel.", "Free"),
           app("OPcache tuner", "speed", "Preload and tune the PHP bytecode cache.", "Free"),
@@ -68,9 +125,17 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
         label: "Node.js",
         icon: "javascript",
         sub: "Runtimes and process managers for Node apps.",
+        note:
+          "Even-numbered releases are the long-term ones; the odd ones are short-lived and are not " +
+          "offered. An app site runs the version its Linux user finds on PATH, so a host can carry " +
+          "several.",
         apps: [
-          app("Node.js 20 LTS", "javascript", "Long-term support. Panel default.", "Installed"),
-          app("Node.js 22", "javascript", "Latest features, shorter support window.", "Free"),
+          app("Node.js 24", "javascript", "The panel default for new app sites. Long-term support.", "Installed", "lts"),
+          app("Node.js 22", "javascript", "The previous long-term line. Still patched.", "Free", "lts"),
+          app("Node.js 20", "javascript", "Support ended. Move an app off it before the next dependency audit does it for you.", "Free", "eol"),
+          app("Node.js 18", "javascript", "Support ended in 2025.", "Free", "eol"),
+          app("Node.js 16", "javascript", "Support ended in 2023. Legacy apps only.", "Free", "eol"),
+          app("Node.js 14", "javascript", "Support ended in 2023. Legacy apps only.", "Free", "eol"),
           app("PM2", "dashboard", "Cluster mode, auto-restart, log rotation.", "Installed"),
           app("pnpm", "inventory-2", "Faster installs with a shared store.", "Free"),
           app("Bun", "bolt", "Drop-in fast runtime for scripts and APIs.", "Free"),
@@ -81,9 +146,18 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
         label: "Python",
         icon: "terminal",
         sub: "Interpreters and WSGI servers for Python apps.",
+        note:
+          "Not part of the default stack — a host gets an interpreter when a Python site needs one. " +
+          "Anything below 3.8 is missing from every current distribution and is not offered; " +
+          "Python 2 is not offered at all.",
         apps: [
-          app("Python 3.12", "terminal", "Current stable interpreter.", "Installed"),
-          app("Python 3.11", "terminal", "For projects pinned to an older release.", "Free"),
+          app("Python 3.14", "terminal", "Newest release.", "Free", "current"),
+          app("Python 3.13", "terminal", "A safe default for a new project.", "Free", "active"),
+          app("Python 3.12", "terminal", "Widely tested against by frameworks and wheels.", "Free", "security-only"),
+          app("Python 3.11", "terminal", "For a project pinned to it.", "Free", "security-only"),
+          app("Python 3.10", "terminal", "Security fixes only.", "Free", "security-only"),
+          app("Python 3.9", "terminal", "No upstream patches.", "Free", "eol"),
+          app("Python 3.8", "terminal", "No upstream patches. Legacy apps only.", "Free", "eol"),
           app("Gunicorn", "settings-ethernet", "WSGI server for Django and Flask.", "Free"),
           app("uWSGI", "settings-ethernet", "Alternative WSGI server with fine tuning.", "Free"),
           app("Poetry", "inventory-2", "Dependency and virtualenv management.", "Free"),
@@ -96,12 +170,24 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
     label: "Databases",
     icon: "database",
     sub: "Engines and browsers for your data.",
+    noteTone: "warning",
+    note:
+      "Two things to know before you install one. MariaDB and MySQL are the same seat — both want " +
+      "port 3306 and /var/lib/mysql, so installing MySQL replaces MariaDB rather than joining it. " +
+      "And the panel's Databases screen manages MariaDB only: PostgreSQL runs happily alongside on " +
+      "5432, but creating and managing its databases is yours to do through pgAdmin.",
     apps: [
-      app("MariaDB 11", "database", "MySQL-compatible, panel default.", "Installed"),
+      app("MariaDB 11.4 LTS", "database", "The panel default. Site databases, backups and the phpMyAdmin hand-off are all built against it.", "Installed", "lts"),
+      app("MariaDB 11.8 LTS", "database", "The newer long-term release.", "Free", "lts"),
+      app("MariaDB 10.11 LTS", "database", "For a host that came from an older panel and is not ready to move.", "Free", "lts"),
+      app("MySQL 8.4 LTS", "database", "Oracle's long-term release. Replaces MariaDB on this host; the panel drives it through the same tooling, untested.", "Free", "lts"),
+      app("MySQL 8.0", "database", "Security fixes only. Same replacement rule as 8.4.", "Free", "security-only"),
+      app("PostgreSQL 18", "database", "Newest release. Runs alongside MariaDB — the panel does not manage its databases.", "Free", "current"),
+      app("PostgreSQL 17", "database", "A safe default for a new PostgreSQL app.", "Free"),
       app("PostgreSQL 16", "database", "For apps that need JSONB and strict types.", "Free"),
-      app("MongoDB 7", "database", "Document store for Node projects.", "Free"),
-      app("phpMyAdmin", "table-view", "Browser UI for MySQL and MariaDB.", "Installed"),
-      app("pgAdmin", "table-view", "Browser UI for PostgreSQL.", "Free"),
+      app("PostgreSQL 15", "database", "For a project pinned to it.", "Free"),
+      app("phpMyAdmin", "table-view", "Browser UI for MariaDB. The panel signs you in with a one-time ticket, so no database password is typed or stored in the browser.", "Installed"),
+      app("pgAdmin 4", "table-view", "Browser UI for PostgreSQL — the way PostgreSQL is managed here, since the panel's own screen does not.", "Free"),
     ],
   },
   {
@@ -113,7 +199,7 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
       app("Redis", "bolt", "Object cache and session store.", "Installed"),
       app("Memcached", "memory", "Simple key-value cache for PHP.", "Free"),
       app("Varnish", "speed", "Full-page HTTP cache in front of your site.", "Free"),
-      app("LiteSpeed Cache", "speed", "Page cache for WordPress on OpenLiteSpeed.", "Free"),
+      app("LiteSpeed Cache", "speed", "Page cache built into the web server — there is nothing to install.", "Installed"),
     ],
   },
   {
@@ -134,10 +220,16 @@ export const APP_CATEGORIES: readonly AppCategory[] = [
     label: "Security",
     icon: "shield",
     sub: "Add-ons that extend the panel Security section.",
+    note:
+      "The first five are the always-on baseline: every NexPanel host gets them and the setup " +
+      "wizard does not offer to skip them. A fleet where some hosts have a firewall is worse than " +
+      "either answer taken uniformly, because no statement about the fleet is true any more.",
     apps: [
       app("ModSecurity WAF", "verified-user", "OWASP core rule set at the webserver.", "Installed"),
       app("Fail2Ban", "gpp-maybe", "Ban IPs after repeated failed logins.", "Installed"),
-      app("ClamAV", "bug-report", "Open-source malware signatures.", "Free"),
+      app("nftables", "security", "Host firewall. The panel writes the rules; the port it listens on is opened with a rollback timer.", "Installed"),
+      app("ClamAV", "bug-report", "General antivirus signatures, scanned on demand and on a schedule.", "Installed"),
+      app("maldet", "shield-lock", "Web shells and injected PHP, from shared-hosting intrusion data — the things a general antivirus corpus misses.", "Installed"),
       app("Malware Scanner Pro", "policy", "Scheduled scans and real-time protection.", "₹149/mo"),
       app("Wazuh Agent", "monitor-heart", "Host intrusion detection and file integrity.", "₹99/mo"),
     ],

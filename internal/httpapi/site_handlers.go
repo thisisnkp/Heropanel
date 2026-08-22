@@ -53,8 +53,12 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 		var req struct {
 			Name          string `json:"name"`
 			PrimaryDomain string `json:"primary_domain"`
-			Type          string `json:"type"`
-			DeployMode    string `json:"deploy_mode"`
+			// Stack is what to run ("static", "php", "node", "python"); it decides
+			// Type. Type is still accepted for callers written against the older
+			// shape, and is ignored when Stack is set.
+			Stack      string `json:"stack"`
+			Type       string `json:"type"`
+			DeployMode string `json:"deploy_mode"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -62,13 +66,18 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 		in := site.CreateInput{
 			Name:          req.Name,
 			PrimaryDomain: req.PrimaryDomain,
+			Stack:         req.Stack,
 			Type:          site.Type(req.Type),
 			DeployMode:    site.DeployMode(req.DeployMode),
 			OwnerID:       p.UserID,
 		}
 
 		audit.AddDetail(r.Context(), "primary_domain", req.PrimaryDomain)
-		audit.AddDetail(r.Context(), "type", req.Type)
+		if req.Stack != "" {
+			audit.AddDetail(r.Context(), "stack", req.Stack)
+		} else {
+			audit.AddDetail(r.Context(), "type", req.Type)
+		}
 
 		if d.Jobs != nil {
 			// Reject bad input up front, then enqueue.

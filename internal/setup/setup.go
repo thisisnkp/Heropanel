@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/thisisnkp/nexpanel/internal/domain"
+	"github.com/thisisnkp/nexpanel/internal/php"
 	"github.com/thisisnkp/nexpanel/pkg/errx"
 )
 
@@ -151,15 +152,25 @@ func DBEngines() []Option {
 // can be turned off — but the operator should still be told what is going on
 // their machine.
 //
-// LiteSpeed Cache is listed and is not in baselineComponents, because there is
-// nothing to install: page caching is built into OpenLiteSpeed and LiteSpeed
-// Enterprise. It appears here so the wizard describes the stack truthfully
-// rather than only listing the parts that happen to be packages.
+// Two entries are listed without being installed by BuildPlan, and Supported
+// separates them from the rest so the wizard can draw the difference:
+//
+//   - LiteSpeed Cache is Supported and has nothing to install. Page caching is
+//     built into OpenLiteSpeed and LiteSpeed Enterprise, so it is part of the
+//     stack the operator gets whether or not it is a package.
+//   - PHP and Node are the default runtimes and their provisioning is not
+//     written yet, so they are Supported: false. Listing them says what this
+//     stack is; the flag stops the wizard from ticking them as done. Leaving
+//     them out entirely would be the worse lie — a panel whose sites run PHP
+//     describing a stack with no PHP in it.
 func Baseline() []Option {
 	return []Option{
 		{ID: "lscache", Label: "LiteSpeed Cache", Note: "built into the web server", Supported: true},
+		{ID: "php", Label: "PHP " + php.DefaultVersion, Note: "per-site FPM pools", Supported: false},
+		{ID: "node", Label: "Node.js 24", Note: "app runtimes", Supported: false},
 		{ID: "phpmyadmin", Label: "phpMyAdmin", Note: "database management", Supported: true},
 		{ID: "clamav", Label: "ClamAV", Note: "malware scanning", Supported: true},
+		{ID: "maldet", Label: "maldet", Note: "web-shell and PHP malware scanning", Supported: true},
 		{ID: "fail2ban", Label: "Fail2Ban", Note: "brute-force blocking", Supported: true},
 		{ID: "modsecurity", Label: "ModSecurity + OWASP CRS", Note: "web application firewall", Supported: true},
 		{ID: "nftables", Label: "nftables", Note: "host firewall", Supported: true},
@@ -232,6 +243,10 @@ const (
 	StepPackage StepKind = "package" // install an OS package
 	StepService StepKind = "service" // enable + start a system service
 	StepModule  StepKind = "module"  // turn a panel module on or off
+	// StepMaldet installs Linux Malware Detect from its upstream tarball. It is
+	// its own kind because it is the one baseline component with no package: the
+	// broker cannot resolve it to apt or dnf, so it goes through maldet.install.
+	StepMaldet StepKind = "maldet"
 )
 
 // Step is one unit of provisioning work. Target is a package name, a service
@@ -283,10 +298,9 @@ var dbService = map[DBEngine]string{
 // firewall.go — so this is wiring up what the panel already assumes is there,
 // rather than a promise about future work.
 //
-// maldet (Linux Malware Detect) belongs in this list and is not here yet: it is
-// not in any distro repository, so it installs from an upstream tarball and
-// needs its own capability rather than a package name. Nothing else in the
-// baseline has that problem.
+// maldet is in the baseline but not in this list: it is not in any distribution
+// repository, so it installs from an upstream tarball through a capability of
+// its own rather than a package name. BrokerProvisioner runs that after these.
 var baselineComponents = []string{"phpmyadmin", "clamav", "fail2ban", "modsecurity", "nftables"}
 
 // baselineServices are the baseline units that must be running, as opposed to
@@ -319,6 +333,9 @@ func BuildPlan(sel Selection) Plan {
 	for _, c := range baselineComponents {
 		steps = append(steps, Step{Kind: StepPackage, Target: c, Enable: true, Note: "always installed"})
 	}
+	// maldet has no package, so it is its own step rather than a component the
+	// broker resolves to apt/dnf.
+	steps = append(steps, Step{Kind: StepMaldet, Target: "maldet", Enable: true, Note: "always installed"})
 	for _, svc := range baselineServices {
 		steps = append(steps, Step{Kind: StepService, Target: svc, Enable: true, Note: "always enabled"})
 	}

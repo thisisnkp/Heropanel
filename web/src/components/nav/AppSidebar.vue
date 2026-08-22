@@ -12,7 +12,9 @@ import { useRoute } from "vue-router";
 import { NAV_GROUPS, type NavEntry } from "@/config/navigation";
 import { MAILBOXES } from "@/data/mail";
 import { securityIssues } from "@/data/securitySpec";
+import { useRouter } from "vue-router";
 import { useAccountStore } from "@/stores/account";
+import { useSessionStore } from "@/stores/session";
 import { useFlagsStore } from "@/stores/flags";
 import { useSitesStore } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
@@ -21,6 +23,13 @@ const route = useRoute();
 const sites = useSitesStore();
 const flags = useFlagsStore();
 const account = useAccountStore();
+const session = useSessionStore();
+const router = useRouter();
+
+async function signOut() {
+  await session.logout();
+  await router.push({ name: "login" });
+}
 const ui = useUiStore();
 
 /**
@@ -114,17 +123,43 @@ function isOpen(entry: NavEntry) {
     <!-- Who is signed in and on what plan. The plan is here rather than only on
          the billing screen because it decides which entries above do anything:
          paid apps and extra seats are a plan question, not a permission one. -->
-    <RouterLink :to="{ name: 'billing' }" class="nx-sidebar__user">
-      <span class="nx-sidebar__avatar" aria-hidden="true">{{ account.initials }}</span>
-      <span class="nx-sidebar__user-text">
-        <span class="nx-sidebar__user-name">{{ account.name }}</span>
-        <span class="nx-sidebar__plan">{{ account.plan }} plan</span>
-      </span>
-    </RouterLink>
+    <div class="nx-sidebar__account">
+      <RouterLink :to="{ name: 'billing' }" class="nx-sidebar__user">
+        <span class="nx-sidebar__avatar" aria-hidden="true">{{ account.initials }}</span>
+        <span class="nx-sidebar__user-text">
+          <span class="nx-sidebar__user-name nx-truncate">{{ account.name }}</span>
+          <span class="nx-sidebar__plan">{{ account.plan }} plan</span>
+        </span>
+      </RouterLink>
+
+      <!-- A panel you can sign into and not out of is not finished. It is a
+           button next to the account rather than an item in the nav list
+           because signing out is not a place you go. -->
+      <button type="button" class="nx-sidebar__signout" aria-label="Sign out" @click="signOut">
+        <NxIcon name="logout" size="sm" />
+      </button>
+    </div>
   </aside>
 </template>
 
 <style scoped>
+.nx-sidebar__account { display: flex; align-items: center; gap: 4px; }
+.nx-sidebar__account .nx-sidebar__user { flex: 1; min-width: 0; }
+.nx-sidebar__signout {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-md);
+  background: none;
+  color: var(--nx-text-muted);
+  cursor: pointer;
+}
+.nx-sidebar__signout:hover { background: var(--nx-hover); color: var(--nx-text); }
+.nx-sidebar__signout:focus-visible { outline: var(--nx-focus-ring); }
+
 .nx-sidebar {
   width: 252px;
   flex: 0 0 252px;

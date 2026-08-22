@@ -56,12 +56,12 @@ const screens = computed<Hit[]>(() =>
 
 const all = computed<Hit[]>(() => [
   ...sites.sites.map((s) => ({
-    id: "site:" + s.id,
+    id: "site:" + s.uid,
     kind: "Website" as const,
     label: s.domain,
     sub: s.status === "live" ? "Live · " + s.deploy : "Building",
     icon: "language",
-    go: () => router.push({ name: "site-overview", params: { id: String(s.id) } }),
+    go: () => router.push({ name: "site-overview", params: { uid: s.uid } }),
   })),
   ...DNS_DOMAINS.map((d) => ({
     id: "zone:" + d,

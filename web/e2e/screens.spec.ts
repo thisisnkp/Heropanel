@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoPanel } from "./helpers";
 
 /**
  * Every screen, against a real npd.
@@ -38,18 +39,18 @@ const SCREENS: readonly (readonly [string, string])[] = [
   ["/security/login", "Login protection"],
   ["/security/logs", "Security logs"],
   ["/security/settings", "Security settings"],
-  ["/sites/1/overview", "Overview"],
-  ["/sites/1/pagespeed", "PageSpeed"],
-  ["/sites/1/ssl", "SSL"],
-  ["/sites/1/redirects", "Redirections"],
-  ["/sites/1/files", "File manager"],
-  ["/sites/1/databases", "Databases"],
-  ["/sites/1/php", "PHP settings"],
-  ["/sites/1/logs", "Logs"],
-  ["/sites/1/cron", "Cron jobs"],
-  ["/sites/1/danger", "Delete website"],
-  ["/sites/2/git/deployments", "Git deployments"],
-  ["/sites/2/runtime", "Node.js configuration"],
+  ["/sites/e2e-php/overview", "Overview"],
+  ["/sites/e2e-php/pagespeed", "PageSpeed"],
+  ["/sites/e2e-php/ssl", "SSL"],
+  ["/sites/e2e-php/redirects", "Redirections"],
+  ["/sites/e2e-php/files", "File manager"],
+  ["/sites/e2e-php/databases", "Databases"],
+  ["/sites/e2e-php/php", "PHP settings"],
+  ["/sites/e2e-php/logs", "Logs"],
+  ["/sites/e2e-php/cron", "Cron jobs"],
+  ["/sites/e2e-php/danger", "Delete website"],
+  ["/sites/e2e-node/git/deployments", "Git deployments"],
+  ["/sites/e2e-node/runtime", "Node.js configuration"],
 ];
 
 for (const [path, expected] of SCREENS) {
@@ -57,7 +58,7 @@ for (const [path, expected] of SCREENS) {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
 
-    await page.goto(path);
+    await gotoPanel(page, path);
     await expect(page.locator("body")).toContainText(expected);
 
     // Exactly one <h1>: the layouts deliberately do not stack a generic heading
@@ -71,7 +72,7 @@ test("no screen is left unported", async ({ page }) => {
   // The port used a loud placeholder rather than an empty page. If one survives
   // into a build, this fails instead of shipping a screen that looks finished.
   for (const [path] of SCREENS) {
-    await page.goto(path);
+    await gotoPanel(page, path);
     await expect(page.locator("body")).not.toContainText("Not ported yet");
   }
 });

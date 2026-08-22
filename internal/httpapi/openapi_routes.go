@@ -347,10 +347,16 @@ var apiDocs = map[string]opMeta{
 		ReqDesc:  "A SQL dump body to load into the database.",
 		RespDesc: "Import complete.",
 	},
-	"POST /api/v1/databases/{uid}/adminer-sso": {
-		Summary: "Adminer single sign-on", Tags: []string{"Databases"}, Permission: "database.write",
-		RespSchema: ref("AdminerSSO"),
-		RespDesc:   "Mints a throwaway credential to POST into Adminer.",
+	"POST /api/v1/databases/{uid}/phpmyadmin": {
+		Summary: "Open a database in phpMyAdmin", Tags: []string{"Databases"}, Permission: "database.write",
+		RespSchema: ref("PMAHandoff"), RespStatus: 201,
+		RespDesc: "Returns a URL to open and nothing else. The one-time ticket it carries is worthless without loopback access to this panel; phpMyAdmin's own sign-on script redeems it server-side for a throwaway MariaDB account scoped to this one database and expiring in fifteen minutes. No password is ever put in the page.",
+	},
+	"POST /api/v1/databases/sso/redeem": {
+		Summary: "Redeem a sign-on ticket", Tags: []string{"Databases"}, NoAuth: true,
+		ReqSchema:  object(map[string]any{"ticket": prop("string", "The one-time ticket from the hand-off URL.")}, "ticket"),
+		RespSchema: ref("PMACredentials"),
+		RespDesc:   "Called by phpMyAdmin's sign-on script on this host, not by a browser. Refused (403) unless the connection is from loopback — RemoteAddr, never a forwarded header. The ticket is single-use and lives for one minute; what it yields is an account on one database that the sweeper drops after fifteen.",
 	},
 	"GET /api/v1/database-users": {
 		Summary: "List database users", Tags: []string{"Databases"}, Permission: "database.read",
@@ -410,9 +416,16 @@ var apiDocs = map[string]opMeta{
 		ReqSchema: object(map[string]any{
 			"name":           prop("string", ""),
 			"primary_domain": prop("string", ""),
-			"type":           map[string]any{"type": "string", "enum": []any{"php", "static", "proxy"}},
-			"deploy_mode":    map[string]any{"type": "string", "enum": []any{"managed", "git"}},
-		}, "name", "primary_domain", "type"),
+			"stack": map[string]any{
+				"type": "string", "enum": []any{"static", "php", "node", "python"},
+				"description": "What to run. Decides the vhost shape, so send this rather than type. \"wp\" is rejected until the WordPress module exists.",
+			},
+			"type": map[string]any{
+				"type": "string", "enum": []any{"php", "static", "proxy"},
+				"description": "The vhost shape. Accepted for older clients and ignored when stack is set.",
+			},
+			"deploy_mode": map[string]any{"type": "string", "enum": []any{"managed", "git"}},
+		}, "name", "primary_domain"),
 		RespSchema: ref("Site"), RespStatus: 201,
 	},
 	// ── self-update ───────────────────────────────────────────────────────────
@@ -775,7 +788,19 @@ var apiDocs = map[string]opMeta{
 	// ── malware ───────────────────────────────────────────────────────────────
 	"POST /api/v1/sites/{uid}/scan": {
 		Summary: "Scan a site for malware", Tags: []string{"Security"}, Permission: "security.write",
-		RespDesc: "Runs ClamAV over the site's tree and returns each detection (path + signature). A scan is read-only; quarantining a detection is a separate, deliberate act.",
+		RespDesc: "Runs a malware scanner over the site's tree and returns each detection (path + signature). The scanner is chosen with ?engine=clamav|maldet and defaults to ClamAV; the scan record names which one ran, because a clean result from one says nothing about the other. A scan is read-only — quarantining a detection is a separate, deliberate act, and maldet's own quarantine is switched off so the panel's is the only one.",
+	},
+	"GET /api/v1/security/malware/engines": {
+		Summary: "Malware scanners available on this host", Tags: []string{"Security"}, Permission: "security.read",
+		RespDesc: "Which scanners can actually run. ClamAV comes from a distribution package the baseline installs; maldet ships no package, so it reports whether it is installed and which signature set it holds.",
+	},
+	"POST /api/v1/security/malware/maldet/install": {
+		Summary: "Install maldet", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Downloads maldet from the pinned host over TLS and runs its installer. Returns the SHA-256 of what was installed so it can be pinned in config and every later install verified against it. This is the one place the panel fetches code and runs it as root; it is force-audited.",
+	},
+	"POST /api/v1/security/malware/maldet/update": {
+		Summary: "Update maldet signatures", Tags: []string{"Security"}, Permission: "security.write",
+		RespDesc: "Pulls a fresh signature pack and reports the resulting revision.",
 	},
 	"GET /api/v1/security/quarantine": {
 		Summary: "List quarantined files", Tags: []string{"Security"}, Permission: "security.read",

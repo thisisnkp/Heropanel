@@ -25,7 +25,7 @@ const ui = useUiStore();
 const site = computed(() => sites.current);
 const tab = ref<"version" | "ini">("version");
 
-const version = ref("8.3");
+const version = ref("8.4");
 const versionMenuOpen = ref(false);
 
 // Extensions the site does not have yet, ticked but not applied. Kept separate

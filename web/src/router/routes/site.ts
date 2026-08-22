@@ -4,9 +4,14 @@ import type { SpecKey } from "@/data/siteSpec";
 /**
  * Everything under a single site.
  *
- * Nested under `/sites/:id` so the site id is a route param rather than store
+ * Nested under `/sites/:uid` so the site is a route param rather than store
  * state: a deep link to one site's cron jobs has to survive a reload, and the
  * shell needs to know which site the drawer is for before any component mounts.
+ *
+ * The param is npd's uid, which is also what every /sites/{uid} endpoint takes.
+ * A prettier numeric id in the URL would have to be resolved against the site
+ * list before a single request could be made — and the standalone file-manager
+ * window opens cold, with no list loaded.
  */
 
 const SiteSpecView = () => import("@/views/site/SiteSpecView.vue");
@@ -22,7 +27,7 @@ function spec(path: string, name: string, specKey: SpecKey, title: string): Rout
 
 export const siteRoutes: RouteRecordRaw[] = [
   {
-    path: "/sites/:id",
+    path: "/sites/:uid",
     component: () => import("@/views/site/SiteLayout.vue"),
     props: true,
     children: [

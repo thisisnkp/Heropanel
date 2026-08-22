@@ -271,7 +271,7 @@ function restore(name: string) {
 
         <RouterLink
           v-if="site"
-          :to="{ name: 'site-overview', params: { id: String(site.id) } }"
+          :to="{ name: 'site-overview', params: { uid: site.uid } }"
           class="fm__side-item fm__back"
         >
           <NxIcon name="arrow-back" size="md" />

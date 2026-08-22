@@ -86,9 +86,14 @@ type Site struct {
 type CreateInput struct {
 	Name          string
 	PrimaryDomain string
-	Type          Type
-	DeployMode    DeployMode
-	OwnerID       int64
+	// Stack is what the operator picked ("static", "php", "node", "python").
+	// When set it decides Type; when empty, Type is used directly. Clients
+	// should send Stack — Type is the internal shape, and mapping one to the
+	// other in every client is how the two drift apart.
+	Stack      string
+	Type       Type
+	DeployMode DeployMode
+	OwnerID    int64
 	// AppProject, when set, makes this a proxy site backed by a one-click Docker
 	// app: the vhost reverse-proxies to the app's published loopback port,
 	// resolved live at render time. It forces Type to proxy.

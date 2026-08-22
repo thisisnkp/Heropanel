@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -165,26 +166,84 @@ func deleteDBUserHandler(d Deps) http.HandlerFunc {
 	}
 }
 
-// adminerSSOHandler mints a throwaway database account and returns the fields
-// the browser POSTs at Adminer's login form.
+// phpMyAdminHandler mints a one-time ticket and returns the URL to open.
 //
-// The response carries a live password, so it is write-gated and marked
-// no-store: nothing about it should sit in a cache or a history entry.
-func adminerSSOHandler(d Deps) http.HandlerFunc {
+// The response carries no credentials — that is the whole design. The browser
+// gets a ticket that is worthless without loopback access to this panel;
+// phpMyAdmin's own signon script redeems it server-side. Still no-store: a
+// ticket in a cache or a history entry is a ticket someone else can spend
+// during the minute it lives.
+func phpMyAdminHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := d.Databases.StartSSO(r.Context(), chi.URLParam(r, "uid"))
+		p, _ := auth.FromContext(r.Context())
+		var actor int64
+		if p != nil {
+			actor = p.UserID
+		}
+		out, err := d.Databases.StartPMASession(r.Context(), chi.URLParam(r, "uid"), actor)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		// Handing someone a live database login is exactly the event a reviewer
-		// needs to find later. Record which throwaway account was minted — the
-		// account name is what ties this row to the queries the database's own
-		// log will show. The password stays out of the chain.
-		audit.AddDetail(r.Context(), "sso_username", out.Username)
+		// Handing someone a way into a database is exactly the event a reviewer
+		// needs to find later. The account it will mint does not exist yet, so
+		// what is recorded here is the intent; the redemption records the
+		// account name that ties this to the database's own query log.
+		audit.SetResource(r.Context(), "databases", chi.URLParam(r, "uid"))
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, r, http.StatusCreated, out)
 	}
+}
+
+// redeemPMATicketHandler exchanges a ticket for a throwaway database account.
+//
+// This is the one route in the panel with no session and no permission check,
+// and it is deliberately the most tightly bounded. Three things carry it:
+//
+//   - **Loopback only.** The caller is phpMyAdmin's signon script running on
+//     this host. RemoteAddr is used, never a forwarded header — a proxy in
+//     front of the panel can set those, so trusting them would turn this into
+//     an internet-facing endpoint.
+//   - **The ticket is the credential**, single-use and valid for a minute.
+//   - **It grants one database**, through an account that expires in fifteen
+//     minutes and is dropped by the sweeper.
+func redeemPMATicketHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackRequest(r) {
+			writeError(w, r, errx.Forbidden("not_local",
+				"Sign-on tickets are redeemed by phpMyAdmin on this host."))
+			return
+		}
+		var req struct {
+			Ticket string `json:"ticket"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		out, err := d.Databases.RedeemPMATicket(r.Context(), req.Ticket)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		audit.SetResource(r.Context(), "databases", out.Database)
+		audit.AddDetail(r.Context(), "sso_username", out.Username)
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, r, http.StatusOK, out)
+	}
+}
+
+// isLoopbackRequest reports whether the request came from this host.
+//
+// RemoteAddr only. X-Forwarded-For and X-Real-IP are set by whatever is in
+// front of the panel and by anyone who can reach it directly, so honouring them
+// here would let a remote caller claim to be local.
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func databaseSizeHandler(d Deps) http.HandlerFunc {

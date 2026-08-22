@@ -15,10 +15,14 @@ type fakeRuntime struct {
 	actions []string
 	port    int
 	failOn  string
+	lang    string
 }
 
 func (f *fakeRuntime) ProxyPort(context.Context, int64) (int, bool) {
 	return f.port, f.port > 0
+}
+func (f *fakeRuntime) Language(context.Context, int64) (string, bool) {
+	return f.lang, f.lang != ""
 }
 func (f *fakeRuntime) RemoveForSite(context.Context, string) error { return nil }
 func (f *fakeRuntime) Control(_ context.Context, _, action string) error {

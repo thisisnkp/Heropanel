@@ -147,6 +147,10 @@ type Repo interface {
 	InsertDatabase(ctx context.Context, r *InstanceRecord) error
 	ListDatabases(ctx context.Context, ownerID int64, limit, offset int) ([]InstanceRecord, error)
 	GetDatabaseByUID(ctx context.Context, uid string) (*InstanceRecord, error)
+	// GetDatabaseByID resolves the row a sign-on ticket points at. Tickets store
+	// the numeric id because they are a foreign key with ON DELETE CASCADE —
+	// dropping a database must take its pending tickets with it.
+	GetDatabaseByID(ctx context.Context, id int64) (*InstanceRecord, error)
 	DeleteDatabase(ctx context.Context, uid string) error
 	InsertUser(ctx context.Context, r *UserRecord) error
 	ListUsers(ctx context.Context, ownerID int64, limit, offset int) ([]UserRecord, error)

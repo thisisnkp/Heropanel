@@ -10,7 +10,7 @@
  */
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { catalogLeaves } from "@/data/apps";
+import { catalogLeaves, type AppTag } from "@/data/apps";
 import { useUiStore } from "@/stores/ui";
 
 const route = useRoute();
@@ -29,6 +29,18 @@ const active = computed(() => categories.find((c) => c.key === activeKey.value) 
 function badgeTone(badge: string) {
   return badge === "Installed" || badge === "Free" ? "success" : "info";
 }
+
+// The support chip. `eol` is the only one that gets a warning colour: the others
+// are information, but an unpatched interpreter facing the internet is the one
+// thing on this screen someone should not be able to pick by accident.
+const TAG_TEXT: Record<AppTag, string> = {
+  current: "newest",
+  active: "actively supported",
+  lts: "long-term support",
+  "security-only": "security fixes only",
+  eol: "end of life",
+};
+
 </script>
 
 <template>
@@ -37,7 +49,15 @@ function badgeTone(badge: string) {
       <p class="cat__kicker">Install · {{ active.label }}</p>
       <h1 class="cat__title">{{ active.label }}</h1>
       <p class="cat__sub">{{ active.sub }}</p>
+      <p class="cat__meta">
+        A catalogue of what this panel's stack is made of — installing from here is not wired up
+        yet, and nothing on this screen reads the host.
+      </p>
     </header>
+
+    <NxCallout v-if="active.note" :tone="active.noteTone ?? 'info'" class="cat__note">
+      {{ active.note }}
+    </NxCallout>
 
     <div class="nx-grid nx-grid--3">
       <article v-for="a in active.apps" :key="a.name" class="cat__card">
@@ -46,6 +66,7 @@ function badgeTone(badge: string) {
           <span class="cat__name nx-row__grow">{{ a.name }}</span>
           <NxBadge :tone="badgeTone(a.badge)">{{ a.badge }}</NxBadge>
         </div>
+        <p v-if="a.tag" class="cat__tag" :class="`cat__tag--${a.tag}`">{{ TAG_TEXT[a.tag] }}</p>
         <p class="cat__desc">{{ a.desc }}</p>
         <div class="cat__spacer" />
         <NxButton
@@ -82,6 +103,25 @@ function badgeTone(badge: string) {
   color: var(--nx-text-muted);
   text-wrap: pretty;
 }
+.cat__meta {
+  margin: 8px 0 0;
+  font-size: var(--nx-text-sm);
+  color: var(--nx-text-placeholder);
+  text-wrap: pretty;
+}
+.cat__note { margin-bottom: 20px; }
+
+.cat__tag {
+  margin: 10px 0 0;
+  font-size: var(--nx-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--nx-ls-caps);
+  text-transform: uppercase;
+  color: var(--nx-text-placeholder);
+}
+/* End of life is the one that changes a decision, so it is the one that is
+   coloured. Colouring all four would make none of them mean anything. */
+.cat__tag--eol { color: var(--nx-warning); }
 
 .cat__card {
   background: var(--nx-surface);

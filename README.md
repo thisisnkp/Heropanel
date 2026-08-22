@@ -60,6 +60,26 @@ Start at **[docs/README.md](docs/README.md)**. The planning package:
 
 Decision records: [docs/adr/](docs/adr/).
 
+## Running it in development
+Two processes, two terminals. The Vite dev server serves the UI on **:5173** and
+proxies `/api`, `/healthz` and `/readyz` to npd on **:8443** — so the UI alone
+shows nothing but "the panel is unreachable".
+
+```bash
+npm --prefix web run dev:api   # npd on :8443  (SQLite at ./np.db, loopback only)
+npm --prefix web run dev       # the UI on :5173  ← open this one
+```
+
+`make dev-api` runs the same npd. The SQLite datastore is the point of the
+wrapper: npd's default driver is MariaDB with an empty DSN, which boots a panel
+with **no datastore**, reports `configured: false`, and refuses every login —
+a failure that reads like a broken build rather than a missing setting. Override
+any of `NP_SERVER_PORT`, `NP_DATABASE_DRIVER`, `NP_DATABASE_DSN` to point
+elsewhere.
+
+The browser-driven suite (`npm --prefix web run test:e2e`) does not use either:
+it builds the bundle, embeds it, and runs a real npd on :18780.
+
 ## Installation (planned)
 ```bash
 curl -fsSL https://get.nexpanel.io/install.sh | bash

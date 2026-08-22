@@ -13,7 +13,7 @@ This directory contains the **complete architecture and planning package** produ
 | 3 | Deployment topology | **Single-node first, multi-node-ready** | [ADR-0003](adr/0003-single-node-first.md) |
 | 4 | Primary datastore | **MariaDB** (SQLite embedded fallback for minimal installs) | [ADR-0004](adr/0004-datastore.md) |
 | 5 | Cache / queue / realtime bus | **Redis** (Streams for queue, Pub/Sub for realtime) | [ADR-0005](adr/0005-redis.md) |
-| 6 | Primary web server | **OpenLiteSpeed** (Nginx/Caddy/Apache pluggable later) | — |
+| 6 | Primary web server | **OpenLiteSpeed**, with **LiteSpeed Enterprise** as the licensed upgrade. Nginx and Apache support was written and then removed — see [29](29-opinionated-stack.md) | — |
 
 ## Document Index
 
@@ -54,6 +54,7 @@ deferred list, and definition of done.
 | 26 | [Self-update](26-self-update.md) | Release channels, **signed** releases on the installer's own trust chain, atomic swap via a **transient systemd unit** (the only way to replace the broker), and a **health-gated auto-rollback** |
 | 27 | [Multi-node](27-multi-node.md) | The same broker framing over **mutual TLS** — a verified client certificate replaces `SO_PEERCRED`, which has no network equivalent — plus a node allowlist, attested identity in the audit chain, and the HA topology |
 | 28 | [Hardening](28-hardening.md) | The systemd audit: three shared confinement profiles, a **deny-list capability bound** on the root broker, the four directives deliberately left out and what each would break, and budgets that are now measured |
+| 29 | [The Opinionated Stack](29-opinionated-stack.md) | The one stack the panel manages, why nginx/Apache/PostgreSQL were **deleted** rather than left unsupported, what an upgraded install does with each, and why the security baseline is not a set of questions |
 
 ## Product Principles
 
@@ -171,7 +172,7 @@ _**Phase 5 — Docker & One-Click Apps — is complete.** The **Docker** module 
 
 _Still **not** signed off: the genuinely later-phase items each phase lists below
 (e.g. DNS as a true satellite module, cgroup kernel-enforcement of `site_limits`,
-PostgreSQL/Mongo engines, OAuth app authorization, cryptographic artifact
+OAuth app authorization, cryptographic artifact
 **signing** on top of checksums, the public `install.sh` bootstrap host), plus the
 Phase 4 items deliberately carried forward: terminal session recording, nested
 `.gitignore` precedence, server-side archive streaming, and archived multi-file

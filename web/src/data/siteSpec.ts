@@ -11,10 +11,13 @@ export const LANG_FOR_STACK: Record<string, string> = {
   php: "PHP", wp: "PHP", node: "Node.js", python: "Python",
 };
 
+// The same ranges the Apps catalogue offers (web/src/data/apps.ts), newest
+// first. Two lists of PHP versions that disagree is a panel telling the operator
+// two different things about the same host.
 export const LANG_VERSIONS: Record<string, readonly string[]> = {
-  PHP: ["8.3", "8.2", "7.4"],
-  "Node.js": ["22.4", "20.11 LTS", "18.20"],
-  Python: ["3.12", "3.11", "3.9"],
+  PHP: ["8.5", "8.4", "8.3", "8.2", "8.1", "8.0", "7.4"],
+  "Node.js": ["24 LTS", "22 LTS", "20", "18", "16", "14"],
+  Python: ["3.14", "3.13", "3.12", "3.11", "3.10", "3.9", "3.8"],
 };
 
 export type SpecKey =

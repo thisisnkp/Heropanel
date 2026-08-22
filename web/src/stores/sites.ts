@@ -1,10 +1,19 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import type { StackKey } from "@/config/stacks";
-import { SEED_SITES } from "@/data/sites";
+import { STACK_KEYS } from "@/config/stacks";
+import { api, type Site as ApiSite } from "@/lib/api";
 
+/**
+ * A site as the screens use it.
+ *
+ * Keyed by `uid`, not a number. npd issues opaque uids and every route under
+ * /sites/{uid} takes one; a client-side numeric id would have to be mapped back
+ * before any request could be made, and would not survive a reload of a deep
+ * link at all — which is exactly what the standalone file-manager window is.
+ */
 export interface Site {
-  readonly id: number;
+  readonly uid: string;
   name: string;
   domain: string;
   stackKey: StackKey;
@@ -14,6 +23,50 @@ export interface Site {
   lastDeploy: string;
   branch: string;
   repo: string;
+}
+
+/**
+ * npd's status vocabulary is about provisioning; the design's is about what the
+ * operator sees. "provisioning" and "error" both mean "not serving yet", which
+ * the design draws as building — an error still needs the row to exist and to
+ * say something, and the site's own screen is where the failure is explained.
+ */
+function statusFor(s: ApiSite["status"]): Site["status"] {
+  switch (s) {
+    case "suspended":
+    case "disabled":
+      return "suspended";
+    case "active":
+      return "live";
+    default:
+      return "building";
+  }
+}
+
+function stackFor(s: ApiSite): StackKey {
+  return (STACK_KEYS as readonly string[]).includes(s.stack) ? (s.stack as StackKey) : "static";
+}
+
+/**
+ * Maps npd's site to the screens' site.
+ *
+ * `branch`, `repo` and `lastDeploy` are em-dashes here rather than guesses:
+ * they come from the git-deployment record, which is a separate endpoint and a
+ * separate module. Showing "—" is honest; showing "main" because most sites use
+ * main is not.
+ */
+export function fromApi(s: ApiSite): Site {
+  return {
+    uid: s.uid,
+    name: s.name || s.primary_domain,
+    domain: s.primary_domain,
+    stackKey: stackFor(s),
+    deploy: s.deploy_mode === "git" ? "GitHub" : "Manual",
+    status: statusFor(s.status),
+    lastDeploy: "—",
+    branch: "—",
+    repo: "—",
+  };
 }
 
 /**
@@ -27,19 +80,19 @@ export const useSitesStore = defineStore("sites", () => {
   const sites = ref<Site[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
-  const currentId = ref<number | null>(null);
+  const currentUid = ref<string | null>(null);
   const loaded = ref(false);
 
-  const current = computed(() => sites.value.find((s) => s.id === currentId.value) ?? null);
+  const current = computed(() => sites.value.find((s) => s.uid === currentUid.value) ?? null);
   const count = computed(() => sites.value.length);
   const building = computed(() => sites.value.filter((s) => s.status === "building"));
 
-  function setCurrent(id: number | null) {
-    currentId.value = id;
+  function setCurrent(uid: string | null) {
+    currentUid.value = uid;
   }
 
-  function byId(id: number) {
-    return sites.value.find((s) => s.id === id) ?? null;
+  function byUid(uid: string) {
+    return sites.value.find((s) => s.uid === uid) ?? null;
   }
 
   /** Replaces the list wholesale — used by the loader and by tests. */
@@ -53,16 +106,20 @@ export const useSitesStore = defineStore("sites", () => {
    *
    * Idempotent because the shell, the site layout and the list screen all need
    * the sites and any of the three can mount first — without the guard, opening
-   * a deep link would fetch the same list three times. The fixture import is the
-   * seam the real `GET /api/v1/sites` replaces; nothing outside this function
-   * knows where the data came from.
+   * a deep link would fetch the same list three times.
    */
   async function ensureLoaded() {
     if (loaded.value || loading.value) return;
+    await reload();
+  }
+
+  /** Fetches the list again, whether or not it has been loaded before. */
+  async function reload() {
     loading.value = true;
     error.value = null;
     try {
-      hydrate([...SEED_SITES]);
+      const list = await api.get<ApiSite[]>("/sites");
+      hydrate(list.map(fromApi));
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Could not load your websites.";
     } finally {
@@ -70,10 +127,38 @@ export const useSitesStore = defineStore("sites", () => {
     }
   }
 
-  function remove(id: number) {
-    sites.value = sites.value.filter((s) => s.id !== id);
-    if (currentId.value === id) currentId.value = null;
+  /**
+   * Drops a site from the list.
+   *
+   * The caller is responsible for having actually deleted it — this only keeps
+   * the shell from showing a row for something that is gone while the list is
+   * refetched.
+   */
+  function remove(uid: string) {
+    sites.value = sites.value.filter((s) => s.uid !== uid);
+    if (currentUid.value === uid) currentUid.value = null;
   }
 
-  return { sites, loading, error, loaded, currentId, current, count, building, setCurrent, byId, hydrate, ensureLoaded, remove };
+  /** Adds a freshly created site without waiting for a refetch. */
+  function add(site: Site) {
+    sites.value = [...sites.value, site];
+  }
+
+  return {
+    sites,
+    loading,
+    error,
+    loaded,
+    currentUid,
+    current,
+    count,
+    building,
+    setCurrent,
+    byUid,
+    hydrate,
+    ensureLoaded,
+    reload,
+    remove,
+    add,
+  };
 });

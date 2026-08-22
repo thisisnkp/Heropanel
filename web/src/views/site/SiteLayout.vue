@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Everything under /sites/:id renders through here.
+ * Everything under /sites/:uid renders through here.
  *
  * Its one job is to make the route param authoritative: the shell, the drawer
  * and the header all read `sites.current`, and they mount before any child
@@ -12,12 +12,12 @@
 import { computed, onBeforeUnmount, watch } from "vue";
 import { useSitesStore } from "@/stores/sites";
 
-const props = defineProps<{ id: string }>();
+const props = defineProps<{ uid: string }>();
 const sites = useSitesStore();
 
 watch(
-  () => props.id,
-  (id) => sites.setCurrent(Number(id)),
+  () => props.uid,
+  (uid) => sites.setCurrent(uid),
   { immediate: true },
 );
 

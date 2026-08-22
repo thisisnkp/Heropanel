@@ -128,10 +128,18 @@ async function finish() {
               <span class="setup__item-label">{{ dbLabel }}</span>
               <span class="setup__item-note">database server</span>
             </li>
+            <!--
+              An unsupported entry is part of this stack but is not provisioned
+              yet, so it gets a different mark and says "planned". Ticking it
+              alongside the rest would tell the operator something is on their
+              machine that is not, and they would find out from a site that
+              would not start.
+            -->
             <li v-for="c in info?.baseline ?? []" :key="c.id" class="setup__item">
-              <NxIcon name="check-circle" size="sm" />
+              <NxIcon :name="c.supported ? 'check-circle' : 'schedule'" size="sm" />
               <span class="setup__item-label">{{ c.label }}</span>
               <span v-if="c.note" class="setup__item-note">{{ c.note }}</span>
+              <span v-if="!c.supported" class="setup__item-planned">planned</span>
             </li>
           </ul>
         </NxCard>
@@ -229,6 +237,13 @@ async function finish() {
 .setup__item { display: flex; align-items: center; gap: 8px; font-size: var(--nx-text-base); color: var(--nx-text-2); }
 .setup__item-label { font-weight: 500; color: var(--nx-text); }
 .setup__item-note { font-size: var(--nx-text-sm); color: var(--nx-text-muted); }
+.setup__item-planned {
+  font-size: var(--nx-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--nx-ls-caps);
+  text-transform: uppercase;
+  color: var(--nx-warning);
+}
 
 .setup__toggles { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .setup__actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }

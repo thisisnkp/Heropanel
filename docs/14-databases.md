@@ -2,7 +2,7 @@
 
 MariaDB databases, users, and grants, plus the operations an operator actually
 needs day to day: **size**, **export**, **import**, and a one-click hand-off to
-Adminer/phpMyAdmin.
+phpMyAdmin.
 
 State lives in the control-plane datastore; every statement runs as root through
 `np-broker`, which authenticates to MariaDB over the local socket (`unix_socket`
@@ -18,13 +18,21 @@ Implemented in [internal/database](../internal/database), with capabilities in
 - **Size** (bytes + table count).
 - **Export**: a gzipped `mysqldump`, streamed to the client and then deleted.
 - **Import**: a streamed upload (plain or gzipped) loaded into a database.
-- **Adminer/phpMyAdmin hand-off** signed in with a throwaway account (§4).
+- **phpMyAdmin hand-off** through a one-time ticket, signed in with a throwaway
+  account the browser never sees (§4).
 
 **Deferred:**
-- PostgreSQL/MongoDB engines (`db_instances.engine` already carries the column).
 - Per-database backups on a schedule — that belongs to the Backup module (Phase 6).
 - Remote/multi-host database servers (everything here assumes the local socket).
 - Table-level and column-level grants; the allowlist is database-scoped.
+
+**Removed, not deferred:**
+- **PostgreSQL.** It was implemented — `pg.*` capabilities, peer auth through
+  `runuser -u postgres`, its own dump/restore staging — and taken out when the
+  panel narrowed to a single stack. `db_instances.engine` still carries the
+  column, and a row left behind by an upgraded install is **refused** rather
+  than routed to MariaDB: dropping "reports" on the wrong engine either fails
+  confusingly or destroys a different database of the same name.
 
 ## 2. SQL safety
 
@@ -76,7 +84,7 @@ under a different name, and a test harness runs npd as root.
 **Export requires `database.write`**, not `database.read`: it takes a full copy of
 the data off the server.
 
-## 4. Adminer / phpMyAdmin hand-off
+## 4. phpMyAdmin hand-off
 
 **NexPanel does not store database user passwords.**
 
@@ -85,23 +93,63 @@ most panels do exactly this. But then one panel compromise hands over every
 customer's standing database credentials, and there is no way to tell afterwards
 which ones were used.
 
-So a hand-off **mints a throwaway account** instead:
+So a hand-off **mints a throwaway account** instead — and the browser never sees
+even that.
 
-1. `POST /databases/{uid}/adminer-sso` creates `npsso_<random>` with a random
-   password, granted on **exactly one** database.
-2. The credentials are returned once, for the browser to POST at Adminer's login
-   form (`auth[driver|server|username|password|db]`). They are never persisted.
-3. A row in `db_sso_sessions` records the account name and expiry — no secret.
-4. A sweeper drops expired accounts every 5 minutes; sessions live 15 minutes.
+1. `POST /databases/{uid}/phpmyadmin` records a **one-time ticket** (only its
+   SHA-256 is stored) and returns a URL: `<phpmyadmin>/?np_ticket=…`. No
+   username, no password. The ticket lives **60 seconds**.
+2. The browser opens that URL. phpMyAdmin is configured with
+   `auth_type = 'signon'` and a `SignonScript`, so it calls that script for
+   credentials instead of showing a login form.
+3. The script POSTs the ticket to `POST /databases/sso/redeem` **over
+   loopback**. Redemption is what mints `npsso_<random>` — a random password,
+   granted on **exactly one** database — and it is single-use.
+4. A row in `db_sso_sessions` records the account name and expiry — no secret.
+   A sweeper drops expired accounts every 5 minutes; accounts live 15 minutes.
 
-The cost is a little machinery; the benefit is that a session's blast radius is
-one database for fifteen minutes, and it is revocable and auditable.
+### Why signon rather than posting at the login form
 
-Two guards worth naming:
+The older hand-off returned live credentials for the browser to POST at Adminer.
+Two things are wrong with that against phpMyAdmin. Its cookie login carries a
+**CSRF token**, so a blind POST is unreliable and breaks whenever phpMyAdmin
+tightens it. And it puts a working database password in the page, where a
+screenshot, a browser extension or a history entry can pick it up.
+
+With a ticket, the password exists only between npd and phpMyAdmin — two
+processes on the same machine. `SignonScript` is phpMyAdmin's own documented
+hook for exactly this, so nothing here is a workaround.
+
+### The guards
+
+- **The redeem endpoint is loopback-only**, decided from `RemoteAddr` and never
+  from `X-Forwarded-For` or `X-Real-IP`. Anything in front of the panel can set
+  those, and so can anyone who reaches npd directly — honouring them would turn
+  the one unauthenticated route in the panel into an internet-facing way to mint
+  database credentials.
+- **Redemption is atomic.** The store marks the ticket used with an `UPDATE …
+  WHERE redeemed_at IS NULL`, so two requests arriving with the same ticket
+  cannot both get an account. A `SELECT` then `UPDATE` would let them.
+- **Expired, spent and never-existed get the same error.** Telling them apart
+  tells a caller holding a guess whether the guess was close.
 - The sweeper **only ever drops accounts prefixed `npsso_`**, even if a row names
   something else. It deletes MariaDB users; it must never become a weapon.
 - A drop that fails **leaves the row behind** so the next sweep retries. Deleting
   the row would strand a live account with nothing tracking it.
+
+### Provisioning
+
+`phpmyadmin.provision` (broker) writes two files: the sign-on script at
+`/usr/share/phpmyadmin/nexpanel-signon.php`, and a config drop-in in the
+distribution's `conf.d`. The redeem URL is baked into the script at
+provisioning time and validated to be loopback — the broker refuses any other.
+
+**Honest limit:** Debian's phpMyAdmin package reads `conf.d`; the RHEL package
+historically does not. The capability reports whether that directory already
+existed, so the panel can tell the operator to add one `include` line rather
+than leaving a file that looks like configuration and is not. `config.inc.php`
+itself is never rewritten: it belongs to the distribution and the operator, and
+a panel that edits it will one day destroy something someone put there.
 
 Enabled by `database.adminer_url`. Unset, the endpoint reports "unavailable" —
 there is nowhere to hand off to.
@@ -154,8 +202,9 @@ through the hash chain.
 - [x] REST endpoints
 - [x] RBAC scopes + audit coverage for every mutation ([15](15-audit.md)) —
       including `GET /export`, which changes nothing but hands over the whole
-      database, and the Adminer hand-off, which records the throwaway account it
-      minted. This box was checked long before anything wrote to `audit_log`.
+      database, and the phpMyAdmin hand-off, whose redemption records the
+      throwaway account it minted. This box was checked long before anything
+      wrote to `audit_log`.
 - [x] Unit tests: service ordering (broker-then-record), capability argv/SQL,
       dump filename injection, sweeper safety
 - [x] **Live e2e** (`deploy/docker/e2e/run-php-app.sh`, in CI) against real

@@ -11,6 +11,8 @@ import {
   type SecurityKey,
 } from "./securitySpec";
 import { quickActions, runtimeFields, runtimeTitle } from "./siteDetail";
+import { catalogLeaves } from "./apps";
+import { LANG_VERSIONS } from "./siteSpec";
 import { buildSiteNav, isGroup, type SiteNavNode } from "@/config/siteNavigation";
 import { useFlagsStore } from "@/stores/flags";
 import type { Site } from "@/stores/sites";
@@ -28,7 +30,7 @@ const SECURITY_KEYS: readonly SecurityKey[] = [
 
 function site(over: Partial<Site> = {}): Site {
   return {
-    id: 1,
+    uid: "ste_novaretail",
     name: "novaretail.in",
     domain: "novaretail.in",
     stackKey: "wp",
@@ -86,8 +88,8 @@ describe("buildSiteSpec", () => {
     expect(buildSiteSpec("lang", site({ stackKey: "wp" })).title).toBe("PHP version");
 
     const node = buildSiteSpec("lang", site({ stackKey: "node" }));
-    expect(node.choices?.map((c) => c.label)).toContain("22.4");
-    expect(node.choices?.map((c) => c.label)).not.toContain("8.3");
+    expect(node.choices?.map((c) => c.label)).toContain("24 LTS");
+    expect(node.choices?.map((c) => c.label)).not.toContain("8.4");
   });
 
   it("says whether a repository is connected rather than showing an empty repo", () => {
@@ -299,5 +301,115 @@ describe("runtime facts", () => {
 
     const php = runtimeFields(site({ stackKey: "php" })).map((f) => f.label);
     expect(php).toContain("memory_limit");
+  });
+});
+
+describe("the app catalogue", () => {
+  const leaves = catalogLeaves();
+  const every = leaves.flatMap((c) => c.apps);
+
+  // The panel deleted its nginx and apache renderers and its PostgreSQL
+  // capabilities. A card offering one is a promise nothing can keep, and this is
+  // where such a card would come back — someone restoring a fixture from the
+  // design, which still had all four webservers in it.
+  it("offers no engine the panel no longer has code for", () => {
+    const webservers = leaves.find((c) => c.key === "webservers");
+    expect(webservers?.apps.map((a) => a.name)).toEqual([
+      "OpenLiteSpeed",
+      "LiteSpeed Enterprise",
+    ]);
+    for (const a of every) {
+      expect(a.name, a.name).not.toMatch(/^(Nginx|Apache|Caddy)\b/);
+    }
+  });
+
+  // "Installed" is the only badge that makes a claim about a host rather than
+  // about the software. It is allowed exactly where the installer or the setup
+  // baseline actually puts something, so a new card cannot quietly assert it.
+  it("claims Installed only for the default stack", () => {
+    const DEFAULT_STACK = new Set([
+      "OpenLiteSpeed",
+      "PHP 8.4",
+      "Composer",
+      "Node.js 24",
+      "PM2",
+      "MariaDB 11.4 LTS",
+      "phpMyAdmin",
+      "Redis",
+      "LiteSpeed Cache",
+      "ModSecurity WAF",
+      "Fail2Ban",
+      "nftables",
+      "ClamAV",
+      "maldet",
+      "Uptime Monitor",
+    ]);
+    for (const a of every.filter((x) => x.badge === "Installed")) {
+      expect(DEFAULT_STACK, `${a.name} claims to be installed`).toContain(a.name);
+    }
+  });
+
+  // Python is deliberately absent from the default stack: an interpreter arrives
+  // when a Python site needs one.
+  it("installs no Python interpreter by default", () => {
+    const python = leaves.find((c) => c.key === "python");
+    expect(python?.apps.filter((a) => a.name.startsWith("Python")).map((a) => a.badge)).not.toContain(
+      "Installed",
+    );
+  });
+
+  // An unpatched interpreter is the one choice on this screen that can quietly
+  // hurt someone, so every version card carries its support status and the dead
+  // ones say so in words as well as in the chip.
+  it("marks every end-of-life runtime", () => {
+    for (const key of ["php", "node", "python"] as const) {
+      const cat = leaves.find((c) => c.key === key);
+      expect(cat, key).toBeDefined();
+      // A version card ends in a number after a space ("PHP 8.4", "Node.js 24").
+      // Matching a trailing digit alone caught PM2, which has no support line of
+      // its own to state.
+      const versions = cat!.apps.filter((a) => /\s\d+(\.\d+)?$/.test(a.name));
+      expect(versions.length, key).toBeGreaterThan(3);
+      for (const v of versions) {
+        expect(v.tag, `${v.name} has no support status`).toBeTruthy();
+      }
+      for (const v of versions.filter((a) => a.tag === "eol")) {
+        expect(v.desc, v.name).toMatch(/no upstream patches|support ended/i);
+      }
+    }
+  });
+
+  // Every category whose constraint governs the whole grid states it once, above
+  // the cards. Losing the databases note is the expensive one: it is the only
+  // place that says installing MySQL replaces MariaDB rather than joining it.
+  it("states the constraint that governs each stack category", () => {
+    for (const key of ["webservers", "php", "node", "python", "databases"] as const) {
+      const cat = leaves.find((c) => c.key === key);
+      expect(cat?.note, key).toBeTruthy();
+    }
+    const db = leaves.find((c) => c.key === "databases");
+    expect(db?.note).toMatch(/3306/);
+    expect(db?.note).toMatch(/pgAdmin/);
+    expect(db?.noteTone).toBe("warning");
+  });
+
+  // The catalogue and the site's version selector are two views of one fact:
+  // which versions this panel offers. They are separate fixtures, so the only
+  // thing keeping them in step is this test — and a site screen offering a
+  // version the catalogue does not is how an operator ends up selecting a pool
+  // that was never installed.
+  it("offers the site the same versions the catalogue lists", () => {
+    const versionsOf = (key: string, prefix: string) =>
+      leaves
+        .find((c) => c.key === key)!
+        .apps.filter((a) => a.name.startsWith(prefix + " "))
+        .map((a) => a.name.slice(prefix.length + 1));
+
+    expect(LANG_VERSIONS.PHP).toEqual(versionsOf("php", "PHP"));
+    expect(LANG_VERSIONS.Python).toEqual(versionsOf("python", "Python"));
+    // Node labels carry an "LTS" suffix on the supported lines, so compare the
+    // major versions rather than the label text.
+    const major = (v: string) => v.split(" ")[0];
+    expect(LANG_VERSIONS["Node.js"].map(major)).toEqual(versionsOf("node", "Node.js").map(major));
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gotoPanel } from "./helpers";
 
 /**
  * The shell, served by a real npd from the bundle embedded in the binary.
@@ -11,7 +12,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("panel shell", () => {
   test("serves the built SPA, not the placeholder", async ({ page }) => {
-    const response = await page.goto("/");
+    const response = await gotoPanel(page, "/");
     expect(response?.status()).toBe(200);
 
     // The placeholder page is what npd serves when no build is embedded. Seeing
@@ -21,7 +22,7 @@ test.describe("panel shell", () => {
   });
 
   test("renders the four navigation groups", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     const captions = await page.locator(".nx-sidebar__caption").allInnerTexts();
     // The design's order: Account before System — the things you own come before
     // the machine they run on.
@@ -29,13 +30,13 @@ test.describe("panel shell", () => {
   });
 
   test("applies the design tokens", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     expect(bg).toBe("rgb(246, 246, 244)");
   });
 
   test("ships icons as inline SVG, with no icon font request", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     // Ten or more glyphs in the sidebar alone, and nothing fetching Material
     // Symbols: the design used the webfont, this build inlines the paths.
     expect(await page.locator(".nx-sidebar svg").count()).toBeGreaterThanOrEqual(10);
@@ -52,7 +53,7 @@ test.describe("panel shell", () => {
       if (m.type() === "error") errors.push(m.text());
     });
 
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await page.waitForTimeout(1000);
 
     // KNOWN, UNRESOLVED: index.html links Google Fonts, and npd sends
@@ -77,11 +78,11 @@ test.describe("client-side routing over a real server", () => {
     ["/websites", "Websites"],
     ["/security/firewall", "Firewall"],
     ["/apps/installed", "Installed apps"],
-    ["/sites/1/cron", "Cron jobs"],
-    ["/sites/1/files", "File manager"],
+    ["/sites/e2e-php/cron", "Cron jobs"],
+    ["/sites/e2e-php/files", "File manager"],
   ] as const) {
     test(`deep link ${path} is served by npd and renders`, async ({ page }) => {
-      const response = await page.goto(path);
+      const response = await gotoPanel(page, path);
       expect(response?.status()).toBe(200);
       // Inside a site the <h1> is the domain — the section name sits under it —
       // so assert the heading exists and the section appears on the page.
@@ -91,7 +92,7 @@ test.describe("client-side routing over a real server", () => {
   }
 
   test("an unknown path renders the app's 404, not the server's", async ({ page }) => {
-    const response = await page.goto("/definitely-not-a-page");
+    const response = await gotoPanel(page, "/definitely-not-a-page");
     // npd serves index.html with a 200 and the router decides — the alternative,
     // a server 404, would break every client-side route.
     expect(response?.status()).toBe(200);
@@ -99,7 +100,7 @@ test.describe("client-side routing over a real server", () => {
   });
 
   test("navigating in-app does not reload the document", async ({ page }) => {
-    await page.goto("/");
+    await gotoPanel(page, "/");
     await page.evaluate(() => {
       (window as unknown as { __stayed: boolean }).__stayed = true;
     });
@@ -116,11 +117,15 @@ test.describe("client-side routing over a real server", () => {
   test("the API prefix is not shadowed by a UI route", async ({ page }) => {
     // The tokens screen lives at /api-tokens precisely so it cannot swallow the
     // panel's own /api/... namespace.
+    // The suite is signed in, so this is a real answer from the API rather than
+    // a rejection — which is the stronger evidence anyway: JSON, not the SPA's
+    // index.html, came back from a path beginning /api.
     const api = await page.request.get("/api/v1/sites");
-    expect(api.status()).not.toBe(200); // unauthenticated, but reached the API
+    expect(api.status()).toBe(200);
+    expect(api.headers()["content-type"] ?? "").toContain("application/json");
     expect(api.headers()["content-type"] ?? "").not.toContain("text/html");
 
-    const ui = await page.goto("/api-tokens");
+    const ui = await gotoPanel(page, "/api-tokens");
     expect(ui?.status()).toBe(200);
     await expect(page.locator("h1")).toContainText("API");
   });

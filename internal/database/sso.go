@@ -3,8 +3,11 @@ package database
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,7 +15,7 @@ import (
 	"github.com/thisisnkp/nexpanel/pkg/idgen"
 )
 
-// Sign-on sessions for an external database client (Adminer, phpMyAdmin).
+// Single sign-on into phpMyAdmin.
 //
 // The design decision worth stating plainly: NexPanel does not keep database
 // user passwords. It could — there is a perfectly good cipher in pkg/secrets and
@@ -22,10 +25,15 @@ import (
 //
 // So a hand-off mints a throwaway MariaDB account instead: random password,
 // granted on exactly one database, dropped a few minutes later by the sweeper.
-// The credentials go straight to the browser to be POSTed at the client's login
-// form and are never stored anywhere. The cost is a little machinery (this file
-// and a sweep loop); the benefit is that the blast radius of a session is one
-// database for fifteen minutes.
+// Nothing is stored anywhere. The cost is a little machinery (this file and a
+// sweep loop); the benefit is that the blast radius of a session is one database
+// for fifteen minutes.
+//
+// The browser never sees those credentials either. It carries a one-time
+// **ticket**, and phpMyAdmin's own signon script redeems it against this panel
+// over loopback — so the password exists only between npd and phpMyAdmin, both
+// on the same host. That also sidesteps phpMyAdmin's CSRF token, which makes a
+// blind POST at its login form unreliable in the first place.
 const (
 	// SSOTTL is how long a hand-off account lives. Long enough to click through
 	// a login form, short enough that a leaked credential is nearly worthless.
@@ -43,21 +51,6 @@ const (
 // accept, so the service writes times without dialect branching.
 const sqlTime = "2006-01-02 15:04:05"
 
-// SSOSession is a one-time credential set for an external database client. It is
-// returned exactly once, at creation, and never persisted.
-type SSOSession struct {
-	// URL is where the client's login form lives; the browser POSTs to it.
-	URL string `json:"url"`
-	// Driver/Server/Database identify the target for Adminer's auth[] fields.
-	Driver   string `json:"driver"`
-	Server   string `json:"server"`
-	Database string `json:"database"`
-	// Username/Password are the throwaway account. Shown once.
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	ExpiresAt string `json:"expires_at"`
-}
-
 // SSOSessionRecord is the persistence row. It holds no secret — just enough for
 // the sweeper to know which account to drop and when.
 type SSOSessionRecord struct {
@@ -69,30 +62,83 @@ type SSOSessionRecord struct {
 	ExpiresAt    string `db:"expires_at"`
 }
 
-// SSORepo is the persistence contract for hand-off sessions.
+// SSOTicketRecord is a pending hand-off. It holds no secret: only the hash of
+// the ticket, and which database it opens.
+type SSOTicketRecord struct {
+	ID           int64  `db:"id"`
+	UID          string `db:"uid"`
+	DBInstanceID int64  `db:"db_instance_id"`
+	TicketHash   string `db:"ticket_hash"`
+	ActorUserID  int64  `db:"actor_user_id"`
+	CreatedAt    string `db:"created_at"`
+	ExpiresAt    string `db:"expires_at"`
+}
+
+// SSORepo is the persistence contract for hand-off sessions and tickets.
 type SSORepo interface {
 	InsertSSOSession(ctx context.Context, r *SSOSessionRecord) error
 	ListExpiredSSOSessions(ctx context.Context, now string) ([]SSOSessionRecord, error)
 	DeleteSSOSession(ctx context.Context, uid string) error
+
+	InsertSSOTicket(ctx context.Context, r *SSOTicketRecord) error
+	// RedeemSSOTicket atomically marks an unredeemed, unexpired ticket used and
+	// returns it. The atomicity is the point: two requests arriving with the
+	// same ticket must not both get a database account.
+	RedeemSSOTicket(ctx context.Context, hash, now string) (*SSOTicketRecord, error)
+	DeleteExpiredSSOTickets(ctx context.Context, now string) (int, error)
 }
 
 // WithAdminer wires the URL of the database client to hand off to and the store
 // that tracks hand-off sessions. Without it, StartSSO reports "unavailable" —
 // there is nowhere to hand off to. Returns s for chaining.
+//
+// The name is historical: NexPanel ships phpMyAdmin. The URL is the same field
+// either way, and the hand-off it drives is StartPMASession, not StartSSO.
 func (s *Service) WithAdminer(url string, repo SSORepo) *Service {
 	s.adminerURL = strings.TrimSpace(url)
 	s.ssoRepo = repo
 	return s
 }
 
-// StartSSO mints a throwaway account for one database and returns the
-// credentials for the browser to POST at the client's login form.
-func (s *Service) StartSSO(ctx context.Context, dbUID string) (*SSOSession, error) {
+// TicketTTL is how long a phpMyAdmin hand-off ticket lives.
+//
+// A minute, not fifteen: the ticket is redeemed by the browser navigating
+// straight to phpMyAdmin, which takes a second. The account it mints is what
+// lasts fifteen minutes.
+const TicketTTL = 60 * time.Second
+
+// PMAHandoff is what the panel gives the browser: a URL to open, and nothing
+// else. No username, no password — the credentials are minted when phpMyAdmin
+// itself redeems the ticket, server-side, over loopback.
+type PMAHandoff struct {
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// PMACredentials is what phpMyAdmin's signon script gets back when it redeems a
+// ticket. It is returned exactly once and never stored.
+type PMACredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Database string `json:"database"`
+	Server   string `json:"server"`
+}
+
+// StartPMASession mints a one-time ticket for one database and returns the URL
+// to open phpMyAdmin with.
+//
+// The older hand-off (StartSSO) returned live credentials for the browser to
+// POST at a login form. Two things are wrong with that against phpMyAdmin: its
+// login form carries a CSRF token, so a blind POST is not reliable; and a
+// working database password ends up in the page. Here the browser carries only
+// a ticket that is worthless without loopback access to this panel, and the
+// password never leaves the host.
+func (s *Service) StartPMASession(ctx context.Context, dbUID string, actorUserID int64) (*PMAHandoff, error) {
 	if s.adminerURL == "" || s.ssoRepo == nil {
-		return nil, errx.New(errx.KindUnavailable, "adminer_unavailable",
-			"No database client is configured. Set database.adminer_url and restart the panel.")
+		return nil, errx.New(errx.KindUnavailable, "phpmyadmin_unavailable",
+			"phpMyAdmin is not configured. Set database.adminer_url and restart the panel.")
 	}
-	rec, err := s.repo.GetDatabaseByUID(ctx, dbUID)
+	rec, err := s.getDatabase(ctx, dbUID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,6 +146,62 @@ func (s *Service) StartSSO(ctx context.Context, dbUID string) (*SSOSession, erro
 		return nil, err
 	}
 
+	ticket, err := randomTicket()
+	if err != nil {
+		return nil, err
+	}
+	expires := time.Now().UTC().Add(TicketTTL)
+	if err := s.ssoRepo.InsertSSOTicket(ctx, &SSOTicketRecord{
+		UID: idgen.NewULID(), DBInstanceID: rec.ID, TicketHash: hashTicket(ticket),
+		ActorUserID: actorUserID, ExpiresAt: expires.Format(sqlTime),
+	}); err != nil {
+		return nil, err
+	}
+
+	sep := "?"
+	if strings.Contains(s.adminerURL, "?") {
+		sep = "&"
+	}
+	return &PMAHandoff{
+		URL:       s.adminerURL + sep + "np_ticket=" + url.QueryEscape(ticket),
+		ExpiresAt: expires.Format(time.RFC3339),
+	}, nil
+}
+
+// RedeemPMATicket exchanges a ticket for a throwaway database account.
+//
+// Called by phpMyAdmin's signon script over loopback, not by a browser — the
+// HTTP edge enforces that. Redemption is single-use and atomic in the store, so
+// a ticket that somehow leaked cannot be replayed behind the real one.
+func (s *Service) RedeemPMATicket(ctx context.Context, ticket string) (*PMACredentials, error) {
+	if s.ssoRepo == nil {
+		return nil, errx.New(errx.KindUnavailable, "phpmyadmin_unavailable",
+			"phpMyAdmin is not configured.")
+	}
+	if err := s.requireBroker(); err != nil {
+		return nil, err
+	}
+	row, err := s.ssoRepo.RedeemSSOTicket(ctx, hashTicket(ticket), time.Now().UTC().Format(sqlTime))
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		// One message for expired, already-used and never-existed alike. Telling
+		// them apart tells a caller holding a guess whether the guess was close.
+		return nil, errx.New(errx.KindForbidden, "ticket_invalid",
+			"That sign-on ticket is not valid.")
+	}
+	rec, err := s.repo.GetDatabaseByID(ctx, row.DBInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	return s.mintHandoffAccount(ctx, rec)
+}
+
+// mintHandoffAccount creates the throwaway MariaDB account for one database and
+// returns its credentials. Shared by every hand-off path so there is one place
+// that decides what a hand-off account may do.
+func (s *Service) mintHandoffAccount(ctx context.Context, rec *InstanceRecord) (*PMACredentials, error) {
 	// A fresh account per hand-off: sessions never share a credential, so
 	// revoking one cannot cut another short.
 	uid := idgen.NewULID()
@@ -139,24 +241,30 @@ func (s *Service) StartSSO(ctx context.Context, dbUID string) (*SSOSession, erro
 		return nil, err
 	}
 
-	return &SSOSession{
-		URL:      s.adminerURL,
-		Driver:   "server", // Adminer's name for MySQL/MariaDB
-		Server:   "localhost",
-		Database: rec.Name,
+	return &PMACredentials{
 		Username: username,
 		Password: password,
-		// RFC3339 so a browser can compare it without guessing a format.
-		ExpiresAt: expires.Format(time.RFC3339),
+		Database: rec.Name,
+		Server:   "localhost",
 	}, nil
 }
 
 // SweepSSO drops every expired hand-off account. Returns how many were removed.
+//
+// It also prunes expired tickets. Those hold no secret and grant nothing once
+// expired, but a table that only ever grows is a table nobody notices until it
+// is large.
 func (s *Service) SweepSSO(ctx context.Context) (int, error) {
 	if s.ssoRepo == nil {
 		return 0, nil
 	}
-	expired, err := s.ssoRepo.ListExpiredSSOSessions(ctx, time.Now().UTC().Format(sqlTime))
+	now := time.Now().UTC().Format(sqlTime)
+	if _, err := s.ssoRepo.DeleteExpiredSSOTickets(ctx, now); err != nil {
+		// Not fatal: the accounts below are the part that matters, and a ticket
+		// left in the table is inert.
+		slog.Default().Warn("database: could not prune expired sign-on tickets", "err", err)
+	}
+	expired, err := s.ssoRepo.ListExpiredSSOSessions(ctx, now)
 	if err != nil {
 		return 0, err
 	}
@@ -212,4 +320,22 @@ func randomPassword() (string, error) {
 			"Could not generate a session password.")
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// randomTicket mints a hand-off ticket. 32 bytes, URL-safe: it travels in a
+// query string.
+func randomTicket() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", errx.Wrap(err, errx.KindInternal, "ticket_gen_failed",
+			"Could not generate a sign-on ticket.")
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// hashTicket is what is stored. Same reasoning as session tokens and API keys:
+// a datastore that leaks must not hand anyone a usable ticket.
+func hashTicket(ticket string) string {
+	sum := sha256.Sum256([]byte(ticket))
+	return hex.EncodeToString(sum[:])
 }

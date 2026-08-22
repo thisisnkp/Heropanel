@@ -65,7 +65,7 @@ type Marketplace struct {
 
 // Webmail configures the Roundcube webmail integration. Hostname is the FQDN it
 // is served on (webmail.example.com); empty disables webmail. PHPVersion is the
-// php-fpm version its pool runs (default 8.3).
+// php-fpm version its pool runs (defaults to the panel's own default version).
 type Webmail struct {
 	Hostname   string `yaml:"hostname"`
 	PHPVersion string `yaml:"php_version"`
@@ -307,6 +307,17 @@ type Security struct {
 	// Overridable via NP_SECURITY_GEODB_URL / NP_SECURITY_GEODB_URL6.
 	GeoDBURLv4 string `yaml:"geodb_url_v4"`
 	GeoDBURLv6 string `yaml:"geodb_url_v6"`
+	// MaldetPath is the tarball path on rfxn.com (the host is pinned in the
+	// broker and is not configurable — an operator-supplied URL would turn this
+	// file into "run this as root"). Empty uses the current release.
+	MaldetPath string `yaml:"maldet_path"`
+	// MaldetSHA256 pins the maldet tarball's checksum. Empty means the install
+	// is verified only by TLS and the pinned host, which is all maldet's
+	// distribution offers — rfxn publishes no signature and no stable checksum.
+	// The panel reports the hash it actually installed so this can be filled in
+	// afterwards and every later install checked against it.
+	// Overridable via NP_SECURITY_MALDET_PATH / NP_SECURITY_MALDET_SHA256.
+	MaldetSHA256 string `yaml:"maldet_sha256"`
 }
 
 // WebAuthn identifies the relying party for passkeys.
@@ -563,6 +574,12 @@ func (c *Config) applyEnv() {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Security.FirewallWindowSec = n
 		}
+	}
+	if v := os.Getenv("NP_SECURITY_MALDET_PATH"); v != "" {
+		c.Security.MaldetPath = v
+	}
+	if v := os.Getenv("NP_SECURITY_MALDET_SHA256"); v != "" {
+		c.Security.MaldetSHA256 = v
 	}
 	if v := os.Getenv("NP_SECURITY_GEODB_URL"); v != "" {
 		c.Security.GeoDBURLv4 = v

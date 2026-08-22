@@ -9,6 +9,7 @@
  */
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
+import { api, ApiRequestError } from "@/lib/api";
 import { useSitesStore } from "@/stores/sites";
 import { useUiStore } from "@/stores/ui";
 
@@ -19,21 +20,41 @@ const router = useRouter();
 const site = computed(() => sites.current);
 const open = ref(false);
 const typed = ref("");
+const busy = ref(false);
+const error = ref<string | null>(null);
 
 const canDelete = computed(() => site.value !== null && typed.value.trim() === site.value.domain);
 
 function ask() {
   typed.value = "";
+  error.value = null;
   open.value = true;
 }
 
-function confirmDelete() {
+/**
+ * Deletes the site on the server, then leaves.
+ *
+ * The row is only dropped from the list after npd confirms. Removing it first
+ * would show the site as gone whether or not it actually is — and a delete that
+ * failed halfway (the vhost reloaded, the Linux user still there) is precisely
+ * the state an operator must be able to see rather than have hidden.
+ */
+async function confirmDelete() {
   if (!canDelete.value || !site.value) return;
-  const name = site.value.name;
-  sites.remove(site.value.id);
-  open.value = false;
-  ui.toast(name + " deleted.", "success");
-  void router.push({ name: "websites" });
+  const { uid, name } = site.value;
+  busy.value = true;
+  error.value = null;
+  try {
+    await api.del(`/sites/${uid}`);
+    sites.remove(uid);
+    open.value = false;
+    ui.toast(name + " deleted.", "success");
+    void router.push({ name: "websites" });
+  } catch (e) {
+    error.value = e instanceof ApiRequestError ? e.message : "The site could not be deleted.";
+  } finally {
+    busy.value = false;
+  }
 }
 </script>
 
@@ -58,6 +79,8 @@ function confirmDelete() {
       description="Files and databases are deleted; backups remain for 14 days."
       :dismissible="false"
     >
+      <NxCallout v-if="error" tone="danger">{{ error }}</NxCallout>
+
       <NxField label="Type the domain to confirm" :hint="'Enter ' + site.domain + ' exactly.'">
         <template #default="{ id, describedBy }">
           <NxInput
@@ -73,7 +96,13 @@ function confirmDelete() {
 
       <template #footer>
         <NxButton @click="open = false">Cancel</NxButton>
-        <NxButton variant="primary" class="dz__confirm" :disabled="!canDelete" @click="confirmDelete">
+        <NxButton
+          variant="primary"
+          class="dz__confirm"
+          :disabled="!canDelete"
+          :loading="busy"
+          @click="confirmDelete"
+        >
           Delete permanently
         </NxButton>
       </template>

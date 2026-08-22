@@ -93,7 +93,7 @@ function redeploy() {
             <RouterLink
               v-for="q in actions"
               :key="q.to"
-              :to="{ name: q.to, params: { id: String(site.id) } }"
+              :to="{ name: q.to, params: { uid: site.uid } }"
               class="ov__quick"
               :target="q.newTab ? '_blank' : undefined"
               :rel="q.newTab ? 'noopener' : undefined"
