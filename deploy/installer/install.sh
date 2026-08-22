@@ -17,7 +17,7 @@ BASE_URL="${NP_BASE_URL:-https://get.nexpanel.io}"
 # SHA256SUMS manifest is not signed by the matching private key (held offline).
 # Empty in-tree; the release pipeline substitutes the real key. An operator can
 # also override it via NP_RELEASE_PUBKEY.
-PINNED_PUBKEY="${NP_RELEASE_PUBKEY:-}"
+PINNED_PUBKEY="${NP_RELEASE_PUBKEY:-xOREJDp6Uy1Qh2MFToIXrxiBayKaJ/hZvZXpo+IEkcc=}"
 
 log()  { printf '\033[0;36m==>\033[0m %s\n' "$1"; }
 err()  { printf '\033[0;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
