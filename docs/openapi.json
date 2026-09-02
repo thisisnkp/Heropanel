@@ -627,6 +627,93 @@
         },
         "type": "object"
       },
+      "LicenseLimits": {
+        "properties": {
+          "dbs": {
+            "description": "Databases this plan covers.",
+            "type": "integer"
+          },
+          "sites": {
+            "description": "Sites this plan covers.",
+            "type": "integer"
+          },
+          "users": {
+            "description": "Panel users this plan covers.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "LicenseStatus": {
+        "properties": {
+          "activated": {
+            "description": "False on an install that has never held a licence — which reads as locked, but means 'enter a key', not 'renew'.",
+            "type": "boolean"
+          },
+          "banner": {
+            "description": "The line to show an operator, or empty when there is nothing to say.",
+            "type": "string"
+          },
+          "clock_rollback": {
+            "description": "This server's clock is behind the furthest point the panel has seen. Reported rather than silently corrected: it usually means NTP is not running.",
+            "type": "boolean"
+          },
+          "degraded_until": {
+            "description": "Until this moment creating new things is blocked. Nothing that is already running stops, ever.",
+            "type": "string"
+          },
+          "enforced": {
+            "description": "False in a build that pins no licence key, which enforces nothing. Reported rather than hidden — a green tick this build did not earn would be a lie.",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "description": "When the current lease expires. The panel keeps working past it — see grace_until and degraded_until.",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "grace_until": {
+            "description": "Until this moment everything works and the UI carries a warning.",
+            "type": "string"
+          },
+          "last_contact": {
+            "description": "When the licence server was last reached.",
+            "type": "string"
+          },
+          "lid": {
+            "description": "The licence this server runs under.",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LicenseLimits"
+          },
+          "plan": {
+            "description": "free | starter | pro | business | enterprise.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the panel is in that state, in a sentence.",
+            "type": "string"
+          },
+          "revoked": {
+            "description": "The licence server pushed a revoke. Locks the panel; touches no service.",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "active | grace | degraded | locked. Computed on this machine from the stored lease, so it is the same answer whether or not the licence server is reachable.",
+            "type": "string"
+          },
+          "subscription_ends_at": {
+            "description": "When the subscription itself ends, as distinct from this lease. Absent for a perpetual or free licence.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "LoginResult": {
         "properties": {
           "authenticated": {
@@ -19259,6 +19346,325 @@
           }
         },
         "summary": "Rotate the active data key",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/license": {
+      "get": {
+        "description": "Requires the `system.read` permission.",
+        "operationId": "api_v1_system_license_get_licence_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LicenseStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Where this installation sits on the degradation ladder, computed locally from the stored lease. Never calls the licence server, so it answers during exactly the outage an operator opens it for."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Get licence status",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.read"
+      }
+    },
+    "/api/v1/system/license/activate": {
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_license_activate_activate_this_server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "key": {
+                    "description": "The licence key, NXP-XXXXX-XXXXX-XXXXX-XXXXX.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "key"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LicenseStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Binds this machine to a licence and stores the signed lease. Re-activating the same machine costs no activation slot, so a reinstall or a restore is free."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Activate this server",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/license/deactivate": {
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_license_deactivate_release_this_server_s_activation",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LicenseStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Frees the activation slot for another server. Nothing on this machine is stopped or removed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Release this server's activation",
+        "tags": [
+          "System"
+        ],
+        "x-required-permission": "system.write"
+      }
+    },
+    "/api/v1/system/license/refresh": {
+      "post": {
+        "description": "Requires the `system.write` permission.",
+        "operationId": "api_v1_system_license_refresh_refresh_the_licence_now",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/LicenseStatus"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "One heartbeat, immediately. A failure is reported in `reason` and is **not** a licence failure: the panel keeps running on its stored lease."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or request error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authenticated but missing the required permission"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "summary": "Refresh the licence now",
         "tags": [
           "System"
         ],

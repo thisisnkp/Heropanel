@@ -22,6 +22,12 @@ const (
 	KindUnauthorized Kind = "unauthorized"
 	KindUpstream     Kind = "upstream"
 	KindUnavailable  Kind = "unavailable"
+	// KindPaymentRequired is a refusal the operator can resolve by paying:
+	// a lapsed licence, or a plan whose limit has been reached. Distinct from
+	// KindForbidden because the two mean opposite things to a client — one is
+	// "you may never do this", the other is "renew and you may" — and the panel
+	// UI shows a billing page for one and an error for the other.
+	KindPaymentRequired Kind = "payment_required"
 )
 
 // Field is a single field-level validation problem.

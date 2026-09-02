@@ -129,6 +129,14 @@ func listImagesHandler(d Deps) http.HandlerFunc {
 // disk, so it is not a read.
 func pullImageHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// The second half of a Docker deploy, gated separately from container
+		// creation — two call sites, so defeating one leaves the other.
+		if d.License != nil {
+			if err := d.License.CanUseDocker(); err != nil {
+				writeError(w, r, err)
+				return
+			}
+		}
 		var req struct {
 			Image string `json:"image"`
 		}
@@ -197,6 +205,18 @@ func createContainerHandler(d Deps) http.HandlerFunc {
 		}
 		audit.AddDetail(r.Context(), "container", spec.Name)
 		audit.AddDetail(r.Context(), "image", spec.Image)
+
+		// Docker is both a plan feature and a control-plane action, so this
+		// gate asks two questions the others do not. Containers that are
+		// already running are never touched: start, stop, restart and logs stay
+		// open in every licence state, because a customer whose app is down
+		// must always be able to bring it back up.
+		if d.License != nil {
+			if err := d.License.CanUseDocker(); err != nil {
+				writeError(w, r, err)
+				return
+			}
+		}
 		// Deliberately not audited: the environment. It is where a generated
 		// database password lives, and an audit log is not the place to copy one.
 

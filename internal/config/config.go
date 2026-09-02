@@ -31,6 +31,25 @@ type Config struct {
 	Webmail     Webmail     `yaml:"webmail"`
 	Marketplace Marketplace `yaml:"marketplace"`
 	Update      Update      `yaml:"update"`
+	License     License     `yaml:"license"`
+}
+
+// License points the panel at its licence server (docs/27).
+//
+// PubKey is the ed25519 key licence tokens are verified against — and unlike
+// every other key in this file it is normally **not** read from here. Official
+// builds compile it in, and a build that pins a key ignores this setting
+// entirely: a verification key an operator can edit verifies nothing, and on a
+// customer's own VPS the operator is the customer. It exists for development
+// and for anyone running their own licence server from source.
+//
+// ServerURL has a default because a panel that cannot find its licence server
+// is a panel nobody can activate; KeyID names which pinned key the server is
+// currently signing with, and is only a hint — the token's own header decides.
+type License struct {
+	ServerURL string `yaml:"server_url"`
+	KeyID     string `yaml:"key_id"`
+	PubKey    string `yaml:"pubkey"`
 }
 
 // Update configures panel self-update (docs/26). BaseURL is the release root a
@@ -388,6 +407,11 @@ func Default() Config {
 		// purpose — self-update stays off until an operator names both a release
 		// source and the key that vouches for it.
 		Update: Update{Channel: "stable"},
+		// The licence server every official build talks to. Overridable for a
+		// staging deployment or a self-hosted server; the *key* is what decides
+		// whether a token is believed, so pointing this elsewhere without also
+		// having that server's key produces tokens this panel refuses.
+		License: License{ServerURL: "https://license.nexpanel.io", KeyID: "lk1"},
 	}
 }
 
@@ -551,6 +575,18 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("NP_UPDATE_AUTO_CHECK"); v != "" {
 		c.Update.AutoCheck = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("NP_LICENSE_SERVER"); v != "" {
+		c.License.ServerURL = v
+	}
+	if v := os.Getenv("NP_LICENSE_KEY_ID"); v != "" {
+		c.License.KeyID = v
+	}
+	// Honoured only by a build that pins no key of its own — see the License
+	// type. Reading it here regardless keeps the precedence rules in one place
+	// (env beats yaml) rather than splitting them across two packages.
+	if v := os.Getenv("NP_LICENSE_PUBKEY"); v != "" {
+		c.License.PubKey = v
 	}
 	if v := os.Getenv("NP_PANEL_IP_ALLOWLIST"); v != "" {
 		parts := strings.Split(v, ",")

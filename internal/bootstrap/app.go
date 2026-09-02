@@ -35,6 +35,7 @@ import (
 	"github.com/thisisnkp/nexpanel/internal/httpapi"
 	"github.com/thisisnkp/nexpanel/internal/job"
 	"github.com/thisisnkp/nexpanel/internal/keyring"
+	"github.com/thisisnkp/nexpanel/internal/license"
 	mailpkg "github.com/thisisnkp/nexpanel/internal/mail"
 	"github.com/thisisnkp/nexpanel/internal/marketplace"
 	"github.com/thisisnkp/nexpanel/internal/monitor"
@@ -241,6 +242,43 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 	var domainSvc *domain.Service
 	var setupSvc *setup.Service
 	var updateSvc *update.Service
+
+	// The licence client (docs/27). Built before the datastore block on purpose:
+	// it needs no database, and an install whose database is not configured yet
+	// is exactly the install an operator is about to activate.
+	//
+	// A build that pins no signing key gets a nil service and enforces nothing.
+	// That is the development case, and it is not a bypass worth closing here —
+	// a binary you compiled yourself was never going to be enforcing against
+	// you. Official builds pin the key at compile time, so this branch is not
+	// reachable in one.
+	licenseSvc, err := license.New(license.Options{
+		Dir:       DataDir(cfg),
+		ServerURL: cfg.License.ServerURL,
+		ExtraKeys: map[string]string{cfg.License.KeyID: cfg.License.PubKey},
+		Version:   version,
+		Logger:    log,
+	})
+	switch {
+	case err != nil:
+		log.Warn("licensing is not active", "err", err,
+			"note", "this build pins no licence key and none is configured; no licence checks will be enforced")
+		licenseSvc = nil
+	case !licenseSvc.Pinned():
+		// Said plainly rather than left to look like a normal boot. A panel
+		// trusting a key from its own config file is not enforcing a licence,
+		// and an operator reading these logs should not have to infer that.
+		log.Warn("licence key came from configuration, not from the binary",
+			"note", "development build — an official release pins its key at compile time")
+	}
+	if licenseSvc != nil {
+		st := licenseSvc.Status()
+		log.Info("licence", "state", st.State, "plan", st.Plan, "activated", st.Activated, "reason", st.Reason)
+		// The heartbeat is supervised: a panic in it must not take npd down,
+		// and it must keep running for the life of the process.
+		safe.Go(ctx, log, "license-heartbeat", func(ctx context.Context) { licenseSvc.Run(ctx) })
+	}
+
 	if db != nil {
 		users := repository.NewUserRepository(db)
 		sessions := repository.NewSessionRepository(db)
@@ -446,7 +484,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		updateSvc = update.NewService(
 			repository.NewPanelUpdateStore(db), gw,
 			update.Config{Channel: cfg.Update.Channel, BaseURL: cfg.Update.BaseURL, PubKey: cfg.Update.PubKey},
-			version, updateDataDir(cfg), log,
+			version, DataDir(cfg), log,
 		).WithSnapshotter(panelBackupSnapshotter{svc: backupSvc})
 		// An update destroys the process that started it, so nobody is left to
 		// record how it went. Settle whatever was in flight from the installer's
@@ -839,6 +877,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, version strin
 		Marketplace: marketplaceSvc,
 		Setup:       setupSvc,
 		Update:      updateSvc,
+		License:     licenseSvc,
 		Keyring:     keyringSvc,
 		Sites:       siteSvc,
 		PHP:         phpSvc,
@@ -989,12 +1028,16 @@ func ensureTempDomainWildcard(ctx context.Context, dnsSvc *dns.Service, sel setu
 	}
 }
 
-// updateDataDir is where self-update stages releases and leaves its result
-// file. It is derived from the datastore path rather than configured
-// separately: npd's systemd unit grants ReadWritePaths on exactly that
-// directory, so anywhere else would need a policy change to write to, and a
-// second setting to keep in step with the first.
-func updateDataDir(cfg config.Config) string {
+// DataDir is where the panel keeps its own state: staged releases and their
+// result file, and the licence lease. It is derived from the datastore path
+// rather than configured separately, because npd's systemd unit grants
+// ReadWritePaths on exactly that directory — anywhere else would need a policy
+// change to write to, and a second setting to keep in step with the first.
+//
+// Exported because `npd license` stands the licence client up without booting
+// the daemon, and a licence activated from the CLI has to land where the daemon
+// will look for it. Two copies of this rule is two places for it to drift.
+func DataDir(cfg config.Config) string {
 	if dsn := strings.TrimSpace(cfg.Database.DSN); dsn != "" && cfg.Database.Driver == "sqlite" {
 		if dir := filepath.Dir(dsn); dir != "" && dir != "." {
 			return dir

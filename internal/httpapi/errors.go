@@ -21,6 +21,12 @@ func statusFor(kind errx.Kind) int {
 		return http.StatusForbidden
 	case errx.KindNotFound:
 		return http.StatusNotFound
+	case errx.KindPaymentRequired:
+		// 402. Rarely used and exactly right here: the request was understood,
+		// the caller is who they say they are, and what stands in the way is a
+		// payment. A 403 would tell the panel UI "you lack permission" and send
+		// an owner looking at roles.
+		return http.StatusPaymentRequired
 	case errx.KindConflict:
 		return http.StatusConflict
 	case errx.KindUpstream:

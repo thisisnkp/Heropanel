@@ -252,6 +252,7 @@ func fullRouterDeps(t *testing.T) Deps {
 		Marketplace: marketplace.NewService(nil, nil, nil, nil),
 		Setup:       setup.NewService(nil, nil, nil),
 		Update:      update.NewService(nil, nil, update.Config{}, "0.0.0-test", t.TempDir(), nil),
+		License:     testLicenseService(t),
 		Keyring:     keyring.NewService(nil, nil),
 		Sites:       &site.Service{},
 		PHP:         &php.Service{},

@@ -63,6 +63,16 @@ func createSiteHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
+		// The licence gate for new sites. Checked here, in this handler, rather
+		// than behind one shared "is this panel licensed" call: a single central
+		// gate is a single function to patch out, and the product is then
+		// entirely unlocked. This one refuses only *creating* a site — every
+		// site already on the box keeps serving throughout.
+		if err := licenseAllowsNewSite(r.Context(), d); err != nil {
+			writeError(w, r, err)
+			return
+		}
+
 		in := site.CreateInput{
 			Name:          req.Name,
 			PrimaryDomain: req.PrimaryDomain,

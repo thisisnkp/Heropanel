@@ -348,6 +348,35 @@ var openapiSchemas = map[string]any{
 	"Health": object(map[string]any{
 		"status": prop("string", "\"ok\" when serving."),
 	}),
+	"LicenseStatus": object(map[string]any{
+		"state": prop("string", "active | grace | degraded | locked. Computed on this machine from the stored "+
+			"lease, so it is the same answer whether or not the licence server is reachable."),
+		"reason": prop("string", "Why the panel is in that state, in a sentence."),
+		"banner": prop("string", "The line to show an operator, or empty when there is nothing to say."),
+		"activated": prop("boolean", "False on an install that has never held a licence — which reads as locked, "+
+			"but means 'enter a key', not 'renew'."),
+		"plan":     prop("string", "free | starter | pro | business | enterprise."),
+		"lid":      prop("string", "The licence this server runs under."),
+		"limits":   ref("LicenseLimits"),
+		"features": arrayOf(prop("string", "")),
+		"expires_at": prop("string", "When the current lease expires. The panel keeps working past it — see "+
+			"grace_until and degraded_until."),
+		"grace_until":    prop("string", "Until this moment everything works and the UI carries a warning."),
+		"degraded_until": prop("string", "Until this moment creating new things is blocked. Nothing that is already running stops, ever."),
+		"subscription_ends_at": prop("string", "When the subscription itself ends, as distinct from this lease. "+
+			"Absent for a perpetual or free licence."),
+		"revoked": prop("boolean", "The licence server pushed a revoke. Locks the panel; touches no service."),
+		"clock_rollback": prop("boolean", "This server's clock is behind the furthest point the panel has seen. "+
+			"Reported rather than silently corrected: it usually means NTP is not running."),
+		"last_contact": prop("string", "When the licence server was last reached."),
+		"enforced": prop("boolean", "False in a build that pins no licence key, which enforces nothing. "+
+			"Reported rather than hidden — a green tick this build did not earn would be a lie."),
+	}),
+	"LicenseLimits": object(map[string]any{
+		"sites": prop("integer", "Sites this plan covers."),
+		"dbs":   prop("integer", "Databases this plan covers."),
+		"users": prop("integer", "Panel users this plan covers."),
+	}),
 	"UpdateStatus": object(map[string]any{
 		"current":   prop("string", "The version this process is running."),
 		"channel":   prop("string", "stable | beta | nightly."),

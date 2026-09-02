@@ -45,6 +45,15 @@ func createDatabaseHandler(d Deps) http.HandlerFunc {
 		}
 		audit.AddDetail(r.Context(), "name", req.Name)
 		audit.AddDetail(r.Context(), "engine", req.Engine)
+
+		// Its own licence check, independent of the site one. Existing
+		// databases keep answering queries in every licence state; this refuses
+		// to create another.
+		if err := licenseAllowsNewDatabase(r.Context(), d); err != nil {
+			writeError(w, r, err)
+			return
+		}
+
 		out, err := d.Databases.CreateDatabase(r.Context(), p.UserID, req.Name, req.Engine)
 		if err != nil {
 			writeError(w, r, err)

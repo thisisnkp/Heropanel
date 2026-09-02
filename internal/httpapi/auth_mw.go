@@ -148,6 +148,15 @@ func requirePermission(permission string) mw {
 				writeAPIError(w, r, http.StatusForbidden, "forbidden", "You do not have permission to perform this action.")
 				return
 			}
+			// Last, deliberately. A lapsed licence is a reason to refuse
+			// somebody who *would otherwise be allowed*; telling a caller who
+			// lacks the permission that the licence has lapsed would be both
+			// misleading and a leak of the installation's commercial state.
+			// See licenseLock.
+			if err := lockedError(r); err != nil {
+				writeError(w, r, err)
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

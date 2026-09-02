@@ -26,6 +26,7 @@ import (
 	"github.com/thisisnkp/nexpanel/internal/git"
 	"github.com/thisisnkp/nexpanel/internal/job"
 	"github.com/thisisnkp/nexpanel/internal/keyring"
+	"github.com/thisisnkp/nexpanel/internal/license"
 	"github.com/thisisnkp/nexpanel/internal/mail"
 	"github.com/thisisnkp/nexpanel/internal/marketplace"
 	"github.com/thisisnkp/nexpanel/internal/monitor"
@@ -132,6 +133,11 @@ type Deps struct {
 	// without a datastore; the wizard gates the panel until it is completed.
 	Setup *setup.Service
 
+	// License is the licence client (docs/27). Nil in a build that pins no
+	// licence signing key, in which case nothing is enforced and the licence
+	// screen says so rather than showing a green tick it did not earn.
+	License *license.Service
+
 	// Update is the panel's self-update service (docs/26). Nil without a
 	// datastore, in which case the endpoints report unavailable rather than
 	// pretending an update could be recorded.
@@ -218,6 +224,11 @@ func NewRouter(d Deps) http.Handler {
 				r.Use(auditor(d.Audit, d.Logger))
 				r.Use(csrf(d.Config.Security.CSRF.Enabled)) // double-submit CSRF (opt-in)
 				r.Use(tenantGuard(d))                       // reseller-tenant isolation on site routes
+				// A lapsed licence narrows the panel's own API to the licence
+				// routes. It stops no service and touches no data — see the
+				// note on licenseLock — and it is not the only enforcement:
+				// each feature handler checks for itself.
+				r.Use(licenseLock(d))
 
 				r.Get("/auth/status", statusHandler(d))
 				r.Post("/auth/bootstrap", bootstrapHandler(d))
@@ -279,6 +290,14 @@ func NewRouter(d Deps) http.Handler {
 					// Panel self-update (docs/26). Reading is system.read; the
 					// apply is system.write, because it replaces the broker as
 					// well as the panel.
+					// The licence (docs/27). Reading is system.read because every
+					// screen needs the banner; changing which licence this
+					// machine runs under is system.write and force-audited.
+					r.With(requirePermission("system.read")).Get("/system/license", getLicenseHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/license/activate", activateLicenseHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/license/refresh", refreshLicenseHandler(d))
+					r.With(requirePermission("system.write")).Post("/system/license/deactivate", deactivateLicenseHandler(d))
+
 					r.With(requirePermission("system.read")).Get("/system/update", getUpdateHandler(d))
 					r.With(requirePermission("system.read")).Get("/system/updates", listUpdatesHandler(d))
 					r.With(requirePermission("system.write")).Post("/system/update/check", checkUpdateHandler(d))

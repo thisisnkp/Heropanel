@@ -60,6 +60,13 @@ func createUserHandler(d Deps) http.HandlerFunc {
 		if !decodeJSON(w, r, &in) {
 			return
 		}
+		// Its own licence check. Existing users keep signing in regardless of
+		// licence state — locking people out of a panel they are paying to fix
+		// would be the exact opposite of useful.
+		if err := licenseAllowsNewUser(r.Context(), d); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		v, err := d.UserMgmt.Create(r.Context(), actorFrom(r), in)
 		if err != nil {
 			writeError(w, r, err)

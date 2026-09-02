@@ -428,6 +428,34 @@ var apiDocs = map[string]opMeta{
 		}, "name", "primary_domain"),
 		RespSchema: ref("Site"), RespStatus: 201,
 	},
+	// ── licence ───────────────────────────────────────────────────────────────
+	"GET /api/v1/system/license": {
+		Summary: "Get licence status", Tags: []string{"System"}, Permission: "system.read",
+		RespSchema: ref("LicenseStatus"),
+		RespDesc: "Where this installation sits on the degradation ladder, computed locally from the stored lease. " +
+			"Never calls the licence server, so it answers during exactly the outage an operator opens it for.",
+	},
+	"POST /api/v1/system/license/activate": {
+		Summary: "Activate this server", Tags: []string{"System"}, Permission: "system.write",
+		ReqSchema: object(map[string]any{
+			"key": prop("string", "The licence key, NXP-XXXXX-XXXXX-XXXXX-XXXXX."),
+		}, "key"),
+		RespSchema: ref("LicenseStatus"),
+		RespDesc: "Binds this machine to a licence and stores the signed lease. Re-activating the same machine " +
+			"costs no activation slot, so a reinstall or a restore is free.",
+	},
+	"POST /api/v1/system/license/refresh": {
+		Summary: "Refresh the licence now", Tags: []string{"System"}, Permission: "system.write",
+		RespSchema: ref("LicenseStatus"),
+		RespDesc: "One heartbeat, immediately. A failure is reported in `reason` and is **not** a licence failure: " +
+			"the panel keeps running on its stored lease.",
+	},
+	"POST /api/v1/system/license/deactivate": {
+		Summary: "Release this server's activation", Tags: []string{"System"}, Permission: "system.write",
+		RespSchema: ref("LicenseStatus"),
+		RespDesc:   "Frees the activation slot for another server. Nothing on this machine is stopped or removed.",
+	},
+
 	// ── self-update ───────────────────────────────────────────────────────────
 	"GET /api/v1/system/update": {
 		Summary: "Get self-update status", Tags: []string{"System"}, Permission: "system.read",

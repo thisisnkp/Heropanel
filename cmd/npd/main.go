@@ -30,6 +30,14 @@ func main() {
 		os.Exit(runDecrypt(os.Args[2:]))
 	}
 
+	// `npd license ...` is the other subcommand that has to work when the
+	// daemon does not: a fresh install with no datastore configured, or a box
+	// where the panel will not start. Both are exactly when an operator needs to
+	// see or fix the licence, and neither can wait for npd to come up first.
+	if len(os.Args) > 1 && os.Args[1] == "license" {
+		os.Exit(runLicense(os.Args[2:]))
+	}
+
 	var (
 		configPath  = flag.String("config", envOr("NP_CONFIG", "/etc/nexpanel/config.yaml"), "path to config file")
 		showVersion = flag.Bool("version", false, "print version and exit")
