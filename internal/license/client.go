@@ -130,6 +130,11 @@ type ActivateResult struct {
 		ChangedComponents []string `json:"changed_components"`
 		ChangesUsed       int      `json:"changes_used"`
 		ChangesAllowed    int      `json:"changes_allowed"`
+		// Migration is set when the server recognised this machine across a
+		// change to its own component set rather than to the customer's
+		// hardware. Charged to nobody's allowance; worth logging differently,
+		// because "your hardware changed" would be a lie.
+		Migration bool `json:"migration"`
 	} `json:"fingerprint_change"`
 }
 
@@ -155,6 +160,10 @@ func (c *Client) Activate(ctx context.Context, key string, fp Fingerprint, hostn
 		"key":           key,
 		"fingerprint":   fp.Hash,
 		"fp_components": fp.Components,
+		// Reported so an administrator reviewing this machine can see what it
+		// is. Nothing on the server scores these — see fingerprint.go on why
+		// the CPU and the MAC are not components.
+		"soft_signals":  fp.Signals,
 		"hostname":      hostname,
 		"os":            osName,
 		"panel_version": version,
@@ -170,7 +179,11 @@ func (c *Client) Activate(ctx context.Context, key string, fp Fingerprint, hostn
 // can be forgotten after activation: it is never on disk and never on the wire
 // again. A captured heartbeat is worth one machine for five minutes rather than
 // a licence forever.
-func (c *Client) Heartbeat(ctx context.Context, lid, fingerprint, secret, hostname, osName, version string) (HeartbeatResult, error) {
+func (c *Client) Heartbeat(
+	ctx context.Context,
+	lid, fingerprint, secret, hostname, osName, version string,
+	signals SoftSignals,
+) (HeartbeatResult, error) {
 	body, err := signedBody(lid, fingerprint, secret, c.now())
 	if err != nil {
 		return HeartbeatResult{}, err
@@ -178,6 +191,13 @@ func (c *Client) Heartbeat(ctx context.Context, lid, fingerprint, secret, hostna
 	body["hostname"] = hostname
 	body["os"] = osName
 	body["panel_version"] = version
+	// Sent on every beat, not only on activation, so a resize is visible to
+	// support the day it happens rather than the next time somebody
+	// re-activates. Deliberately outside the HMAC: the signature covers the
+	// fields that authenticate the request, and widening it to cover free-text
+	// hardware descriptions would mean a machine that renamed its CPU could no
+	// longer authenticate.
+	body["soft_signals"] = signals
 
 	var out HeartbeatResult
 	err = c.call(ctx, "/v1/license/heartbeat", body, &out)

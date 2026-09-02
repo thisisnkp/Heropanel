@@ -72,7 +72,8 @@ func TestHeartbeatIsSignedWithTheInstallSecret(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	c.Now = func() time.Time { return epoch }
-	if _, err := c.Heartbeat(context.Background(), "lic_x", "sha256:fp", secret, "h", "os", "1.0"); err != nil {
+	signals := SoftSignals{CPU: "AMD EPYC 7302P", Cores: 16, RAMMB: 32768, MAC: "aa:bb:cc:dd:ee:ff"}
+	if _, err := c.Heartbeat(context.Background(), "lic_x", "sha256:fp", secret, "h", "os", "1.0", signals); err != nil {
 		t.Fatal(err)
 	}
 
@@ -114,7 +115,7 @@ func TestEachHeartbeatUsesAFreshNonce(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	for i := 0; i < 5; i++ {
-		if _, err := c.Heartbeat(context.Background(), "lic_x", "fp", "s", "", "", ""); err != nil {
+		if _, err := c.Heartbeat(context.Background(), "lic_x", "fp", "s", "", "", "", SoftSignals{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -160,7 +161,7 @@ func TestTransientFailuresAreRetried(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	if _, err := c.Heartbeat(context.Background(), "lic_x", "fp", "s", "", "", ""); err != nil {
+	if _, err := c.Heartbeat(context.Background(), "lic_x", "fp", "s", "", "", "", SoftSignals{}); err != nil {
 		t.Fatalf("the third attempt should have succeeded: %v", err)
 	}
 	if got := calls.Load(); got != 3 {
@@ -272,4 +273,60 @@ func mintWith(priv ed25519.PrivateKey, claims Claims) string {
 	payload, _ := json.Marshal(claims)
 	signing := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload)
 	return signing + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(priv, []byte(signing)))
+}
+
+// The activation body, field by field, against a server that records what it
+// received. This is the seam between two codebases in two languages: the Go
+// client's JSON tags and the licence server's component list have to agree
+// exactly, and a mismatch is silent — a component sent under the wrong name
+// scores zero, and every installation in the fleet looks like a new machine.
+func TestActivationSendsTheAgreedComponentsAndKeepsSoftSignalsSeparate(t *testing.T) {
+	var seen atomic.Value
+	srv := fakeServer(t, func(_ string, body map[string]any) (int, any) {
+		seen.Store(body)
+		return 200, map[string]any{"token": "", "license": map[string]any{}}
+	})
+	defer srv.Close()
+
+	fp := Collect(t.TempDir())
+	c := NewClient(srv.URL)
+	if _, err := c.Activate(context.Background(), "NXP-KEY", fp, "host", "linux", "1.0"); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := seen.Load().(map[string]any)
+	if body == nil {
+		t.Fatal("the server saw no request")
+	}
+
+	components, _ := body["fp_components"].(map[string]any)
+	if components == nil {
+		t.Fatal("no fp_components were sent")
+	}
+	for _, name := range []string{"install_id", "machine_id", "product_uuid", "disk_uuid"} {
+		if _, ok := components[name]; !ok {
+			t.Fatalf("fp_components is missing %q", name)
+		}
+	}
+	if len(components) != 4 {
+		t.Fatalf("fp_components = %v, want exactly the four agreed names", components)
+	}
+
+	signals, _ := body["soft_signals"].(map[string]any)
+	if signals == nil {
+		t.Fatal("no soft_signals were sent")
+	}
+	for _, name := range []string{"cpu", "cores", "ram_mb", "mac"} {
+		if _, ok := signals[name]; !ok {
+			t.Fatalf("soft_signals is missing %q", name)
+		}
+	}
+
+	// The line the correction draws, checked on the wire rather than in a
+	// comment: nothing a VPS resize changes may appear among the components.
+	for _, soft := range []string{"cpu", "cores", "ram_mb", "mac"} {
+		if _, leaked := components[soft]; leaked {
+			t.Fatalf("%q was sent as an identifying component; a resize would cost a seat", soft)
+		}
+	}
 }

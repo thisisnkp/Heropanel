@@ -21,7 +21,12 @@ import (
 // enforce. Official builds pin a key at compile time and bootstrap always
 // constructs the service for them.
 type Service struct {
-	store   *Store
+	store *Store
+	// dir is the panel's data directory. Held because the install id — the
+	// component the whole fingerprint leans on — lives beside the lease, and
+	// the CLI and the daemon must derive the same path or they would each mint
+	// their own identity for one machine.
+	dir     string
 	client  *Client
 	ring    Keyring
 	pinned  bool
@@ -78,6 +83,7 @@ func New(o Options) (*Service, error) {
 	}
 	return &Service{
 		store:   store,
+		dir:     dir,
 		client:  NewClient(o.ServerURL),
 		ring:    ring,
 		pinned:  pinned,
@@ -284,7 +290,7 @@ func (s *Service) Activate(ctx context.Context, key string) (Status, error) {
 	if s == nil {
 		return Status{}, errors.New("licensing is not configured in this build")
 	}
-	fp := Collect()
+	fp := Collect(s.dir)
 	now := s.now()
 
 	res, err := s.client.Activate(ctx, key, fp, hostname(), osName(), s.version)
@@ -306,7 +312,25 @@ func (s *Service) Activate(ctx context.Context, key string) (Status, error) {
 		return Status{}, err
 	}
 	s.log.Info("licence activated", "lid", claims.LID, "plan", claims.Plan,
-		"reactivated", res.Reactivated, "expires", claims.ExpiresAt())
+		"reactivated", res.Reactivated, "expires", claims.ExpiresAt(),
+		"components_readable", fp.Components.Present())
+
+	// Worth saying out loud, once, at the only moment an operator is watching.
+	// The server treats two matching components as the same machine, so an
+	// installation that can only read one has no tolerance at all: the next
+	// disk rebuild or machine-id regeneration looks like a different server and
+	// spends an activation slot. Better found in the log on day one than in a
+	// support ticket six months later.
+	if fp.Components.Present() < 2 {
+		s.log.Warn("this machine reports too few stable identifiers to tolerate a hardware change",
+			"readable", fp.Components.Present(), "of", 4,
+			"hint", "check that /etc/machine-id and /sys/class/dmi/id/product_uuid are readable")
+	}
+	if res.FingerprintChange != nil && res.FingerprintChange.Migration {
+		s.log.Info("this installation was recognised across a licence-server schema change",
+			"lid", claims.LID, "matched", res.FingerprintChange.Matched,
+			"note", "no hardware change was recorded against this licence")
+	}
 	return s.Status(), nil
 }
 
@@ -350,7 +374,12 @@ func (s *Service) beat(ctx context.Context) error {
 		return err
 	}
 	now := s.now()
-	res, err := s.client.Heartbeat(ctx, lid, fp, secret, hostname(), osName(), s.version)
+	// The soft signals are re-read on every beat: they are how a resize shows
+	// up in support's view of the machine on the day it happens. The
+	// *fingerprint* is deliberately not re-read — the beat authenticates as the
+	// installation the activation is bound to, and recognising changed hardware
+	// is activation's job, not this one's.
+	res, err := s.client.Heartbeat(ctx, lid, fp, secret, hostname(), osName(), s.version, collectSignals())
 	if err != nil {
 		return err
 	}
